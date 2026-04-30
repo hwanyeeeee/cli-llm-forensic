@@ -1,0 +1,4 @@
+.harness/
+*.log
+.claude/settings.local.json
+.dev-harness-root
