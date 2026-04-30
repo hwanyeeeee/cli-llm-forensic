@@ -1,0 +1,46 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify-main.sh\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/managed-file-warn.sh\""
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(tmux split-window *)",
+      "Bash(tmux send-keys *)",
+      "Bash(tmux display-message *)",
+      "Bash(tmux list-panes *)",
+      "Bash(tmux kill-pane *)",
+      "Bash(tmux has-session *)",
+      "Bash(cat .harness/*)",
+      "Bash(bash .claude/bin/verify-*.sh *)",
+      "Bash(bash .claude/bin/dev-sync.sh *)",
+      "Bash(adb *)",
+      "Bash(xcrun simctl *)",
+      "Read(.harness/*)",
+      "Read(docs/*)",
+      "Write(docs/STATE.md)",
+      "Write(docs/plan.md)",
+      "mcp__playwright"
+    ]
+  }
+}

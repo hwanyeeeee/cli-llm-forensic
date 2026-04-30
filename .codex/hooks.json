@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CODEX_PROJECT_DIR:-$PWD}/.codex/hooks/notify-main.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
