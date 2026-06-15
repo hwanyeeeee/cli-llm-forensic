@@ -515,6 +515,13 @@ git commit -m "docs: codex 리뷰어 e2e 검증 결과 메모"
 
 ---
 
+## 검증 결과 (2026-06-15)
+
+- **단위 테스트**: `codex-review.sh` `PASS=8 FAIL=0`, `final-verify.sh` `PASS=5 FAIL=0`. fallback(codex 부재/에러 → rc2) 결정적 커버.
+- **codex 플래그**: `codex exec --sandbox read-only` 유효 확인 (codex-cli 0.139.0). 기본 `CODEX_CMD` 정확.
+- **6a 실제 codex 스모크 (GREEN)**: 심은 변경(`echo done` 잉여출력)을 codex가 `BLOCK wc.sh:3 | … | echo done 제거`로 정확히 포착. 고정포맷 준수, `.harness/review-log.md` 생성·append, exit rc=1. read-only 동작·출력포맷·로깅·exit code 전부 실측 통과.
+- **남음**: 전체 tmux 자율 루프(6b) — 라이브 하네스에서 `/dev-spawn`로 관찰 (panel0↔panel1 + codex 게이트 통합). 실제 프로젝트 사용 중 확인.
+
 ## 머지 (사용자 게이트)
 
 검증 통과 후 사용자 승인 받아:
