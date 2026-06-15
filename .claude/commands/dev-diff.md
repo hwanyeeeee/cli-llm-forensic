@@ -1,5 +1,5 @@
 ---
-description: Show drift between current project and Dev-harness (read-only)
+description: 현재 프로젝트와 Dev-harness 간 차이만 표시 (읽기 전용)
 allowed-tools: Bash
 ---
 

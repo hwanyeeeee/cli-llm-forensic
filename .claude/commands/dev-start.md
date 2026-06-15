@@ -1,5 +1,5 @@
 ---
-description: Clone this harness to /mnt/c/projects/<name> as a new project (runtime state cleaned, exec bits restored)
+description: 이 하네스를 /mnt/c/projects/<name>로 새 프로젝트로 복제 (런타임 상태 정리, 실행권한 복원)
 argument-hint: <new-project-name>
 allowed-tools: Bash, Edit
 ---

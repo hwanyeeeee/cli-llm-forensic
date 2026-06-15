@@ -1,5 +1,5 @@
 ---
-description: Swap panel 1 dev tool (kill+respawn, hand over last dispatch via tmux buffer)
+description: panel 1 개발 도구 교체 (kill+재기동, 직전 dispatch를 tmux 버퍼로 인계)
 argument-hint: claude | codex
 allowed-tools: Bash, Read, Write, Edit
 ---
@@ -29,7 +29,7 @@ allowed-tools: Bash, Read, Write, Edit
 pane이 살아있으면 `tmux kill-pane`이 SIGHUP을 pane 안 모든 프로세스(codex/claude/bash 무관)에 전달해 정리한다. 이미 죽었으면 no-op. **버퍼는 pane과 무관하게 tmux 서버에 남아있으므로 kill해도 last-dispatch가 안 날아간다.**
 
 ```bash
-OLD_PID=$(cat .harness/panel1.id)
+OLD_PID="$(bash .claude/bin/resolve-pane.sh panel1 2>/dev/null || cat .harness/panel1.id)"
 if tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx "$OLD_PID"; then
   tmux kill-pane -t "$OLD_PID"
 fi
@@ -39,7 +39,9 @@ fi
 
 ```bash
 tmux display-message -p '#{pane_id}' > .harness/panel0.id
+tmux set-option -p -t "$(cat .harness/panel0.id)" @fa_role panel0
 tmux split-window -h -P -F '#{pane_id}' > .harness/panel1.id
+tmux set-option -p -t "$(cat .harness/panel1.id)" @fa_role panel1
 ```
 
 ## 5. 도구 기동 명령 전송 (로깅 스킵)

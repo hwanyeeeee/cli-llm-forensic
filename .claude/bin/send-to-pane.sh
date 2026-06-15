@@ -51,7 +51,7 @@ tmux send-keys -t "$PANE" Enter
 # re-deliver context to a replacement tool. Lives in tmux server memory only —
 # no filesystem state. Internal sends (tool launch command, role handover) opt
 # out via SKIP_DISPATCH_LOG=1 so they don't overwrite the real dispatch.
-PANEL1_ID="$(cat .harness/panel1.id 2>/dev/null || true)"
+PANEL1_ID="$(bash "$(dirname "$0")/resolve-pane.sh" panel1 2>/dev/null || cat .harness/panel1.id 2>/dev/null || true)"
 if [ -n "$PANEL1_ID" ] && [ "$PANE" = "$PANEL1_ID" ] && [ "${SKIP_DISPATCH_LOG:-0}" != "1" ]; then
   tmux set-buffer -b panel1-last-dispatch "$MSG"
 fi

@@ -13,6 +13,10 @@ set -euo pipefail
 # `PATHS=(` 라인과 `)` 라인 형식 유지할 것.
 PATHS=(
   .claude/bin/send-to-pane.sh
+  .claude/bin/resolve-pane.sh
+  .claude/bin/register-pane.sh
+  .claude/bin/codex-review.sh
+  .claude/bin/final-verify.sh
   .claude/bin/verify-android.sh
   .claude/bin/verify-ios.sh
   .claude/bin/dev-sync.sh
