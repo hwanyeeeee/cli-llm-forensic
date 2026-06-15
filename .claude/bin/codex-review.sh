@@ -16,7 +16,7 @@ LOG="$ROOT/.harness/review-log.md"
 CODEX_CMD="${CODEX_CMD:-codex exec --sandbox read-only}"
 
 # 1. diff 캡처 (직전 게이트 이후 working tree). 변경 없으면 리뷰할 것 없음.
-DIFF="$(git -C "$ROOT" diff 2>/dev/null)"
+DIFF="$(git -C "$ROOT" diff HEAD 2>/dev/null)"
 if [ -z "$DIFF" ]; then
   echo "CLEAN (no diff to review)"
   exit 0
@@ -56,8 +56,9 @@ ${DIFF}"
 
 # 4. codex 호출 (read-only). $CODEX_CMD는 의도적으로 unquoted (단어 분할).
 ERRF="$(mktemp)"
+trap 'rm -f "$ERRF"' EXIT
 OUT="$($CODEX_CMD "$PROMPT" 2>"$ERRF")"; RC=$?
-ERR="$(cat "$ERRF" 2>/dev/null)"; rm -f "$ERRF"
+ERR="$(cat "$ERRF" 2>/dev/null)"
 if [ "$RC" -ne 0 ]; then
   echo "codex error (rc=$RC): $ERR" >&2
   exit 2
