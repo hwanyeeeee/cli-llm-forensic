@@ -1,5 +1,5 @@
 ---
-description: Push a single managed file from current project back to Dev-harness
+description: 현재 프로젝트의 managed 파일 1개를 Dev-harness로 push
 argument-hint: <relative-path>
 allowed-tools: Bash
 ---

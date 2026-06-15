@@ -34,11 +34,15 @@ LOG_FILE="$PROJECT_ROOT/.harness/notify.log"
 
 log() { printf '[%s] TMUX_PANE=%s %s\n' "$(date +%H:%M:%S)" "${TMUX_PANE:-unset}" "$1" >> "$LOG_FILE"; }
 
-[ -f "$PANEL0_FILE" ] || exit 0
-[ -f "$PANEL1_FILE" ] || exit 0
+# Self-heal: register this pane's role (tag + refresh cache), then resolve LIVE ids
+# via .claude/bin/resolve-pane.sh (window-index based, %ID-independent). This is what
+# fixes stale-id routing after resume / tmux restart — no cached %ID is trusted.
+bash "$PROJECT_ROOT/.claude/bin/register-pane.sh" 2>/dev/null || true
+PANEL0="$(bash "$PROJECT_ROOT/.claude/bin/resolve-pane.sh" panel0 "${TMUX_PANE:-}" 2>/dev/null || true)"
+PANEL1="$(bash "$PROJECT_ROOT/.claude/bin/resolve-pane.sh" panel1 "${TMUX_PANE:-}" 2>/dev/null || true)"
 
-PANEL0="$(cat "$PANEL0_FILE")"
-PANEL1="$(cat "$PANEL1_FILE")"
+[ -n "$PANEL0" ] || { log "skip: cannot resolve panel0"; exit 0; }
+[ -n "$PANEL1" ] || { log "skip: cannot resolve panel1"; exit 0; }
 
 # 중요: $TMUX_PANE을 써야 한다. `tmux display-message -p '#{pane_id}'`는
 # "현재 포커스된 pane"을 반환하므로, 사용자가 다른 pane을 보고 있으면 오검출.

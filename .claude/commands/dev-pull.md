@@ -1,5 +1,5 @@
 ---
-description: Pull managed files from Dev-harness into current project (overwrite)
+description: Dev-harness의 managed 파일을 현재 프로젝트로 일괄 덮어쓰기
 allowed-tools: Bash
 ---
 
