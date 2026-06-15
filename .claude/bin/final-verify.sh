@@ -8,17 +8,18 @@ set -uo pipefail
 ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 PLAN="$ROOT/docs/plan.md"
 
-CMD="$(awk -F': ' '/^run:/{sub(/^run: */,""); print; exit}' "$PLAN" 2>/dev/null)"
-[ -n "$CMD" ] || CMD="$(awk -F': ' '/^test:/{sub(/^test: */,""); print; exit}' "$PLAN" 2>/dev/null)"
+CMD="$(awk '/^---$/{if(++fence==2) exit} fence==1 && /^run:/{sub(/^run: */,""); print; exit}' "$PLAN" 2>/dev/null)"
+[ -n "$CMD" ] || CMD="$(awk '/^---$/{if(++fence==2) exit} fence==1 && /^test:/{sub(/^test: */,""); print; exit}' "$PLAN" 2>/dev/null)"
 if [ -z "$CMD" ]; then
   echo "no run:/test: command in plan.md" >&2
   exit 2
 fi
 
 ERRF="$(mktemp)"
+trap 'rm -f "$ERRF"' EXIT
 ( cd "$ROOT" && eval "$CMD" ) >/dev/null 2>"$ERRF"
 RC=$?
-ERR="$(cat "$ERRF" 2>/dev/null)"; rm -f "$ERRF"
+ERR="$(cat "$ERRF" 2>/dev/null)"
 
 if [ "$RC" -ne 0 ]; then
   echo "real-run FAILED (rc=$RC): $ERR" >&2
