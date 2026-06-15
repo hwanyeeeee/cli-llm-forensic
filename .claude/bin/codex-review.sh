@@ -74,8 +74,9 @@ mkdir -p "$ROOT/.harness"
   printf '%s\n' "$OUT"
 } >> "$LOG"
 
-# 7. BLOCK 판정 → exit code
-if printf '%s\n' "$OUT" | grep -q '^BLOCK '; then
+# 7. BLOCK 판정 → exit code. 선행 공백/불릿(- , * )이 붙어도 BLOCK으로 인식
+# (codex 출력 포맷 드리프트 방어 — 컬럼0만 보면 들여쓴 BLOCK을 놓쳐 버그가 통과).
+if printf '%s\n' "$OUT" | grep -qE '^[[:space:]*-]*BLOCK '; then
   exit 1
 fi
 exit 0
