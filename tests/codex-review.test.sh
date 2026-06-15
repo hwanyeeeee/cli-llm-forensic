@@ -65,5 +65,12 @@ CLAUDE_PROJECT_DIR="$d" PATH="$b:$PATH" bash "$REVIEW" 1 >/dev/null 2>&1; rc=$?
 check "codex 에러 → rc 2" 2 "$rc"
 rm -rf "$d"
 
+# 7. 들여쓰기/불릿 BLOCK도 차단 → rc 1 (포맷 드리프트 방어)
+d="$(setup)"; echo 'changed' >> "$d/wc.sh"
+b="$(mkstub "$d" 'echo "  - BLOCK wc.sh:3 | off-by-one | use <="')"
+CLAUDE_PROJECT_DIR="$d" PATH="$b:$PATH" bash "$REVIEW" 1 >/dev/null; rc=$?
+check "들여쓴 BLOCK → rc 1" 1 "$rc"
+rm -rf "$d"
+
 echo "---"; echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
