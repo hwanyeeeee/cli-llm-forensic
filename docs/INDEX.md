@@ -30,4 +30,5 @@
 | `발표-가이드라인.md` | 발표 흐름·주의 (팀원) |
 | `superpowers/specs/2026-06-17-clfx-mvp-design.md` | clfx MVP 설계 스펙 (파싱·분석·질의 확정안) |
 | `superpowers/plans/2026-06-17-clfx-mvp.md` | clfx MVP 상세 구현 플랜 (Task 0~14 TDD, 실코드 포함) |
+| `superpowers/specs/2026-06-17-clfx-dashboard-design.md` | clfx 웹 대시보드(Stage 4) 설계 — stdlib 서버+vanilla JS 뷰 |
 | `plan.md` / `STATE.md` | 개발 진행판 (개발 시작 후) |
