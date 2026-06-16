@@ -29,4 +29,5 @@
 | `스테이징-데이터셋-가이드.md` | 통제 데이터셋 만들기 (팀원) |
 | `발표-가이드라인.md` | 발표 흐름·주의 (팀원) |
 | `superpowers/specs/2026-06-17-clfx-mvp-design.md` | clfx MVP 설계 스펙 (파싱·분석·질의 확정안) |
+| `superpowers/plans/2026-06-17-clfx-mvp.md` | clfx MVP 상세 구현 플랜 (Task 0~14 TDD, 실코드 포함) |
 | `plan.md` / `STATE.md` | 개발 진행판 (개발 시작 후) |
