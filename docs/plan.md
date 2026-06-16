@@ -30,3 +30,10 @@ Task 11~14 — `query/engine.py`(결정적 search/on_date/who_did/secrets/timeli
 증거 주장은 결정적 엔진(안 흔들림), 요약만 LLM. 요약 채점 = 인용 source 실재 + 근거 집합 일치.
 
 acceptance: pytest tests/test_query_engine.py tests/test_query_llm.py tests/test_cli_query.py tests/test_e2e_ab.py -q
+
+## 4단계: 웹 대시보드 (뷰 레이어)
+상세 플랜: `docs/superpowers/plans/2026-06-17-clfx-dashboard.md` (Task 1~6, 실코드 포함). 설계: `docs/superpowers/specs/2026-06-17-clfx-dashboard-design.md`.
+Task 1~6 — `web/api.py`(events_payload/query_payload 순수함수, op 디스패치 단일화) → `cmd_query`를 query_payload 위임으로 리팩토링(DRY) → `web/server.py`(stdlib http.server, GET 전용, 127.0.0.1) → `web/static/`(index.html/app.css/app.js, actor 색구분·필터·질의·secret 하이라이트·source 역추적) → CLI `serve`.
+원칙: 엔진(QueryEngine) 단일 진실원천 — 서버가 호출, JS 재구현 금지. 의존성 0(stdlib만). read-only 단일 analyzed.jsonl.
+
+acceptance: pytest tests/test_web_api.py tests/test_web_server.py -q
