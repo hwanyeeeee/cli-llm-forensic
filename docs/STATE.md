@@ -1,36 +1,16 @@
 # 개발 상황
 
-(메인 세션이 첫 플랜 작성 시 아래 구조로 채운다. 한 화면을 넘기지 말 것.)
-
 ## 프로젝트
-(한 줄)
+clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/B 두 사건 재구성 + actor 규명.
 
 ## 플랜 단계
-- [ ] 1단계: ...
-- [ ] 2단계: ...
-- [ ] 3단계: ...
+- [ ] 1단계: 파싱 (event/sources/paste/parser/CLI parse) ← 현재
+- [ ] 2단계: 분석 (secrets/attribution/timeline/CLI analyze)
+- [ ] 3단계: 질의 (engine/llm/CLI query/e2e A·B)
 
 ## 현재 작업
 - 도구: (claude|codex)
 - 위치: 1단계
-- 수행 중: (한 두 줄)
+- 수행 중: 미착수 — /dev-spawn 대기. panel1이 docs/superpowers/plans/2026-06-17-clfx-mvp.md Task 0부터 TDD.
 - 재시도: 0
 - 리뷰라운드: 0
-
-<!--
-아래 세 섹션은 발생했을 때만 추가한다. 하나라도 있으면 idle 상태.
-사용자가 해결한 뒤 해당 섹션을 직접 지워야 루프가 재개된다.
-
-## ❓ 결정 필요
-- 항목: ...
-- 선택지: (a) ... / (b) ...
-
-## ⚠ 막힘
-- 단계: N
-- 증상: ...
-- 마지막 시도: ...
-
-## 완료
-- 시각: YYYY-MM-DD HH:MM
-- 비고: ...
--->

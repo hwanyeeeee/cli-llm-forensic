@@ -1,44 +1,32 @@
 ---
-target:
-build:
-test:
-device:
+target: cli
+build: pip install -e ".[dev]"
+test: pytest -q
+run: pytest tests/test_e2e_ab.py -q
 ---
 
-# 플랜
+# 플랜 — clfx MVP (파싱 → 분석 → 질의)
 
-(메인 세션이 Claude Code **plan mode**에서 승인된 계획을 여기에 작성한다.
-panel 1 개발 세션은 이 파일과 `STATE.md`를 읽고 현재 단계를 수행한다.)
+상세 구현 플랜(Task 0~14, 실코드 포함): `docs/superpowers/plans/2026-06-17-clfx-mvp.md`.
+설계 스펙: `docs/superpowers/specs/2026-06-17-clfx-mvp-design.md`. Event 단일 진실원천: `docs/event-schema.md`.
 
-## 1단계: <제목>
-<상세 설명>
+**목표:** Claude Code 기록(`~/.claude`)을 파싱·분석·자연어 질의하는 포렌식 CLI `clfx`. 시연 = A(사용자 붙여넣기)/B(에이전트 자율 read) 두 사건 재구성 + `actor` 주체 규명.
+**원칙:** TDD(빨강→초록). 테스트 입력 = `tests/fixtures/`에 커밋한 합성 jsonl(CLFXTEST 시크릿, 실데이터/스테이징셋 의존 금지). 질의 = 결정적 엔진 backbone + 얇은 LLM 어댑터(요약, 없어도 동작).
 
-acceptance:
+## 1단계: 파싱
+Task 0~6 — 스캐폴드 → `event.py`(Event/Source) → 픽스처+conftest 빌더 → `sources/claude.py`(reader) → `paste.py`(3사슬+이미지) → `parser.py`(raw→Event, §A paste·§B read/prompt/bash/write/response) → CLI `parse`.
+모든 Event는 `source{file,line}` 추적. paste 3사슬(content/contentHash→paste-cache/이미지 base64)·§B 레코드 타입 전부 처리.
 
-## 2단계: <제목>
-<상세 설명>
+acceptance: pip install -e ".[dev]" >/dev/null 2>&1; pytest tests/test_event.py tests/test_fixtures.py tests/test_sources.py tests/test_paste.py tests/test_parser.py tests/test_cli_parse.py -q
 
-acceptance:
+## 2단계: 분석
+Task 7~10 — `analyze/secrets.py`(시크릿 8종+PII 탐지·`‹secret›` 마스킹) → `analyze/attribution.py`(귀속 enrich: bypass-mode 태그·시크릿 태그·마스킹·요약) → `analyze/timeline.py`(ts 정렬) → CLI `analyze`.
+CLFXTEST-001~008 전부 탐지, 노이즈(app.py) 0 오탐, A=user/B=agent 귀속.
 
-## 3단계: <제목>
-<상세 설명>
+acceptance: pytest tests/test_secrets.py tests/test_attribution.py tests/test_timeline.py tests/test_cli_analyze.py -q
 
-acceptance:
+## 3단계: 질의
+Task 11~14 — `query/engine.py`(결정적 search/on_date/who_did/secrets/timeline → Event+source 인용) → `query/llm.py`(intent 라우팅+요약, LLM 없으면 digest fallback) → CLI `query` → A/B 재구성 e2e.
+증거 주장은 결정적 엔진(안 흔들림), 요약만 LLM. 요약 채점 = 인용 source 실재 + 근거 집합 일치.
 
-<!--
-스키마 요약:
-
-frontmatter (모두 optional):
-- target: ios | android | web | cli — UI 검증 도구 분기에 사용
-- build: 빌드 명령 (각 단계 acceptance에서 인용 가능)
-- test: 테스트 명령
-- device: 에뮬레이터 ID 또는 디바이스 시리얼
-
-각 단계의 acceptance: (optional, 한 줄 Bash):
-- exit 0 → panel 0이 단계 진행
-- exit ≠ 0 → 단계 유지 + 수정 지시 (3회 실패 시 막힘)
-- 비어있으면 panel 0이 본문 + git diff 휴리스틱으로 자동 판정
-
-복잡한 검증은 `.claude/bin/verify-*.sh` 또는 프로젝트 스크립트로 분리.
-모바일 예: acceptance: ./gradlew assembleDebug && bash .claude/bin/verify-android.sh app/build/outputs/apk/debug/app-debug.apk
--->
+acceptance: pytest tests/test_query_engine.py tests/test_query_llm.py tests/test_cli_query.py tests/test_e2e_ab.py -q
