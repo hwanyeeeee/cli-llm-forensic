@@ -19,6 +19,7 @@ Event {
 ## 규칙
 
 - 모든 Event는 `source` 로 **원본 파일·줄을 되짚을 수 있어야** 한다 (증거능력).
+  - `source.file` 이 가리키는 곳: `history.jsonl` / `projects/<…>.jsonl` / 붙여넣기 본문이 따로면 `paste-cache/<hash>.txt`. 붙여넣은 이미지(transcript 안 base64)·읽은 파일(`toolUseResult` 필드)은 그 내용이 든 transcript 줄을 가리킨다.
 - 시크릿 값은 `preview` 에 그대로 넣지 말고 가린다 (예: `‹secret›`).
 - 데이터셋 정답(`ground-truth`)도 이 형식의 `actor`·`action`·`target` 을 그대로 쓴다 → 도구 출력과 1:1 비교.
 - 새 필드가 필요하면 이 파일을 고치고 PR로만 바꾼다 (다른 문서에 복제 금지).
