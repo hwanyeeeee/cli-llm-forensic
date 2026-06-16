@@ -1,4 +1,11 @@
 .harness/
 *.log
-.claude/settings.local.json
 .dev-harness-root
+
+# 개발 하네스 (로컬 전용 — 레포 미포함, 팀원은 자기 환경서 작업)
+.claude/
+.codex/
+CLAUDE.md
+AGENTS.md
+.mcp.json
+tests/
