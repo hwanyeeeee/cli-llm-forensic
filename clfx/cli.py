@@ -1,9 +1,12 @@
 import argparse
+import json
 import os
 import sys
 
 from clfx.sources.claude import ClaudeSource
 from clfx.parser import parse_source
+from clfx.event import Event
+from clfx.analyze.attribution import enrich
 
 
 def _write_events(events, out_path):
@@ -34,6 +37,30 @@ def cmd_parse(args):
     return 0
 
 
+def _read_events(path):
+    with open(path, encoding="utf-8") as f:
+        return [Event.from_dict(json.loads(l)) for l in f if l.strip()]
+
+
+class _NullSource:
+    """--root 미지정 시 bypass 판정용 빈 소스(transcript 없음)."""
+    agent = "claude"
+
+    def transcript_records(self):
+        return iter(())
+
+
+def cmd_analyze(args):
+    try:
+        events = _read_events(args.events)
+        src = ClaudeSource(args.root) if args.root else _NullSource()
+        _write_events(enrich(events, src), args.out)
+    except Exception as e:
+        print(f"clfx analyze: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="clfx")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -41,6 +68,12 @@ def build_parser():
     sp.add_argument("root", help="~/.claude 루트")
     sp.add_argument("-o", "--out", required=True)
     sp.set_defaults(func=cmd_parse)
+
+    ap = sub.add_parser("analyze", help="events.jsonl → analyzed.jsonl (tags·mask·귀속)")
+    ap.add_argument("events")
+    ap.add_argument("-o", "--out", required=True)
+    ap.add_argument("--root", default=None, help="bypass 판정용 ~/.claude 루트(선택)")
+    ap.set_defaults(func=cmd_analyze)
     return p
 
 
