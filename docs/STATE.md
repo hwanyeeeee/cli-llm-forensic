@@ -13,6 +13,6 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 4단계 (UI)
-- 수행 중: MVP green·final-verify OK. 사용자 퇴근·자율 위임("출근 전까지 쭉, UI 계획·문서·구현 다"). Stage 4 웹 대시보드 brainstorm→spec→plan→panel1 구현 자율 진행.
+- 수행 중: Stage 4 spec(60813de)·plan(7adca16) 완료. panel1에 4단계 웹 대시보드(Task 1~6) 구현 지시 송부.
 - 재시도: 0
 - 리뷰라운드: 0
