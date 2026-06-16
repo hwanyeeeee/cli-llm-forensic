@@ -206,6 +206,17 @@ def test_image_zero_text_is_not_placeholder(tmp_path):
     evs2 = _parse_records(tmp_path, [_user_record([{"type": "text", "text": "[Image #1]"}])])
     assert not [e for e in evs2 if e.action == "prompt"]
 
+def test_history_epoch_ms_ts_normalized(tmp_path):
+    # history.jsonl의 epoch-ms 정수 timestamp → ISO8601 UTC 'Z' 문자열로 정규화(타입 혼재 방지)
+    from tests.conftest import make_history, write_jsonl
+    root = tmp_path / "dot-claude"
+    rows = make_history([{"display": "d", "items": [{"content": "X"}]}])
+    rows[0]["timestamp"] = 1770555950996      # epoch-ms 정수
+    write_jsonl(root / "history.jsonl", rows)
+    pastes = [e for e in parse_source(ClaudeSource(root)) if e.action == "paste"]
+    assert pastes and pastes[0].ts == "2026-02-08T13:05:50.996Z"
+    assert isinstance(pastes[0].ts, str)
+
 def test_non_string_payloads_coerced_no_crash(tmp_path):
     # 손상 jsonl: content/text 가 비-문자열(int/float)이어도 크래시 없이 str화 발행
     from tests.conftest import write_jsonl
