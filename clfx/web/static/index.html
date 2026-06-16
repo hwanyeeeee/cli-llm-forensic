@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>clfx — 포렌식 대시보드</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header>
+    <h1>clfx 포렌식 대시보드</h1>
+    <form id="q-form">
+      <input id="q" type="text" placeholder="자연어 질의: 누가 .env 읽었어? / 유출된 비밀 / 타임라인 요약해줘" autocomplete="off">
+      <button type="submit">질의</button>
+      <button type="button" id="reset">전체</button>
+    </form>
+    <div id="filters">
+      <span>actor:</span>
+      <label><input type="checkbox" class="f-actor" value="user" checked> user</label>
+      <label><input type="checkbox" class="f-actor" value="agent" checked> agent</label>
+      <span>tags:</span>
+      <label><input type="checkbox" class="f-tag" value="secret" checked> secret</label>
+      <label><input type="checkbox" class="f-tag" value="pii" checked> pii</label>
+      <label><input type="checkbox" class="f-tag" value="bypass-mode" checked> bypass</label>
+      <span>action:</span>
+      <label><input type="checkbox" class="f-action" value="prompt" checked> prompt</label>
+      <label><input type="checkbox" class="f-action" value="read" checked> read</label>
+      <label><input type="checkbox" class="f-action" value="bash" checked> bash</label>
+      <label><input type="checkbox" class="f-action" value="write" checked> write</label>
+      <label><input type="checkbox" class="f-action" value="paste" checked> paste</label>
+      <label><input type="checkbox" class="f-action" value="response" checked> response</label>
+    </div>
+  </header>
+  <div id="banner" class="hidden"></div>
+  <div id="summary" class="hidden"></div>
+  <main>
+    <section id="timeline"></section>
+    <aside id="detail" class="hidden"></aside>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
