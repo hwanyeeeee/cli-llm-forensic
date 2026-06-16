@@ -1,0 +1,22 @@
+[project]
+name = "clfx"
+version = "0.0.1"
+description = "CLI LLM agent forensic tool"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+clfx = "clfx.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["clfx*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
