@@ -12,12 +12,12 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 - [x] 실데이터 hardening: ts ISO8601 정규화 ✓ b699486+27e5936 (codex CLEAN, 92 test)
 - [x] 5단계: 피드백확장 A (분석·시각화 ③④⑤⑥⑦ + 신규 API + actor질의) ✓ 0d0382e (전체 134 test, codex R1~R9→폴백 CLEAN, e2e+final-verify OK)
 - [x] 후속: multi-root parse + origin 태깅 + UI 소스필터 + (b)mixed-ts 픽스처 ✓ (전체 141)
-- [ ] 6단계: exe + 인앱 스캔 UX (Task1~3✓ Task3.5 discover보강✓ → Task4 스캔UI 진행 → Task5 launcher) ← 현재
+- [ ] 6단계: exe + 인앱 스캔 UX (Task1~4✓ +3.5·4.5 보강✓ → Task5 launcher+PyInstaller 진행) ← 현재
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 6단계 exe+스캔 UX
-- 수행 중: subagent-driven. [Task1~3✓][Task3.5✓ discover][Task4 스캔UI 구현됨·서버 스모크 OK(실소스 wsl+windows 둘다 탐지, /api/scan 8건)·미커밋] codex Task4 = CSS 버그 1건(#scan-screen display:grid가 hidden 덮음→오버레이가 대시보드 가림). **panel1에 Task4.5(`#scan-screen[hidden]{display:none}` 1줄) 위임 중.** 수정 후 Task4 프론트 전체 한 커밋. 이후 Task5(launcher+PyInstaller). 렌더 검증은 panel0이 브라우저로. B/C plan은 6단계 후.
+- 수행 중: subagent-driven. [Task1~4✓ 커밋][Task3.5✓ discover /mnt/c][Task4.5✓ CSS hidden 버그] 스캔 UI 완성, 152 green. 실소스 wsl+windows 둘다 자동탐지 확인. **panel1에 Task5(launcher.py+PyInstaller build.md+server._MEIPASS 정적경로) 위임** — 인자0→빈서버+브라우저 자동오픈, _free_port, frozen 정적경로. 완전 코드+launcher 스모크 제공. exe 실제 빌드는 Windows 수동(panel0/사용자). 그 후 6단계 final-verify. B/C plan은 6단계 후.
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0
