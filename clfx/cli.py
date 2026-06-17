@@ -32,7 +32,11 @@ def _write_events(events, out_path):
 
 def cmd_parse(args):
     try:
-        _write_events(parse_source(ClaudeSource(args.root)), args.out)
+        evs = []
+        for root in args.root:               # nargs="+" → 항상 list. 여러 루트(WSL+Windows .claude)를 한 번에.
+            evs.extend(parse_source(ClaudeSource(root)))
+        # 각 Event는 source.file(루트경로 포함)로 출처(머신) 보존 — 스키마 불변. WSL/Windows는 별 세션이라 dedup 불요.
+        _write_events(evs, args.out)
     except Exception as e:
         print(f"clfx parse: {e}", file=sys.stderr)
         return 1
@@ -100,7 +104,8 @@ def build_parser():
     p = argparse.ArgumentParser(prog="clfx")
     sub = p.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("parse", help="에이전트 기록 → events.jsonl")
-    sp.add_argument("root", help="~/.claude 루트")
+    sp.add_argument("root", nargs="+",
+                    help="~/.claude 루트(들) — 여러 개 가능(예: Windows + \\\\wsl.localhost\\... )")
     sp.add_argument("-o", "--out", required=True)
     sp.set_defaults(func=cmd_parse)
 
