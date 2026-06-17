@@ -16,7 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 배치5 완료 — 사용자 재빌드·검증 대기
+- 위치: 배치6(LLM 요약 자연어화) panel1 위임 중
+- 진행: batch5 완료·커밋 e1fc240. 재빌드서 발견: "6/16 요약"이 자연어 아닌 이벤트목록(digest)으로 뜸. **원인=_digest가 LLM 프롬프트에 이벤트 라벨만 넣고 preview(실제 내용) 누락** → prompt/response(target="")는 빈껍데기 → gemma 빈/무의미 응답 → UI "결과 N건" 폴백. fix=batch6(/tmp/panel1-batch6.txt): _digest with_preview(마스킹된 preview 120자 포함)→LLM이 내용 받아 서술형 요약, 빈응답 폴백, 프롬프트 "~했습니다 서술형" 지시. 보안: preview ‹secret› 마스킹+로컬 ollama만. 키워드는 frida/ghidra/sqlite 등 실제 수사용어 떠서 개선됨(me/Now 잔여 minor).
 - 진행: batch5 완료·커밋 e1fc240(유연날짜 6/15→on_date 월-일, 소스 체크 origin만 질의답변, answer_overview 이벤트리스트 리팩터, 198 green, JS OK). **재빌드 후 검증**: "6/15 요약해줘"(소스 칩 win만/둘다 조합)→ 그 플랫폼·그 날만 요약. date-scoped라 컨텍스트 작아 gemma4 빠름(+프리웜). 다음(승인대기): B plan(복구·해시·④JOIN)→C plan(MCP·tmp).
 - 진행: batch4 완료·커밋 a59a812(순수 idf로 this/be/that 강등, LLM 프리웜+keep_alive+num_predict384+timeout300, 193 green). batch5 위임(/tmp/panel1-batch5.txt): (1)유연 날짜 "6/15"·"6월15일"→on_date 월-일(MM-DD, engine.on_date d[5:10] 매칭). 사용자가 "6/15 요약"으로 작은 컨텍스트 질의 예정. (2)소스 칩 체크된 origin만 질의 답변 — query_payload origins 필터+_by_origins, answer_overview를 이벤트리스트 기반 리팩터, server /api/query?sources= 파싱, app.js ask가 srcActive 동봉. 파싱 전량·답변범위만 체크 origin.
 - 진행: batch3 재빌드서 2건 잔존 → batch4 위임(/tmp/panel1-batch4.txt). (1)키워드 be/this/that 여전 — 원인=sklearn 평활 idf의 +1 바닥값이 ubiquitous 토큰 살림 → **순수 idf=ln(N/df)**(df==N→0 강등, N<=1 count폴백). 하드코딩 아님. (2)LLM "timed out"(연결OK 127.0.0.1, refused아님) — 원인=gemma4:12b CPU 콜드로드+느린생성 120s초과 → **프리웜(스캔완료시 백그라운드 모델로드)+keep_alive 30m+num_predict 384+timeout 300**. 둘 다 백엔드(keywords.py/llm.py/server.py).
