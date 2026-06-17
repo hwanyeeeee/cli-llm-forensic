@@ -15,7 +15,7 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 후속 1~4 착수 (multi-root parse → (b)픽스처 → B/C plan → exe)
-- 수행 중: multi-root + origin 태깅 + UI 소스필터 완료(전체 137). panel1에 (b)mixed-ts 픽스처 위임 중. 그동안 panel0=B plan(복구·해시·④JOIN) 작성 착수. 이후 C plan·exe.
+- 수행 중: (b)mixed-ts 픽스처 완료(141 green). 사용자 핵심요구=exe는 인자0 실행→UI 자동→스캔화면서 소스선택(WSL/Windows 자동탐지)→인메모리 parse+analyze→대시보드. panel0=exe+스캔 plan writing-plans로 작성 중. 순서: exe+스캔 → B(복구·해시·④JOIN) → C(MCP).
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0
