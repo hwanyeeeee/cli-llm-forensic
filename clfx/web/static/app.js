@@ -470,9 +470,46 @@ $("#copx").addEventListener("click",()=>copOpen(false));
 $("#send").addEventListener("click",()=>ask($("#ask").value));
 $("#ask").addEventListener("keydown",e=>{if(e.key==="Enter")ask($("#ask").value);});
 $("#suggest").addEventListener("click",e=>{if(e.target.classList.contains("sg"))ask(e.target.textContent);});
+$("#rescan").addEventListener("click",()=>showScan());
+$("#scan-go").addEventListener("click",async()=>{
+  const roots=[...document.querySelectorAll("#scan-sources input:checked")].map(c=>c.dataset.path);
+  const st=$("#scan-status");
+  if(!roots.length){st.textContent="소스를 1개 이상 선택하세요.";return;}
+  st.textContent="스캔 중…";
+  try{
+    const r=await fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roots})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||"스캔 실패");
+    const by=Object.entries(d.by_origin||{}).map(([k,v])=>`${k} ${v}`).join(" · ");
+    st.textContent=`완료: ${d.count}건${by?" ("+by+")":""}`;
+    $("#chatlog").innerHTML="";       // 재로드 시 코파일럿 인사 중복 방지
+    await boot();                     // 채워진 엔진으로 대시보드 재로드
+  }catch(err){st.textContent="스캔 실패: "+esc(err.message);}
+});
 
 /* ---------- util ---------- */
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+/* ---------- 스캔 화면(데이터 없을 때) ---------- */
+async function showScan(){
+  $(".wrap").style.display="none";
+  $("#rescan").hidden=true;
+  const scr=$("#scan-screen"); scr.hidden=false;
+  const box=$("#scan-sources"); box.innerHTML="<div class='muted'>소스 탐지 중…</div>";
+  $("#scan-status").textContent="";
+  let data;
+  try{ data=await jget("/api/sources"); }
+  catch(err){ box.innerHTML=`<div class="err">소스 탐지 실패: ${esc(err.message)}</div>`; return; }
+  const srcs=data.sources||[];
+  if(!srcs.length){ box.innerHTML="<div class='muted'>탐지된 .claude 소스가 없습니다.</div>"; return; }
+  box.innerHTML=srcs.map(s=>`
+    <label class="scan-src ${s.exists?"":"off"}">
+      <input type="checkbox" data-path="${esc(s.path)}" ${s.exists?"checked":"disabled"}>
+      <span class="badge ${esc(s.label)}">${esc(s.label)}</span>
+      <span class="p">${esc(s.path)}</span>
+      ${s.exists?"":'<span class="na">없음</span>'}
+    </label>`).join("");
+}
 
 /* ---------- boot: 서버 연결 시도 → 실데이터, 실패 시 샘플 ---------- */
 function renderAll(){renderStats();renderHeatmap();renderDateJump();renderDonut();renderFiles();renderTimeline();}
@@ -485,17 +522,21 @@ async function loadAggregates(){
   try{SRV_KEYWORDS=await jget("/api/keywords");}catch(_){SRV_KEYWORDS=null;}
 }
 async function boot(){
-  let live=null;
+  let live=null, reachable=false;
   try{
     const r=await fetch("/api/events");
-    if(r.ok){const d=await r.json();if(d&&Array.isArray(d.events))live=d.events;}
+    if(r.ok){reachable=true;const d=await r.json();if(d&&Array.isArray(d.events))live=d.events;}
   }catch(_){}
+  // 서버 연결 + 데이터 0건 → 스캔 화면(아직 스캔 전). 미연결(reachable=false)은 MOCK 대시보드.
+  if(reachable && live && live.length===0){ showScan(); return; }
+  $("#scan-screen").hidden=true; $(".wrap").style.display="";   // 대시보드 복귀(재스캔 후)
   LIVE=!!live;
   EVENTS=(live||MOCK).map(normalize);
   if(LIVE) await loadAggregates();   // 집계 패널 데이터 출처를 엔진으로(JS 재집계 금지)
   srcActive=new Set(originLabels());  // 소스 토글 기본 전체 on
   renderSrcFilters();
   renderAll();renderSuggest();
+  $("#rescan").hidden=!LIVE;   // LIVE일 때만 다시스캔 노출
   const chip=$("#case-mode");
   if(LIVE){chip.className="chip ok";chip.innerHTML=`<span class="dot"></span>서버 연결됨`;}
   else{chip.className="chip warn";chip.innerHTML=`<span class="dot"></span>샘플 데이터(서버 미연결)`;}

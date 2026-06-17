@@ -19,8 +19,19 @@
   <div class="case">
     <span class="chip"><b>분석 대상</b> <span id="case-target">~/.claude</span></span>
     <span class="chip ok" id="case-mode"><span class="dot"></span>서버 연결됨</span>
+    <button id="rescan" class="chip" hidden>다시 스캔</button>
   </div>
 </header>
+
+<div id="scan-screen" hidden>
+  <div class="scan-card">
+    <h2>포렌식 스캔</h2>
+    <p>이 PC의 Claude Code 기록 중 분석할 소스를 선택하세요. (증거는 외부 전송 없이 로컬에서만 처리)</p>
+    <div id="scan-sources"></div>
+    <button id="scan-go">스캔 시작</button>
+    <div id="scan-status"></div>
+  </div>
+</div>
 
 <div class="wrap">
 
