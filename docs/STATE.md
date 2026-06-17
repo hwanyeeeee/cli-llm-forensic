@@ -12,12 +12,12 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 - [x] 실데이터 hardening: ts ISO8601 정규화 ✓ b699486+27e5936 (codex CLEAN, 92 test)
 - [x] 5단계: 피드백확장 A (분석·시각화 ③④⑤⑥⑦ + 신규 API + actor질의) ✓ 0d0382e (전체 134 test, codex R1~R9→폴백 CLEAN, e2e+final-verify OK)
 - [x] 후속: multi-root parse + origin 태깅 + UI 소스필터 + (b)mixed-ts 픽스처 ✓ (전체 141)
-- [ ] 6단계: exe + 인앱 스캔 UX (자동탐지·/api/scan·launcher·PyInstaller, Task1~5) ← 현재
+- [ ] 6단계: exe + 인앱 스캔 UX (Task1 discover✓ → Task2 scan_to_engine 진행 → Task3~5) ← 현재
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 6단계 exe+스캔 UX
-- 수행 중: plan 승인(커밋됨). subagent-driven — panel1에 Task1(discover.py 소스 자동탐지) 위임. Task별 codex 리뷰. 이후 Task2~5(scan_to_engine·서버상태화·스캔UI·launcher+PyInstaller). 병행: B/C plan은 6단계 후.
+- 수행 중: subagent-driven. [Task1 완료] discover.py 자동탐지(3 test, codex step6 리뷰=discover 결함 0건·나머지 BLOCK은 Task2~5 미구현 지적). 커밋 됨. **panel1에 Task2(scan_to_engine+parse_roots 공유헬퍼) 위임** — plan의 enrich 1-arg 버그 교정(enrich(events,src) per-root) 지시. 이후 Task3~5(서버상태화·스캔UI·launcher+PyInstaller). B/C plan은 6단계 후.
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0
