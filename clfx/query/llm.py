@@ -97,7 +97,8 @@ def answer(question, events, llm=None):
     citations = [f"{e.source.file}:{e.source.line}" for e in events]
     _none = "관련 기록을 찾지 못했습니다."
     if not events:                                  # 근거 0건 → LLM 호출 안 함(날조/허위 인용 차단)
-        return {"text": _none, "citations": [], "mode": "digest"}
+        # mode="empty"(="digest"와 구분): 빈 결과지 LLM 미연결 아님 → UI가 "LLM 미연결"로 오표기 방지.
+        return {"text": _none, "citations": [], "mode": "empty"}
     if llm is None:
         return {"text": _digest(events), "citations": citations, "mode": "digest"}
     try:
@@ -111,6 +112,53 @@ def answer(question, events, llm=None):
         return {"text": llm.complete(prompt), "citations": citations, "mode": "llm"}
     except Exception:
         return {"text": (_digest(events) if events else _none), "citations": citations, "mode": "digest"}
+
+
+def _overview_context(engine):
+    """전체 행위의 결정적 집계 컨텍스트(문자열) + 대표 인용. 막연한 질문의 근거.
+    모든 수치는 엔진 집계(추적 가능) — LLM은 문장화만, 날조 없음."""
+    from clfx.event import norm_ts
+    evs = engine.events
+    actors = {"user": 0, "agent": 0}
+    actions = {}
+    for e in evs:
+        a = e.actor if e.actor in ("user", "agent") else "user"
+        actors[a] += 1
+        actions[e.action] = actions.get(e.action, 0) + 1
+    top_actions = sorted(actions.items(), key=lambda x: (-x[1], x[0]))[:6]
+    top_files = engine.files()[:8]
+    se = engine.sorted_events
+    span = (f"{norm_ts(se[0].ts)} ~ {norm_ts(se[-1].ts)}" if se else "?")
+    lines = [
+        f"- 총 이벤트: {len(evs)} (A 사용자 {actors['user']} / B 에이전트 {actors['agent']})",
+        f"- 기간: {span}",
+        "- 주요 행위(빈도): " + (", ".join(f"{a}×{n}" for a, n in top_actions) or "없음"),
+        "- 자주 접근한 파일:",
+    ] + [f"  · {f['target']} ({f['count']}회, A{f['by_actor']['user']}/B{f['by_actor']['agent']})"
+         for f in top_files]
+    citations = [f["target"] for f in top_files]   # 파일 패널서 역추적 가능(집계 근거)
+    return "\n".join(lines), citations
+
+
+def answer_overview(question, engine, llm=None):
+    """막연한/개요형 질문(특정 키워드 매칭 0건) → 전체 행위 결정적 집계를 근거로 대화형 답.
+    증거=엔진 집계(추적 가능), 산문=LLM. LLM 없거나 실패 시 결정적 개요(digest) 폴백."""
+    if not engine.events:
+        return {"text": "분석할 기록이 없습니다.", "citations": [], "mode": "empty"}
+    ctx, citations = _overview_context(engine)
+    digest_text = "전체 행위 개요\n" + ctx
+    if llm is None:
+        return {"text": digest_text, "citations": citations, "mode": "digest"}
+    try:
+        prompt = (
+            "너는 Claude Code 기록 포렌식 분석가다. 아래 [전체 집계]만 근거로 [질문]에 한국어로 간결히 답하라.\n"
+            "규칙: (1) 집계에 없는 사실 추측·날조 금지. (2) 행위 주체는 A=사용자 / B=에이전트로 구분. "
+            "(3) 수치는 집계 그대로 인용.\n\n"
+            f"[질문]\n{question}\n\n[전체 집계]\n{ctx}\n"
+        )
+        return {"text": llm.complete(prompt), "citations": citations, "mode": "llm"}
+    except Exception:
+        return {"text": digest_text, "citations": citations, "mode": "digest"}
 
 
 class OllamaLLM:
