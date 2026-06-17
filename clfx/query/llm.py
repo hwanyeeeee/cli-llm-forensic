@@ -222,23 +222,37 @@ class OllamaLLM:
         self.timeout = timeout
 
     def complete(self, prompt):
+        # /api/chat 사용 — 인스트럭트 모델의 채팅 템플릿을 ollama가 적용(/api/generate raw 프롬프트는
+        # 템플릿 미적용으로 빈 생성될 수 있음). content 비면 thinking 폴백, 그래도 비면 진단 에러.
         body = json.dumps({
-            "model": self.model, "prompt": prompt, "stream": False,
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
             "keep_alive": "30m",                 # 모델 상주(다음 쿼리 콜드로드 제거)
             "options": {"num_predict": 384},     # 출력 경계 → 생성시간 bound(timed out 완화)
         }).encode("utf-8")
-        req = urllib.request.Request(self.host + "/api/generate", data=body,
+        req = urllib.request.Request(self.host + "/api/chat", data=body,
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=self.timeout) as r:
-            return json.loads(r.read().decode("utf-8")).get("response", "")
+            data = json.loads(r.read().decode("utf-8"))
+        msg = data.get("message") or {}
+        content = (msg.get("content") or "").strip()
+        if content:
+            return content
+        thinking = (msg.get("thinking") or "").strip()   # 일부 reasoning 모델은 답을 thinking에 둠
+        if thinking:
+            return thinking
+        # 빈 content → 응답 구조를 에러로 표면화(answer가 llm_error로 라벨에 띄움 → 원인 파악)
+        raise RuntimeError(f"ollama empty: msg_keys={list(msg.keys())} top_keys={list(data.keys())}")
 
 
 def prewarm(model="gemma4:12b", host="http://127.0.0.1:11434"):
     """모델을 백그라운드로 미리 로드(콜드로드를 쿼리 경로서 제거). 실패는 무시(ollama 없어도 무해)."""
     try:
-        body = json.dumps({"model": model, "prompt": "ok", "stream": False,
-                           "keep_alive": "30m", "options": {"num_predict": 1}}).encode("utf-8")
-        req = urllib.request.Request(host.rstrip("/") + "/api/generate", data=body,
+        body = json.dumps({"model": model, "messages": [{"role": "user", "content": "ok"}],
+                           "stream": False, "keep_alive": "30m",
+                           "options": {"num_predict": 1}}).encode("utf-8")
+        req = urllib.request.Request(host.rstrip("/") + "/api/chat", data=body,
                                      headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=300).read()
     except Exception:

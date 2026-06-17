@@ -54,21 +54,50 @@ def test_answer_llm_error_surfaced_on_failure():
     assert out["mode"] == "digest" and "Connection refused" in out.get("llm_error", "")
 
 
-def test_complete_sends_keepalive_and_num_predict(monkeypatch):
-    # keep_alive(상주)+num_predict(출력경계)+timeout 300 → 콜드로드/생성시간 bound("timed out" 완화).
+def test_complete_uses_chat_endpoint(monkeypatch):
+    # /api/chat(메시지 포맷 → 채팅 템플릿 적용) + keep_alive/num_predict/timeout300. message.content 추출.
     import clfx.query.llm as L, json as _json
     sent = {}
     class FakeResp:
         def __enter__(self): return self
         def __exit__(self, *a): return False
-        def read(self): return _json.dumps({"response": "요약"}).encode()
+        def read(self): return _json.dumps({"message": {"role": "assistant", "content": "요약 결과"}}).encode()
     def fake_urlopen(req, timeout=None):
-        sent["body"] = _json.loads(req.data.decode()); sent["timeout"] = timeout; return FakeResp()
+        sent["url"] = req.full_url; sent["body"] = _json.loads(req.data.decode()); sent["timeout"] = timeout
+        return FakeResp()
     monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
-    out = L.OllamaLLM().complete("p")
-    assert out == "요약"
+    out = L.OllamaLLM().complete("질문")
+    assert out == "요약 결과"
+    assert sent["url"].endswith("/api/chat")
+    assert sent["body"]["messages"][0]["content"] == "질문"
     assert sent["body"]["keep_alive"] == "30m" and sent["body"]["options"]["num_predict"] == 384
     assert sent["timeout"] == 300
+
+
+def test_complete_thinking_fallback(monkeypatch):
+    # content 비고 thinking에 답 있는 reasoning 모델 → thinking 사용(빈 응답 방지).
+    import clfx.query.llm as L, json as _json
+    class FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return _json.dumps({"message": {"content": "  ", "thinking": "실제 답"}}).encode()
+    monkeypatch.setattr(L.urllib.request, "urlopen", lambda req, timeout=None: FakeResp())
+    assert L.OllamaLLM().complete("q") == "실제 답"
+
+
+def test_complete_empty_raises_diagnostic(monkeypatch):
+    # content·thinking 둘 다 비면 진단 에러 → answer가 llm_error로 라벨에 띄움(원인 파악).
+    import clfx.query.llm as L, json as _json
+    class FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return _json.dumps({"message": {"content": ""}}).encode()
+    monkeypatch.setattr(L.urllib.request, "urlopen", lambda req, timeout=None: FakeResp())
+    try:
+        L.OllamaLLM().complete("q")
+        assert False, "빈 응답이면 raise 해야 함"
+    except RuntimeError as e:
+        assert "empty" in str(e)
 
 
 def test_prewarm_swallows_errors(monkeypatch):
@@ -78,20 +107,15 @@ def test_prewarm_swallows_errors(monkeypatch):
     L.prewarm()        # 예외 안 나야(무시·fire-and-forget)
 
 
-def test_ollama_complete_builds_request(monkeypatch):
-    # urlopen을 가짜로 — 실제 ollama 없이 요청 구성·파싱 검증
-    import clfx.query.llm as m
-    captured = {}
+def test_prewarm_uses_chat_endpoint(monkeypatch):
+    import clfx.query.llm as L
+    seen = {}
     class _Resp:
         def __enter__(self): return self
         def __exit__(self, *a): return False
-        def read(self): return b'{"response": "hi"}'
+        def read(self): return b'{"message":{"content":"ok"}}'
     def fake_urlopen(req, timeout=None):
-        captured["url"] = req.full_url
-        captured["body"] = req.data
-        return _Resp()
-    monkeypatch.setattr(m.urllib.request, "urlopen", fake_urlopen)
-    out = OllamaLLM().complete("prompt-x")
-    assert out == "hi"
-    assert captured["url"].endswith("/api/generate")
-    assert b"gemma4:12b" in captured["body"] and b"prompt-x" in captured["body"]
+        seen["url"] = req.full_url; return _Resp()
+    monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
+    L.prewarm()
+    assert seen["url"].endswith("/api/chat")
