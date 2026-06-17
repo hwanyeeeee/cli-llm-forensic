@@ -34,4 +34,5 @@
 | `superpowers/plans/2026-06-17-clfx-dashboard.md` | clfx 웹 대시보드 상세 구현 플랜 (Task 1~6 TDD, 실코드 포함) |
 | `사용법.md` | clfx 데모·시연 사용법 (parse→analyze→query→serve + A/B 흐름) |
 | `교수님-피드백.md` | 교수님 피드백 9건(원본복구·해시대조·주체왜곡·월별그래프·키워드파이·프롬프트요약·MCP·범용화) |
+| `exe-패키징-UI-가이드.md` | 팀원 전달 — PyInstaller 단일exe+내장서버, UI는 web/static/ HTML, UI↔엔진 계약 |
 | `plan.md` / `STATE.md` | 개발 진행판 (개발 시작 후) |
