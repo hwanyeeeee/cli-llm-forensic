@@ -16,8 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 6단계 완료. 사용자 exe 빌드 성공 → GUI 전환 요청 → 진행 중
-- 수행 중: **6단계 완료**(codex CLEAN, 154, final-verify OK). 사용자가 build-exe.bat로 exe 빌드·실행 성공(브라우저 스캔화면 떴음). **사용자 요청: 브라우저 말고 네이티브 GUI 창.** → panel1에 GUI 전환 위임(launcher.py=pywebview 창+브라우저 폴백, build.bat=pip pywebview+--collect-all webview, UI/static 변경 0=웹 대시보드 재사용). 메인스레드=GUI, serve()=데몬스레드. **후속 보강 대기: Windows exe서 WSL 소스 미탐지(\\wsl.localhost 열거 비어 windows만 뜸) → \\wsl$ 폴백 등.** 그 후 B plan(복구·해시·④JOIN)→C(MCP). 미push(23 ahead).
+- 위치: GUI 전환 완료 → 사용자 GUI 재빌드 + WSL탐지 보강 대기
+- 수행 중: **6단계 + GUI 전환 완료**(codex CLEAN, 154, final-verify OK 이력). exe=네이티브 pywebview 창(브라우저 폴백). 사용자가 갱신된 build-exe.bat로 **재빌드 필요**(pip pywebview 새로 받음) → dist\clfx.exe 더블클릭 시 GUI 창. **후속 보강 대기: Windows exe서 WSL 소스 미탐지(\\wsl.localhost 열거 비어 windows만 뜸) → \\wsl$ 폴백 등.** 그 후 B plan(복구·해시·④JOIN)→C(MCP). 미push(24 ahead).
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0 (6단계 Task별 codex 리뷰 → 최종 CLEAN)
