@@ -36,3 +36,11 @@ def test_preserves_candidate_order_and_count():
     cands = ["/a/.claude", "/b/.claude", "/c/.claude"]
     out = discover_sources(candidates=cands)
     assert [o["path"] for o in out] == cands
+
+
+def test_default_candidates_includes_windows_mount(monkeypatch):
+    # WSL에서 실행 시 /mnt/c/Users/*/.claude 후보 포함. 환경무관(glob monkeypatch=I4).
+    import clfx.discover as d
+    monkeypatch.setattr(d.glob, "glob", lambda pat: ["/mnt/c/Users/alice/.claude"])
+    cands = d._default_candidates()
+    assert "/mnt/c/Users/alice/.claude" in cands
