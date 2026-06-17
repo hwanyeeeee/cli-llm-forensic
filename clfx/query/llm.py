@@ -91,6 +91,26 @@ def summarize(events, llm=None):
         return {"text": _digest(events), "citations": citations, "mode": "digest"}
 
 
+def answer(question, events, llm=None):
+    """사용자 질문에 검색된 이벤트만 근거로 대화형 답변. 증거=엔진(events), 산문=LLM.
+    citations=실재 source(file:line). LLM 없거나 실패 시 digest 폴백(항상 답 반환)."""
+    citations = [f"{e.source.file}:{e.source.line}" for e in events]
+    _none = "관련 기록을 찾지 못했습니다."
+    if llm is None:
+        return {"text": (_digest(events) if events else _none), "citations": citations, "mode": "digest"}
+    try:
+        ev = _digest(events) if events else "(검색된 이벤트 없음)"
+        prompt = (
+            "너는 Claude Code 기록 포렌식 분석가다. 아래 [이벤트]만 근거로 [질문]에 한국어로 답하라.\n"
+            "규칙: (1) 이벤트에 없는 사실 추측·날조 금지. (2) 핵심 문장 끝에 (file:line) 인용. "
+            "(3) 근거 없으면 '해당 기록을 찾지 못했습니다'. (4) 행위 주체는 A=사용자 / B=에이전트로 구분.\n\n"
+            f"[질문]\n{question}\n\n[이벤트]\n{ev}\n"
+        )
+        return {"text": llm.complete(prompt), "citations": citations, "mode": "llm"}
+    except Exception:
+        return {"text": (_digest(events) if events else _none), "citations": citations, "mode": "digest"}
+
+
 class OllamaLLM:
     """로컬 ollama 요약 클라이언트. 증거 외부전송 0(localhost).
     complete()가 실패하면 summarize가 digest로 폴백한다."""

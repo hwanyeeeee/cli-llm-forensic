@@ -1,6 +1,6 @@
 """웹 대시보드용 순수 API 로직. HTTP 무관 — dict만 반환해 테스트가 쉽다.
 엔진(QueryEngine)이 단일 진실원천. 여기서 검색/탐지 로직을 재구현하지 않는다."""
-from clfx.query.llm import route_intent, summarize, make_llm
+from clfx.query.llm import route_intent, summarize, answer, make_llm
 from clfx.analyze.keywords import keyword_stats
 from clfx.event import norm_ts
 from clfx.sources.claude import ClaudeSource
@@ -37,7 +37,7 @@ def query_payload(engine, q):
         res = engine.timeline(actor=a)
     else:
         res = engine.search(intent.get("kw", ""), actor=a)
-    summary = summarize(res, llm=make_llm()) if intent.get("summarize") else None
+    summary = answer(q, res, llm=make_llm())     # 모든 질의에 gemma4 대화형 답(검색된 res만 근거). ollama 없으면 digest.
     return {"op": op, "intent": intent, "actor": a,
             "events": [e.to_dict() for e in res], "count": len(res),
             "summary": summary}

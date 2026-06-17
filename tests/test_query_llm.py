@@ -108,3 +108,32 @@ def test_summarize_fallback_when_llm_dead():
 
 class _DeadLLM:
     def complete(self, prompt): raise RuntimeError("ollama down")
+
+
+def test_answer_digest_fallback_no_llm():
+    from clfx.query.llm import answer
+    from clfx.event import Event, Source
+    evs = [Event("2026-06-11T09:00:00Z","claude","s1","agent","read","id_rsa","x",Source("h.jsonl",7),[])]
+    out = answer("누가 id_rsa 읽었어?", evs, llm=None)
+    assert out["mode"] == "digest" and out["text"]
+    assert out["citations"] == ["h.jsonl:7"]            # 실재 source
+
+
+def test_answer_uses_llm_with_question():
+    from clfx.query.llm import answer
+    from clfx.event import Event, Source
+    seen = {}
+    class Stub:
+        def complete(self, prompt):
+            seen["p"] = prompt
+            return "에이전트(B)가 id_rsa를 읽었습니다 (h.jsonl:7)."
+    evs = [Event("2026-06-11T09:00:00Z","claude","s1","agent","read","id_rsa","x",Source("h.jsonl",7),[])]
+    out = answer("누가 id_rsa 읽었어?", evs, llm=Stub())
+    assert out["mode"] == "llm" and "id_rsa" in out["text"]
+    assert "누가 id_rsa" in seen["p"]                    # 질문이 프롬프트에 포함(대화형)
+
+
+def test_answer_empty_events_says_none():
+    from clfx.query.llm import answer
+    out = answer("말도 안되는 질문", [], llm=None)
+    assert out["mode"] == "digest" and out["text"]      # 빈 결과도 답 반환("못 찾음")
