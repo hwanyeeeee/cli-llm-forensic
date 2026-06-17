@@ -34,11 +34,43 @@ def test_route_read_verb_beats_secret_keyword():
     assert intent["op"] == "who_did" and intent["target"] == ".secret.key"
 
 def test_route_no_dot_filename():
-    # 점 없는 파일명(id_rsa/Dockerfile)도 추출 (SSH키 핵심경로)
+    # 점 없는 파일명(id_rsa/Dockerfile)도 추출 (SSH키 핵심경로). actor 키 포함(§3, 누가→None).
     assert route_intent("누가 id_rsa 읽었어?") == {"op": "who_did", "action": "read",
-                                                "target": "id_rsa", "summarize": False}
+                                                "target": "id_rsa", "actor": None, "summarize": False}
     assert route_intent("누가 Dockerfile 읽었어?")["target"] == "Dockerfile"
     assert route_intent("who read id_rsa")["target"] == "id_rsa"   # 영어 동사 제외
+
+
+def test_route_actor_user_on_date():
+    intent = route_intent("2026-06-11 사용자 행위 요약해줘")
+    assert intent["op"] == "on_date" and intent["actor"] == "user" and intent["summarize"] is True
+
+
+def test_route_actor_user_who_did():
+    intent = route_intent("사용자가 .env 읽었어?")
+    assert intent["op"] == "who_did" and intent["actor"] == "user"
+
+
+def test_route_actor_agent():
+    assert route_intent("에이전트가 뭐 읽었어")["actor"] == "agent"
+
+
+def test_route_actor_none_for_who():
+    assert route_intent("누가 .env 읽었어")["actor"] is None
+
+
+def test_route_actor_not_from_filename():
+    # 파일명류(user.json/CLAUDE.md)가 actor 어휘로 오인되면 안 됨(반대주체 누락 방지).
+    assert route_intent("who read user.json?")["actor"] is None
+    assert route_intent("누가 CLAUDE.md 읽었어?")["actor"] is None
+    assert route_intent("사용자가 config.json 읽었어?")["actor"] == "user"   # 잔여 "사용자" 남음
+
+
+def test_route_actor_not_from_target_span():
+    # 점/슬래시 없는 타깃도 span 제거로 actor 오인 차단.
+    assert route_intent("who read /tmp/user")["actor"] is None      # 경로 타깃 제거
+    assert route_intent("who read CLAUDE")["actor"] is None         # 점없는 타깃 제거
+    assert route_intent("user read config.json")["actor"] == "user"  # 타깃 제거 후 "user" 단어경계 매치
 
 def test_route_read_without_target_no_broad_match():
     # 파일명 추출 실패 → broad who_did 금지, search 폴백
