@@ -43,6 +43,12 @@ def resolve_candidates(target, root):
             base = _wsl_base_of(root)
             return [base + t.replace("/", "\\")] if base else []
         return [t]
+    m = re.match(r"^\\\\wsl(?:\.localhost|\$)\\([^\\]+)(\\.*)?$", t)  # UNC WSL 경로(완전성)
+    if m:
+        if on_nt:
+            return [t.replace("/", "\\")]                 # Windows는 UNC 직접 접근(역슬래시 정규화)
+        rest = (m.group(2) or "").replace("\\", "/")      # \home\u\x → /home/u/x ; \mnt\c\x → /mnt/c/x
+        return [rest] if rest else []
     return []                                            # 상대/비경로 skip
 
 
@@ -128,7 +134,12 @@ def _walk_tmp(tmp_dirs):
     for d in tmp_dirs or []:
         if not os.path.isdir(d):
             continue
-        for dirpath, _dirnames, filenames in os.walk(d, followlinks=False):
+
+        def _cb(oserr, _d=d):
+            # 목록조회 불가 하위 디렉터리(권한거부 등)도 흔적 보존(완전성). late-binding 방지 default-arg.
+            walk_errors[getattr(oserr, "filename", None) or _d] = type(oserr).__name__
+
+        for dirpath, _dirnames, filenames in os.walk(d, topdown=True, followlinks=False, onerror=_cb):
             for fn in filenames:
                 p = os.path.join(dirpath, fn)
                 try:

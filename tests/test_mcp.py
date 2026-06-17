@@ -28,6 +28,20 @@ def test_mask_config_masks_url_token():
     assert "sk-abcdefghijklmnopqrst" not in out["url"]  # url 내 토큰 마스킹
 
 
+# --- F3: 키이름 기준 강제 마스킹(저엔트로피 토큰도 마스킹) ---------------------
+
+def test_mask_config_masks_low_entropy_tokens_by_keyname():
+    cfg = {"url": "https://h/sse?token=plainsecret123&x=ok",
+           "args": ["--token", "plainsecret123", "--api-key=abc123",
+                    "--header", "Authorization: Bearer plainsecret123"],
+           "command": "node"}
+    out = _mask_config(cfg)
+    blob = repr(out)
+    assert "plainsecret123" not in blob and "abc123" not in blob   # 저엔트로피 토큰 전부 마스킹
+    assert "x=ok" in out["url"]                                    # 비밀 아닌 값 보존
+    assert out["command"] == "node"                               # command 유지
+
+
 # --- Task 4: parse_mcp_config -----------------------------------------------
 
 def test_parse_mcp_config_returns_masked_servers():
