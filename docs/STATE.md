@@ -15,7 +15,7 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 5단계 피드백확장 A (분석·시각화)
-- 수행 중: 포괄 actor 갭-클로저(A~E) 적용, acceptance 63·전체 130 green. codex R8 RC=1 BLOCK2건=actor 기능 자체 엣지: ① actor 어휘가 파일명(user.json/CLAUDE.md) substring 오인 ② secrets dispatch actor 미적용. 둘 다 수정→R9.
+- 수행 중: R8 2건 수정(acceptance 65·전체 133). codex R9 RC=1 BLOCK1=actor 파일명오인 잔여(/tmp/user·CLAUDE 점없음). 정공법: _extract_filename으로 타깃 추출→그 span 제거→한국어 substring·영어 단어경계로 actor 탐지. R10 green 목표.
 - 후속(승인됨): (a)불변식 체크리스트 +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan.
 - 재시도: 0
-- 리뷰라운드: 8 (actor 엣지 2건 — 파일명 오인·secrets 분기)
+- 리뷰라운드: 9 (actor 파일명오인 정공법 — 타깃span 제거 후 탐지)
