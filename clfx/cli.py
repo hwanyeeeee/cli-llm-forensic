@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 
 from clfx.sources.claude import ClaudeSource
@@ -30,12 +31,28 @@ def _write_events(events, out_path):
         raise
 
 
+def _origin_label(root):
+    """루트 경로로 출처(머신) 판정 — owner 아님. tags에 origin:<label> 부여(스키마 불변)."""
+    r = str(root).replace("\\", "/").lower()
+    if "wsl.localhost" in r or "wsl$" in r:
+        return "wsl"
+    if re.match(r"^[a-z]:/", r) or r.startswith("/mnt/"):   # 드라이브문자(C:/) 또는 /mnt/c(=Windows 마운트)
+        return "windows"
+    if r.startswith("/home") or r.startswith("/root"):
+        return "wsl"
+    return "other"
+
+
 def cmd_parse(args):
     try:
         evs = []
         for root in args.root:               # nargs="+" → 항상 list. 여러 루트(WSL+Windows .claude)를 한 번에.
-            evs.extend(parse_source(ClaudeSource(root)))
-        # 각 Event는 source.file(루트경로 포함)로 출처(머신) 보존 — 스키마 불변. WSL/Windows는 별 세션이라 dedup 불요.
+            tag = f"origin:{_origin_label(root)}"
+            for e in parse_source(ClaudeSource(root)):
+                if tag not in e.tags:        # 출처 태그(스키마 불변 — tags[] 사용). source.file과 함께 머신 보존.
+                    e.tags.append(tag)
+                evs.append(e)
+        # WSL/Windows는 별 세션이라 dedup 불요.
         _write_events(evs, args.out)
     except Exception as e:
         print(f"clfx parse: {e}", file=sys.stderr)
