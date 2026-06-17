@@ -4,24 +4,12 @@ parse_source(src) yields HISTORY events first, then TRANSCRIPT events,
 per the MAPPING CONTRACT in the project spec.
 """
 import re
-from datetime import datetime, timezone
 
-from clfx.event import Event, Source
+from clfx.event import Event, Source, norm_ts
 from clfx.paste import resolve_paste
 
 PREVIEW_MAX = 4000
 
-
-def _norm_ts(v):
-    """ts 정규화 → ISO8601 UTC 'Z' 문자열로 통일(타입 혼재 방지).
-    history.jsonl은 epoch-ms 정수(1770555950996), transcript는 ISO 문자열로 섞여 들어온다.
-    int/float(epoch-ms) → ISO 'Z', str → 그대로, None → None."""
-    if v is None or isinstance(v, str):
-        return v
-    if isinstance(v, (int, float)):
-        dt = datetime.fromtimestamp(v / 1000, tz=timezone.utc)
-        return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    return str(v)
 
 # 이미지 붙여넣기의 텍스트 placeholder ("[Image #1]" 등) — 실제 prompt와 구분.
 # 파서는 [Image #1]부터 매기므로 #0은 placeholder 아님(사용자 텍스트 → prompt).
@@ -46,7 +34,7 @@ def _history_events(src):
         pasted = obj.get("pastedContents") or {}
         if not isinstance(pasted, dict):
             continue
-        ts = _norm_ts(obj.get("timestamp"))
+        ts = norm_ts(obj.get("timestamp"))
         sess = obj.get("project", "")
         hist_src = Source(rec.file, rec.line)
         for n, item in pasted.items():
@@ -81,7 +69,7 @@ def _transcript_events(src):
         o = rec.obj
         if not isinstance(o, dict):        # 비-dict 최상위 JSON 줄 → 안전 스킵
             continue
-        ts = _norm_ts(o.get("timestamp"))
+        ts = norm_ts(o.get("timestamp"))
         sess = o.get("sessionId", "")
         s = Source(rec.file, rec.line)
 
