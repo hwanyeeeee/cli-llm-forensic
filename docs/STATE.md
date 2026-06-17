@@ -9,13 +9,13 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 - [x] 3단계: 질의 (engine/llm/CLI query/e2e A·B) ✓ a6a8fd2 (24 test, codex R1~R3→RC=0, cap 1회 연장)
 - **MVP 완료** ✓ final-verify real-run OK. 전체 회귀 green.
 - [x] 4단계: 웹 대시보드 (뷰 레이어 — 엔진 단일 진실원천 위) ✓ 21ce8ed (13 test, codex R1→RC=0)
-- [~] 실데이터 hardening: ts 정규화(1b6e3f3) — codex 재리뷰서 timeline 연대순 결함 발견, 수정 중
+- [x] 실데이터 hardening: ts ISO8601 정규화 ✓ b699486+27e5936 (codex CLEAN, 92 test)
+- [ ] 5단계: 피드백확장 A (분석·시각화 ③④⑤⑥⑦ + 신규 API) ← 현재
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 실데이터 hardening (codex 정석 재리뷰)
-- 위치: 피드백 spec brainstorming (+ ts hardening 완결)
-- 수행 중: ts 정렬 결함 R1~R3 완결(b699486 ts_key + 27e5936 engine range, codex CLEAN, 92 test). 교수님 피드백 8건 spec brainstorming 중(exe=PyInstaller 단일exe+내장서버 결정). UI 대폭수정=팀원, 9번 범용화 보류.
-- 미푸시: b699486 이후(R2 일부)·27e5936(R3) — 다음 푸시 묶음.
+- 위치: 5단계 피드백확장 A (분석·시각화)
+- 수행 중: 피드백 spec(47f3f19) + A단계 plan(37e5570) 완료. 팀원 UI(be9a39b) 머지. panel1에 A단계(Task1~7) 구현 위임. gemma4:e12b 로컬요약, actor분리 집계, 신규 /api/activity·files·keywords.
+- 후속 plan: C(MCP ⑧)·B(복구·해시 ①②)·exe 패키징.
 - 재시도: 0
 - 리뷰라운드: 0
