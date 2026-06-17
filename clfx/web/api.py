@@ -1,5 +1,7 @@
 """웹 대시보드용 순수 API 로직. HTTP 무관 — dict만 반환해 테스트가 쉽다.
 엔진(QueryEngine)이 단일 진실원천. 여기서 검색/탐지 로직을 재구현하지 않는다."""
+from concurrent.futures import ThreadPoolExecutor
+
 from clfx.query.llm import route_intent, summarize, answer, make_llm
 from clfx.analyze.keywords import keyword_stats
 from clfx.event import norm_ts
@@ -68,18 +70,27 @@ def keywords_payload(engine):
 
 
 def scan_to_engine(roots):
-    """선택 루트들을 parse+analyze(인메모리) → QueryEngine. 디스크 analyzed.jsonl 불요.
-    per-root enrich: bypass 세션은 같은 소스 transcript에서만 매칭(멀티루트 정합)."""
+    """선택 루트들을 병렬 parse+analyze(인메모리) → QueryEngine. 디스크 analyzed.jsonl 불요.
+    per-root enrich: bypass 세션은 같은 소스 transcript에서만 매칭(멀티루트 정합).
+    WSL UNC I/O가 느려 스레드 병렬. 병합 순서 무관(엔진이 질의 시 ts로 결정적 정렬)."""
     from clfx.cli import parse_roots         # 지역 import — cli↔web.api 순환 회피
-    events = []
-    for root in roots:
+
+    def _one(root):
         evs = parse_roots([root])           # 태그된 단일 루트
         enrich(evs, ClaudeSource(root))     # src=그 루트 → bypass 세션 정합
-        events.extend(evs)
+        return evs
+
+    roots = list(roots)
+    if not roots:
+        return QueryEngine([])
+    events = []
+    with ThreadPoolExecutor(max_workers=min(8, len(roots))) as ex:
+        for evs in ex.map(_one, roots):     # 입력순 결과 — 병합 순서 무관
+            events.extend(evs)
     return QueryEngine(events)
 
 
 def sources_payload():
-    """자동탐지 소스 목록(스캔 화면용)."""
+    """자동탐지 소스 중 실재(exists)만 — 없는 후보는 화면에 안 보이게. discover_sources는 전체+exists 반환."""
     from clfx.discover import discover_sources   # 지역 import — discover→cli→web.api 순환 회피
-    return {"sources": discover_sources()}
+    return {"sources": [s for s in discover_sources() if s["exists"]]}
