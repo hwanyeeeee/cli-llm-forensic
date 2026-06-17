@@ -39,4 +39,5 @@
 | `UI-변경사항.md` | 팀원 UI 개편 내역(3컬럼·히트맵·도넛·코파일럿·시크릿 표시 제외 정책) |
 | `superpowers/specs/2026-06-17-clfx-피드백확장-design.md` | 교수님 피드백 8건 확장 설계(수집·분석·시각화·exe, brainstorming+UI 통합) |
 | `superpowers/plans/2026-06-17-clfx-피드백확장-A-분석시각화.md` | A단계 구현 플랜(③④⑤⑥⑦ + 신규 API, Task 1~7 TDD) |
+| `superpowers/plans/2026-06-17-clfx-exe-스캔UX.md` | exe 인자0 실행→브라우저 자동→스캔화면 소스선택→인메모리 parse+analyze→대시보드 (자동탐지·/api/scan·launcher·PyInstaller, Task 1~5) |
 | `plan.md` / `STATE.md` | 개발 진행판 (개발 시작 후) |
