@@ -143,8 +143,8 @@ def build_parser():
     qp.add_argument("question")
     qp.set_defaults(func=cmd_query)
 
-    rp = sub.add_parser("serve", help="analyzed.jsonl 을 로컬 웹 대시보드로 본다")
-    rp.add_argument("analyzed")
+    rp = sub.add_parser("serve", help="analyzed.jsonl 을 로컬 웹 대시보드로 본다 (생략 시 빈 상태로 起動→스캔)")
+    rp.add_argument("analyzed", nargs="?", default=None)
     rp.add_argument("--host", default="127.0.0.1")
     rp.add_argument("--port", type=int, default=8787)
     rp.set_defaults(func=cmd_serve)
