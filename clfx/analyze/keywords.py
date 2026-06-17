@@ -15,9 +15,20 @@ INVESTIGATIVE = {
     "api", "key", "credential", "계정", "로그인", "개인정보", "기밀", "secret", "유출됨",
 }
 # 불용어(조사·관사·일반어). 한국어 정밀도 한계는 spec §6에 명시됨.
+# 키워드-추출-개선안.md §3.② 반영 — 코드토큰·시스템경로어·한국어 일반어 확장(for/mnt/user 노이즈 제거).
 _STOP = {
     "그", "이", "저", "것", "수", "등", "및", "the", "a", "an", "of", "to", "in",
     "is", "and", "or", "에", "는", "은", "이", "가", "을", "를", "도", "로", "으로",
+    # 코드 토큰
+    "for", "if", "else", "def", "return", "import", "class", "true", "false", "null",
+    "var", "let", "const", "function", "async", "await", "print", "echo", "from", "as",
+    "self", "none", "int", "str", "with", "not", "elif", "try", "except",
+    # 시스템/경로어
+    "mnt", "home", "usr", "tmp", "user", "opt", "etc", "bin", "root", "proc", "dev",
+    "lib", "local", "users",
+    # 한국어 일반어/지시어
+    "이거", "그거", "저거", "해줘", "줘", "좀", "그리고", "그런데", "했어", "봐줘",
+    "만들어", "알려줘", "보여줘", "이런", "저런", "해", "돼", "된", "거", "게",
 }
 _TOKEN = re.compile(r"[A-Za-z0-9_]+|[가-힣]+")
 
@@ -50,15 +61,18 @@ def _tokens(text):
     return out
 
 
-def keyword_stats(events, top=50):
-    """이벤트(preview+target)에서 키워드 빈도·actor분리·수사플래그·시점패턴 집계.
-    반환: {"keywords": [{term,count,by_actor,investigative,pattern,days}, ...]}"""
+def keyword_stats(events, top=50, min_count=2):
+    """대화 텍스트(action: prompt/response)의 preview에서 키워드 빈도·actor분리·수사플래그·시점패턴 집계.
+    read/bash/paste(파일내용·명령·경로)는 제외 — for/mnt/user 노이즈 원천 차단(키워드-추출-개선안.md §3.①).
+    min_count 미만(1회성) 토큰은 컷(§3.③). 증거(이벤트)는 전량 유지 — 차트 입력만 정제(무손실).
+    반환: {"keywords": [{term,count,by_actor,investigative,pattern,days,by_day}, ...]}"""
     count = Counter()
     by_actor = defaultdict(lambda: {"user": 0, "agent": 0})
     by_day = defaultdict(Counter)            # term -> {day: n}
     for e in events:
-        text = f"{e.target or ''} {e.preview or ''}"
-        text = _MASK_SPAN.sub(" ", text)     # ‹secret›·‹pii› 마커 스팬 제거(내부 단어 누출 차단)
+        if e.action not in ("prompt", "response"):   # 대화 텍스트만(코드/경로/명령 노이즈 제외)
+            continue
+        text = _MASK_SPAN.sub(" ", e.preview or "")  # 대화 텍스트=preview(target은 빈문자). ‹secret›·‹pii› 마커 제거.
         day = (norm_ts(e.ts) or "")[:10] or "unknown"   # int epoch-ms도 ISO Z로 통일 → 슬라이스 TypeError 방지
         seen = list(dict.fromkeys(_tokens(text)))   # 결정적 dedup(첫 등장 순서 보존, set 순회 비결정성 제거)
         for term in seen:
@@ -69,6 +83,8 @@ def keyword_stats(events, top=50):
     kws = []
     # 결정적 정렬: count 내림차순 + term 사전순 tie-break(동점 키워드 순서 PYTHONHASHSEED 무관).
     for term, c in sorted(count.items(), key=lambda kv: (-kv[1], kv[0]))[:top]:
+        if c < min_count:                    # 1회성 토큰 컷(상위 top 안에서 적용 → 결과가 top보다 적을 수 있음·정상)
+            continue
         days = by_day[term]
         # 집중형: 한 날이 전체의 절반 이상. 지속형: 분산. (단일 등장은 집중형.)
         pattern = "집중형" if max(days.values()) / sum(days.values()) >= 0.5 else "지속형"

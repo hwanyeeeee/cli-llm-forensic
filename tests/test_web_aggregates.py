@@ -28,7 +28,12 @@ def test_files_payload():
 
 
 def test_keywords_payload():
-    p = keywords_payload(_eng())
+    # 키워드는 대화 텍스트(prompt/response)에서만 — count>=2(min_count). 2건에 "비밀번호" 등장.
+    eng = QueryEngine([
+        _ev("user", "prompt", "2026-06-11T01:00:00.000Z", "", "비밀번호 유출 확인해줘"),
+        _ev("agent", "response", "2026-06-11T02:00:00.000Z", "", "비밀번호 유출 점검 결과"),
+    ])
+    p = keywords_payload(eng)
     terms = {k["term"] for k in p["keywords"]}
     assert "비밀번호" in terms
     assert any(k["investigative"] for k in p["keywords"])
@@ -40,7 +45,9 @@ def test_payloads_mixed_ts_fixture(mixed_engine):
     assert all(isinstance(e["ts"], str) or e["ts"] is None for e in ep["events"])
     assert activity_payload(mixed_engine, by="month")["rows"]      # crash 없음
     assert files_payload(mixed_engine)["files"]
-    assert keywords_payload(mixed_engine)["keywords"]
+    # 키워드는 대화(prompt/response)만 집계 — mixed 픽스처는 대화 1건(count<2)이라 결과 빈 게 정상.
+    # 여기선 mixed-ts에서 crash 없이 계약(keys) 반환만 확인.
+    assert "keywords" in keywords_payload(mixed_engine)
 
 
 def test_events_payload_normalizes_epoch_ms_ts():
