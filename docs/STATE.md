@@ -15,8 +15,11 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 5단계 피드백확장 A (분석·시각화)
-- 수행 중: A단계 R1(4건)·R2(2건) BLOCK 수정완료(acceptance 36, 전체 114 pass). codex R3 RC=1 BLOCK1건 → app.js boot가 /api/events만 fetch하고 activity/files/keywords를 JS 재집계 → 신규 엔진 API가 화면에 미도달. panel1에 app.js 재배선 지시(LIVE시 3 API fetch, JS파생은 offline fallback만).
-- cap 메모: 리뷰라운드 3 도달했으나 매 라운드 서로 다른 깊은 결함 수렴(4→2→1)이고 이번 건은 plan의 app.js-wire Task 누락(내 결함)이라 §6-3 무한순환에 해당 안 됨 → 의식적 1회 더. R4도 BLOCK이면 하드 escalate(## 막힘).
-- 후속(승인됨): (a)불변식 체크리스트 +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④ 귀속=transcript행위↔아티팩트 JOIN(세션경로/경로언급/해시/포맷+시각), owner 신뢰X.
+- 수행 중: A단계 R1~R5 BLOCK 수정완료(acceptance 32, 전체 117 pass). codex R6 RC=1 BLOCK3건 → 약속한 하드 stop 지점. 티어: app.js:423(LIVE fetch실패시 JS폴백=단일진실위반)·app.js:308(unknown-ts 스파크라인 NaN)=팀원 UI영역, keywords.py:27(한국어 조사 미분리 "비밀번호를"이 사전 미스)=백엔드 품질. crash아닌 polish/edge/품질 티어. 사용자 결정 대기(## ❓).
+- 후속(승인됨): (a)불변식 체크리스트 +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan.
 - 재시도: 0
-- 리뷰라운드: 3
+- 리뷰라운드: 6 (R6 하드 stop 도달 — 사용자 결정 필요)
+
+## ❓ 결정 필요
+- 항목: codex R6 BLOCK 3건(약속한 하드 stop). 남은 건 crash 아닌 polish/edge/품질.
+- 선택지: (a) 최종 1라운드 3건 다 수정 후 종료 / (b) keywords 품질만 백엔드 수정+Stage5 종료, app.js 2건은 팀원 UI 분리 / (c) 백엔드 현상태 종료, app.js·keypoint 후속
