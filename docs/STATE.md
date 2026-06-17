@@ -14,6 +14,7 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 실데이터 hardening (codex 정석 재리뷰)
-- 수행 중: ts 수정을 codex-review.sh로 정석 재리뷰(이전 code-reviewer 폴백 보강). codex R1 BLOCK — timeline.py 정렬키가 혼재 ts에서 크래시는 막지만 연대순 깨짐(str(epoch-ms)가 ISO보다 앞). panel1 수정 지시.
+- 수행 중: timeline 연대순 codex 재리뷰 R1~R2 수정·커밋(b699486, ts_key datetime 정렬). 사용자 결정 "푸시 먼저"(UI 틀 급함) → 푸시 진행.
+- 후속(푸시 후): ① codex R3 = engine.timeline(start/end) range가 raw ts 비교 → mixed crash(현재 미트리거 경로). ts_key로 수정 필요. ② UI 대폭 수정 = 팀원 담당. ③ 교수님 피드백 8건 spec 작성(9번 Codex 범용화 보류).
 - 재시도: 0
-- 리뷰라운드: 1
+- 리뷰라운드: 0 (R3는 후속 분리)
