@@ -16,7 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 백엔드2(LLM요약경계·키워드정제) panel1 위임 중
+- 위치: 피드백 배치 전부 완료 — 사용자 재빌드·검증 대기
+- 진행: 백엔드2 완료·커밋 2faf57e(LLM 프롬프트 경계 _prompt_context+timeout120→요약 정상·citations 전량, 키워드 대화한정+불용어+min_count→for/mnt/user 제거, 186 green). **누적 미적용분(재빌드 1회로 전부 적용)**: 프론트4(d6c4bf2 점진부팅·거터·최신순·칩)+백엔드2(2faf57e LLM요약·키워드)+백엔드(7e1e4f9 개요답변, 2d0be63 stats). 검증포인트: ①대시보드 즉시(타임라인만 로딩) ②컬럼 경계 드래그 ③"타임라인 요약해줘"=문장 ④"이 사람 주로 뭐해?"=개요답 ⑤키워드 for/mnt/user 없음 ⑥최신순 ⑦칩 색/취소선. 다음(승인대기): B plan(원본복구·해시대조①②+④transcript↔아티팩트 JOIN귀속)→C plan(MCP⑧·tmp retention). 미push(다수 ahead).
 - 진행: 프론트4 완료·커밋 d6c4bf2(점진부팅+/api/stats타일·컬럼거터·타임라인최신순·필터칩 색/취소선, 182 green). ollama 정상 확인(gemma4:12b 떠있음, 코드모델명 일치). **백엔드2 panel1 위임**(/tmp/panel1-backend2.txt): (1)"타임라인 요약해줘"가 로그덤프 — 원인=전체이벤트(1147~11.7만) LLM프롬프트 투입→타임아웃/컨텍스트초과→digest폴백. fix=_prompt_context로 프롬프트 경계(대량=집계헤더+표본60)+timeout120, citations 전량유지(무손실). (2)키워드 for/user/mnt 노이즈 — fix=action prompt/response만 집계+불용어확장+min_count>=2(요구문서 키워드-추출-개선안.md). 둘 다 백엔드(llm.py/keywords.py), 형식 유지. 다음 재빌드 1회로 프론트4+백엔드2 전부 적용.
 - 진행: 사용자 피드백 5건. **백엔드(panel0 직접, 커밋완료)**: ①막연한질문→answer_overview(전체 행위 결정적 집계 근거 gemma4 답, 7e1e4f9) ②빈결과 mode "empty"(LLM미연결 오표기 분리) ③GET /api/stats 경량타일(2d0be63, events 직렬화 전 즉시표시). **사용자 지시: 이후 구현은 panel1에 위임(panel0 직접구현 금지).** **프론트4 panel1 위임**(/tmp/panel1-frontend4.txt): (1)점진부팅(stats+집계 먼저, events 백그라운드, 타임라인 로딩표시) (2)컬럼 경계선 거터 드래그(--cl/--cr) (3)타임라인 최신순+최신날 자동펼침 (4)필터칩 색채움/취소선. **미해결 의존: 로컬 LLM 연결 — exe(Windows)에서 ollama localhost:11434 도달 여부 사용자 확인 필요**(도달X면 host 설정/탐지 추가).
 - 진행: FE1 타임라인 가상화 완료·커밋(171, 무손실) + 레이아웃 완료·커밋 f072ccf(창채움 maximized+좌/우 패널 resize:vertical, 중앙 타임라인 제외, 171). **사용자 요청: 이후 codex 리뷰 생략(빠른반복) — acceptance+배선만 보고 커밋.** 사용자가 FE1+레이아웃 재빌드·검증 중. **P1 서버캐시 panel1 위임**(엔진 __init__ 1회 정렬+norm 메모이즈, activity/files/keywords/events_payload 결과 캐시, 엔진 교체시 무효화 — UI 무충돌, 무손실). 다음: P2b 전송 페이지네이션(필요시) → B plan.
