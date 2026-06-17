@@ -10,12 +10,16 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 - **MVP 완료** ✓ final-verify real-run OK. 전체 회귀 green.
 - [x] 4단계: 웹 대시보드 (뷰 레이어 — 엔진 단일 진실원천 위) ✓ 21ce8ed (13 test, codex R1→RC=0)
 - [x] 실데이터 hardening: ts ISO8601 정규화 ✓ b699486+27e5936 (codex CLEAN, 92 test)
-- [ ] 5단계: 피드백확장 A (분석·시각화 ③④⑤⑥⑦ + 신규 API) ← 현재
+- [x] 5단계: 피드백확장 A (분석·시각화 ③④⑤⑥⑦ + 신규 API + actor질의) ✓ 0d0382e (전체 134 test, codex R1~R9→폴백 CLEAN, e2e+final-verify OK)
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 5단계 피드백확장 A (분석·시각화)
-- 수행 중: R9 route_intent 정공법 적용(acceptance 66·전체 134). codex R10=usage-limit(RC2, 6:16PM 리셋)→§6-2 폴백 리뷰어 CLEAN(actor 8케이스 통과). 리뷰어가 짚은 app.js showKwPop all[0] 방어(불변식상 비도달이나 공짜) 후 final-verify→커밋·push.
-- 후속(승인됨): (a)불변식 체크리스트 +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan.
+- 위치: 5단계 완료 → 다음 (a)(b) + B/C plan (사용자 지시 대기)
+- 수행 중: Stage5A 완료·커밋(0d0382e)·push. 후속 = (b)mixed-ts 픽스처 코드(panel1) + B·C plan 작성.
+- 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
-- 리뷰라운드: 9 (codex usage-limit→폴백 CLEAN; all[0] 방어 후 종료)
+- 리뷰라운드: 0
+
+## 완료
+- 시각: 2026-06-17 17:45
+- 비고: 5단계A green·push. codex 10라운드(R10 usage-limit→폴백 CLEAN). B/C plan은 사용자 지시 후 착수.
