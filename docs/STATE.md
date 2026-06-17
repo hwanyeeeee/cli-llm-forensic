@@ -16,7 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 배치6 완료 — 사용자 재빌드·검증 대기
+- 위치: 배치7(스캔 파일단위 병렬+단일패스) panel1 위임 중
+- 진행: batch6 완료·커밋 b1ef2c2. 사용자 질문: 파싱 최대속도냐? → **아니오**(루트 2스레드뿐, WSL UNC 수천파일 단일스레드 순차 + enrich가 transcript 2차 재읽기=I/O 2배, 26파일/s). batch7 위임(/tmp/panel1-batch7.txt): ①파일단위 병렬 파싱(ThreadPoolExecutor max16, UNC 지연 중첩) ②parse_file이 1회 읽을때 bypass sessionId 동시수집→enrich 재읽기 제거(I/O 절반). 무손실·결정성 절대원칙: root입력순→파일순(jsonl_files)→line순 조립=기존 순차결과와 이벤트 완전일치(동일성 회귀테스트로 보증, I2). parser per-record 무상태 확인됨. total_files 단일패스로 정확·작아짐. 다음(승인대기): B plan→C plan.
 - 진행: batch6 완료·커밋 b1ef2c2(LLM 컨텍스트에 마스킹 preview 120자 포함→gemma가 실제 내용 받아 서술형 자연어 요약, 빈응답 폴백, 201 green). **재빌드 후 검증**: "6/16 요약해줘"→"6/16에 사용자가 ~요청, 에이전트가 ~.md 작성" 식 자연어 문장(목록 아님). 다음(승인대기): B plan(원본복구·해시·④JOIN)→C plan(MCP·tmp).
 - 진행: batch5 완료·커밋 e1fc240. 재빌드서 발견: "6/16 요약"이 자연어 아닌 이벤트목록(digest)으로 뜸. **원인=_digest가 LLM 프롬프트에 이벤트 라벨만 넣고 preview(실제 내용) 누락** → prompt/response(target="")는 빈껍데기 → gemma 빈/무의미 응답 → UI "결과 N건" 폴백. fix=batch6(/tmp/panel1-batch6.txt): _digest with_preview(마스킹된 preview 120자 포함)→LLM이 내용 받아 서술형 요약, 빈응답 폴백, 프롬프트 "~했습니다 서술형" 지시. 보안: preview ‹secret› 마스킹+로컬 ollama만. 키워드는 frida/ghidra/sqlite 등 실제 수사용어 떠서 개선됨(me/Now 잔여 minor).
 - 진행: batch5 완료·커밋 e1fc240(유연날짜 6/15→on_date 월-일, 소스 체크 origin만 질의답변, answer_overview 이벤트리스트 리팩터, 198 green, JS OK). **재빌드 후 검증**: "6/15 요약해줘"(소스 칩 win만/둘다 조합)→ 그 플랫폼·그 날만 요약. date-scoped라 컨텍스트 작아 gemma4 빠름(+프리웜). 다음(승인대기): B plan(복구·해시·④JOIN)→C plan(MCP·tmp).
