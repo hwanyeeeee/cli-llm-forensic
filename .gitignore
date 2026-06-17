@@ -24,6 +24,11 @@ htmlcov/
 # clfx 파싱 출력 (실데이터 — 1단계는 마스킹 전이라 시크릿 평문 포함 → 절대 커밋 금지)
 clfx-out/
 
+# PyInstaller 빌드 산출물 (Windows에서 생성 — 커밋 금지)
+build/
+dist/
+*.spec
+
 # 에디터 (로컬 전용)
 .obsidian/
 .gstack/
