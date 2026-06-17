@@ -93,15 +93,15 @@ def cmd_analyze(args):
 def cmd_query(args):
     try:
         eng = QueryEngine(_read_events(args.analyzed))
-        p = query_payload(eng, args.question)   # op 디스패치 단일 진실원천(web.api)
+        p = query_payload(eng, args.question, answer_only_summary=True)   # CLI: 요약 intent만 LLM(make_llm+digest 폴백), 비요약은 비호출
         for e in p["events"]:
             src = e["source"]
             print(f"[{e['ts'] or '?'}] {e['actor']}/{e['action']} {e['target']}  "
                   f"({src['file']}:{src['line']})")
             if e["preview"]:
                 print(f"    {e['preview'][:200]}")
-        # query_payload는 이제 모든 질의에 answer를 싣는다(web copilot용). CLI는 명시적 요약 요청 시만 출력(기존 UX 보존).
-        if p["intent"].get("summarize") and p["summary"]:
+        # CLI는 answer_only_summary=True라 비요약 질의면 summary=None → 자동 미출력. 요약 intent만 출력.
+        if p["summary"]:
             print("\n--- 요약 ---")
             print(p["summary"]["text"])
         print(f"\n({p['count']} events)")

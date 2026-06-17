@@ -8,6 +8,8 @@ from clfx.analyze.attribution import enrich
 from clfx.query.engine import QueryEngine
 # parse_roots(cli)·discover_sources(discover)는 함수-지역 import — cli↔web.api 순환 회피.
 
+_DEFAULT_LLM = object()   # query_payload llm 미지정 센티넬 — 웹은 make_llm(), CLI/테스트는 llm=None로 ollama 비호출.
+
 
 def events_payload(engine):
     """전체 이벤트를 ts 정렬해 직렬화(초기 타임라인용).
@@ -21,9 +23,11 @@ def events_payload(engine):
     return {"events": out, "count": len(out)}
 
 
-def query_payload(engine, q):
+def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False):
     """자연어 질의 → op 판정(route_intent) → engine 실행 → dict.
-    이 디스패치가 op→engine 매핑의 단일 진실원천(cli.cmd_query도 이걸 쓴다)."""
+    이 디스패치가 op→engine 매핑의 단일 진실원천(cli.cmd_query도 이걸 쓴다).
+    llm 미지정=make_llm()(웹 copilot, 항상 gemma4 답). llm=None=digest(테스트, ollama 비호출).
+    answer_only_summary=True면 요약 intent에만 answer(CLI용 — 비요약은 LLM 비호출·summary None)."""
     intent = route_intent(q)
     op = intent["op"]
     a = intent.get("actor")               # §3: 주체 필터(None=전체)
@@ -37,7 +41,11 @@ def query_payload(engine, q):
         res = engine.timeline(actor=a)
     else:
         res = engine.search(intent.get("kw", ""), actor=a)
-    summary = answer(q, res, llm=make_llm())     # 모든 질의에 gemma4 대화형 답(검색된 res만 근거). ollama 없으면 digest.
+    if answer_only_summary and not intent.get("summarize"):
+        summary = None                            # CLI 비요약 → LLM/답 없음(make_llm 비호출)
+    else:
+        use_llm = make_llm() if llm is _DEFAULT_LLM else llm   # 웹=gemma4 / 테스트(llm=None)=digest
+        summary = answer(q, res, llm=use_llm)     # 검색된 res만 근거. ollama 없으면 digest.
     return {"op": op, "intent": intent, "actor": a,
             "events": [e.to_dict() for e in res], "count": len(res),
             "summary": summary}

@@ -66,6 +66,33 @@ def test_query_payload_always_answers(monkeypatch):
     assert p["intent"]["target"] == "id_rsa"
 
 
+def test_query_payload_llm_none_skips_make_llm(monkeypatch):
+    # llm=None 주입(CLI 경로) → make_llm 호출조차 안 함(ollama/네트워크 무관). 호출되면 터짐.
+    import clfx.web.api as api
+    def boom(*a, **k): raise AssertionError("make_llm 호출되면 안 됨")
+    monkeypatch.setattr(api, "make_llm", boom)
+    p = api.query_payload(_engine(), "누가 id_rsa 읽었어?", llm=None)
+    assert p["op"] == "who_did" and p["summary"]["mode"] == "digest"
+
+
+def test_query_payload_cli_summary_uses_make_llm(monkeypatch):
+    # CLI 요약 intent → answer(make_llm). ollama 비의존 위해 make_llm→None 패치 → digest.
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)
+    p = api.query_payload(_engine(), "타임라인 요약해줘", answer_only_summary=True)
+    assert p["intent"]["summarize"] is True
+    assert p["summary"] is not None and p["summary"]["mode"] == "digest"
+
+
+def test_query_payload_cli_nonsummary_skips_llm(monkeypatch):
+    # CLI 비요약 질의 → LLM 호출 금지(make_llm 미호출) + summary None.
+    import clfx.web.api as api
+    def boom(*a, **k): raise AssertionError("비요약 CLI는 make_llm 호출 금지")
+    monkeypatch.setattr(api, "make_llm", boom)
+    p = api.query_payload(_engine(), "누가 id_rsa 읽었어?", answer_only_summary=True)
+    assert p["op"] == "who_did" and p["summary"] is None
+
+
 def test_query_payload_actor_filter(monkeypatch):
     # §3: "사용자" 질의 → on_date actor=user → 결과 전부 user. ollama 무관 결정적.
     import clfx.web.api as api
