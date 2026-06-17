@@ -12,12 +12,12 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 - [x] 실데이터 hardening: ts ISO8601 정규화 ✓ b699486+27e5936 (codex CLEAN, 92 test)
 - [x] 5단계: 피드백확장 A (분석·시각화 ③④⑤⑥⑦ + 신규 API + actor질의) ✓ 0d0382e (전체 134 test, codex R1~R9→폴백 CLEAN, e2e+final-verify OK)
 - [x] 후속: multi-root parse + origin 태깅 + UI 소스필터 + (b)mixed-ts 픽스처 ✓ (전체 141)
-- [ ] 6단계: exe + 인앱 스캔 UX (Task1 discover✓ Task2 scan✓ Task3 서버상태화✓ → Task3.5 discover보강 진행 → Task4~5) ← 현재
+- [ ] 6단계: exe + 인앱 스캔 UX (Task1~3✓ Task3.5 discover보강✓ → Task4 스캔UI 진행 → Task5 launcher) ← 현재
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 6단계 exe+스캔 UX
-- 수행 중: subagent-driven. [Task1✓ discover][Task2✓ scan+parse_roots][Task3✓ ServerState·/api/scan·/api/sources·빈모드, 151 green] 셋 다 커밋됨. codex Task3 = server BLOCK 전부 해소. **남은 codex BLOCK: discover.py /mnt/c 누락(진짜 결함→Task3.5 위임 중), app.js showScan(Task4), launcher(Task5).** Task3.5 = WSL→Windows /mnt/c/Users/*/.claude glob 후보 추가. 이후 Task4(스캔UI app.js)~5(launcher+PyInstaller). B/C plan은 6단계 후.
+- 수행 중: subagent-driven. [Task1✓][Task2✓][Task3✓][Task3.5✓ discover /mnt/c, 152 green] 전부 커밋됨. **panel1에 Task4(스캔 화면 UI) 위임** — boot() 게이트(연결+0건→showScan), /api/sources 체크박스, /api/scan POST 후 boot() 재로드, 헤더 다시스캔 버튼. 프론트라 pytest 무영향 → 서버 스모크(curl)로 검증. 완전 코드 제공. 남은 codex BLOCK은 app.js(Task4=지금)+launcher(Task5)뿐. 이후 Task5(launcher+PyInstaller). B/C plan은 6단계 후.
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0
