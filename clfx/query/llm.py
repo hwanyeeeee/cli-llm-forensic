@@ -190,17 +190,33 @@ class OllamaLLM:
     """로컬 ollama 요약 클라이언트. 증거 외부전송 0(localhost).
     complete()가 실패하면 summarize가 digest로 폴백한다."""
 
-    def __init__(self, model="gemma4:12b", host="http://127.0.0.1:11434", timeout=120):
+    def __init__(self, model="gemma4:12b", host="http://127.0.0.1:11434", timeout=300):
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout
 
     def complete(self, prompt):
-        body = json.dumps({"model": self.model, "prompt": prompt, "stream": False}).encode("utf-8")
+        body = json.dumps({
+            "model": self.model, "prompt": prompt, "stream": False,
+            "keep_alive": "30m",                 # 모델 상주(다음 쿼리 콜드로드 제거)
+            "options": {"num_predict": 384},     # 출력 경계 → 생성시간 bound(timed out 완화)
+        }).encode("utf-8")
         req = urllib.request.Request(self.host + "/api/generate", data=body,
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=self.timeout) as r:
             return json.loads(r.read().decode("utf-8")).get("response", "")
+
+
+def prewarm(model="gemma4:12b", host="http://127.0.0.1:11434"):
+    """모델을 백그라운드로 미리 로드(콜드로드를 쿼리 경로서 제거). 실패는 무시(ollama 없어도 무해)."""
+    try:
+        body = json.dumps({"model": model, "prompt": "ok", "stream": False,
+                           "keep_alive": "30m", "options": {"num_predict": 1}}).encode("utf-8")
+        req = urllib.request.Request(host.rstrip("/") + "/api/generate", data=body,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=300).read()
+    except Exception:
+        pass
 
 
 def make_llm(use_ollama=True):

@@ -167,6 +167,22 @@ def test_tfidf_demotes_ubiquitous_terms():
     assert terms.index("kakao") < terms.index("this")    # 변별어가 흔한말보다 상위(TF-IDF)
 
 
+def test_pure_idf_zeros_ubiquitous_term():
+    # 모든 세션에 등장하는 토큰은 idf=0 → 최하위(제거 효과). 일부 세션만의 변별어가 상위.
+    s = Source("h.jsonl", 1)
+    evs = []
+    for sx in range(4):                       # 4세션 전부 'this' 5회(고빈도·ubiquitous)
+        for _ in range(5):
+            evs.append(Event("2026-06-11T01:00:00Z", "claude", f"s{sx}", "user", "prompt", "", "this this", s, []))
+    for _ in range(2):                        # 변별어 'sqlite' 단 1세션 2회(저빈도지만 변별적)
+        evs.append(Event("2026-06-11T02:00:00Z", "claude", "s0", "user", "prompt", "", "sqlite sqlite", s, []))
+    kws = keyword_stats(evs, min_count=2)["keywords"]
+    terms = [k["term"] for k in kws]
+    assert terms[0] == "sqlite"               # 변별어 최상위
+    sc = {k["term"]: k["score"] for k in kws}
+    assert sc.get("this", 0) == 0 and sc["sqlite"] > 0   # df==N → idf 0 → score 0(강등)
+
+
 def test_digit_tokens_filtered():
     # 순수 숫자(2026 등)는 키워드 아님 — 토큰 단계서 컷.
     s = Source("h.jsonl", 1)
