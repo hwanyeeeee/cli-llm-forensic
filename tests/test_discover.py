@@ -44,3 +44,15 @@ def test_default_candidates_includes_windows_mount(monkeypatch):
     monkeypatch.setattr(d.glob, "glob", lambda pat: ["/mnt/c/Users/alice/.claude"])
     cands = d._default_candidates()
     assert "/mnt/c/Users/alice/.claude" in cands
+
+
+def test_parse_wsl_list_utf16():
+    from clfx.discover import _parse_wsl_list
+    # wsl.exe -l -q 출력은 UTF-16LE (+ CRLF, 가끔 BOM/널)
+    raw = "Ubuntu\r\nDebian\r\n".encode("utf-16-le")
+    assert _parse_wsl_list(raw) == ["Ubuntu", "Debian"]
+
+
+def test_parse_wsl_list_empty():
+    from clfx.discover import _parse_wsl_list
+    assert _parse_wsl_list(b"") == []
