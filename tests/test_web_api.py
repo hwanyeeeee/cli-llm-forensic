@@ -27,16 +27,20 @@ def test_events_payload_sorted_and_complete():
     assert "‹secret›" in first["preview"]
 
 
-def test_query_payload_who_read_env():
-    p = query_payload(_engine(), "누가 .env 읽었어?")
+def test_query_payload_who_read_env(monkeypatch):
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)   # ollama 비의존(결정적)
+    p = api.query_payload(_engine(), "누가 .env 읽었어?")
     assert p["op"] == "who_did"
     assert p["intent"]["action"] == "read"
     assert all(e["action"] == "read" for e in p["events"])
     assert p["count"] == len(p["events"])
 
 
-def test_query_payload_secrets():
-    p = query_payload(_engine(), "유출된 비밀 뭐야?")
+def test_query_payload_secrets(monkeypatch):
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)   # ollama 비의존(결정적)
+    p = api.query_payload(_engine(), "유출된 비밀 뭐야?")
     assert p["op"] == "secrets"
     assert p["count"] == 2
     assert all("secret" in e["tags"] or "pii" in e["tags"] for e in p["events"])
@@ -53,9 +57,12 @@ def test_query_payload_timeline_and_summary(monkeypatch):
     assert len(p["summary"]["citations"]) == 3
 
 
-def test_query_payload_no_summary_when_not_requested():
-    p = query_payload(_engine(), "누가 id_rsa 읽었어?")
-    assert p["op"] == "who_did" and p["summary"] is None
+def test_query_payload_always_answers(monkeypatch):
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)   # I4: ollama 떠도 결정적(digest)
+    p = api.query_payload(_engine(), "누가 id_rsa 읽었어?")
+    assert p["op"] == "who_did"
+    assert p["summary"] is not None and p["summary"]["mode"] == "digest" and p["summary"]["text"]
     assert p["intent"]["target"] == "id_rsa"
 
 

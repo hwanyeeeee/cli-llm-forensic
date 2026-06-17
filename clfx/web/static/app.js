@@ -423,7 +423,9 @@ function formatQueryResult(d){
     return `· <b>${who}</b> /${esc(e.action)} ${esc((e.target||"").split(/[\/\\]/).pop())}`;
   }).join("<br>");
   const cite=evs[0]?`<span class="cite">↳ ${esc(evs[0].src)}${n>1?` 외 ${n-1}건`:""}</span>`:"";
-  return head+(top?`<br>${top}`:"")+cite;
+  // 로컬 LLM(gemma4) 미연결 시 digest 폴백 — 결정적 요약임을 작게 안내(llm 모드면 안 붙임).
+  const hint=(d.summary&&d.summary.mode==="digest")?`<span class="cite">(로컬 LLM 미연결 — 결정적 요약)</span>`:"";
+  return head+(top?`<br>${top}`:"")+cite+hint;
 }
 /* 샘플(서버 미연결) 모드 로컬 응답 — 데모/미리보기용 */
 function mockAnswer(q){
@@ -453,12 +455,16 @@ async function ask(q){
   if(!q.trim())return;
   addMsg("user",esc(q));$("#ask").value="";
   if(LIVE){
+    // gemma4 대화형 답은 수초 걸림 → 대기 메시지 표시 후 결과로 교체.
+    const wait=document.createElement("div"); wait.className="msg ai"; wait.textContent="🤔 분석 중…";
+    $("#chatlog").appendChild(wait); $("#chatlog").scrollTop=1e9;
     try{
       const r=await fetch("/api/query?q="+encodeURIComponent(q));
       const d=await r.json();
       if(d.error)throw new Error(d.error);
+      wait.remove();
       addMsg("ai",formatQueryResult(d));
-    }catch(err){addMsg("ai",`질의 실패: ${esc(err.message)}`);}
+    }catch(err){wait.remove(); addMsg("ai",`질의 실패: ${esc(err.message)}`);}
     return;
   }
   setTimeout(()=>addMsg("ai",mockAnswer(q)),160);

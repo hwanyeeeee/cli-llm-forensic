@@ -100,7 +100,8 @@ def cmd_query(args):
                   f"({src['file']}:{src['line']})")
             if e["preview"]:
                 print(f"    {e['preview'][:200]}")
-        if p["summary"]:
+        # query_payload는 이제 모든 질의에 answer를 싣는다(web copilot용). CLI는 명시적 요약 요청 시만 출력(기존 UX 보존).
+        if p["intent"].get("summarize") and p["summary"]:
             print("\n--- 요약 ---")
             print(p["summary"]["text"])
         print(f"\n({p['count']} events)")
