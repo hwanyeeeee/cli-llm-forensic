@@ -16,8 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: GUI 완료 → WSL탐지 수정 진행 중
-- 수행 중: 6단계+GUI 완료. **WSL 미탐지 진단됨**: Path(\\wsl.localhost).exists()=False(UNC 서버 루트는 stat/iterdir 불가). 전체경로(\\wsl.localhost\Ubuntu\home\best1pjh\.claude)는 접근 가능. **panel1에 수정 위임**: wsl.exe -l -q로 distro 목록→각 home/<user>/.claude 전체경로 후보(_parse_wsl_list 순수함수+테스트). 끝나면 사용자 재빌드 1회로 GUI+WSL탐지 둘다. 그 후 B plan→C. 미push(26 ahead).
+- 위치: GUI+WSL탐지 완료 → gemma4 대화형 copilot 진행 중
+- 수행 중: 6단계+GUI+WSL탐지(wsl.exe -l -q) 완료·커밋(codex CLEAN, 156 green). 사용자 exe서 GUI 창·파싱 정상, ollama gemma4:12b 로컬 연결 확인. **사용자 요구: 모든 질의에 gemma4 대화형 답변(요약 intent만 아니라 전부).** → panel1에 위임: llm.answer(question,events,llm)(질문 인지·검색된 events만 근거·날조불가·digest폴백) + query_payload 항상 answer(q,res) + UI 대기표시/digest힌트. 보안 불변(증거=엔진, LLM=로컬 요약). 그 후 B plan(복구·해시·④JOIN)→C(MCP·tmp). 참고: WSL Claude tmp=\\wsl.localhost\Ubuntu\tmp(C plan 잔존). 미push(27 ahead).
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0 (6단계 Task별 codex 리뷰 → 최종 CLEAN)
