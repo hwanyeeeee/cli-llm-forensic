@@ -102,3 +102,13 @@ def test_on_date_handles_epoch_ms_no_crash():
     eng = QueryEngine([_ev(mid), _ev(other), _ev("2026-06-11T18:00:00Z")])
     out = [e.ts for e in eng.on_date("2026-06-11")]   # crash 없어야
     assert out == [mid, "2026-06-11T18:00:00Z"]        # 6/11만, 7/1 제외
+
+
+def test_on_date_month_day_matches_any_year():
+    # "MM-DD"(연도무관) → 모든 해의 그 월-일 매칭. "YYYY-MM-DD"는 그 해만.
+    eng = QueryEngine([
+        Event("2026-06-15T01:00:00Z", "claude", "s", "user", "prompt", "", "x", Source("h", 1), []),
+        Event("2025-06-15T01:00:00Z", "claude", "s", "agent", "read", "f", "y", Source("h", 2), []),
+        Event("2026-06-16T01:00:00Z", "claude", "s", "user", "prompt", "", "z", Source("h", 3), []),
+    ])
+    assert len(eng.on_date("06-15")) == 2 and len(eng.on_date("2026-06-15")) == 1

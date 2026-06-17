@@ -85,12 +85,15 @@ def make_handler(state):
                     self._json({"error": str(e)}, 500)
                 return
             if u.path == "/api/query":
-                q = (parse_qs(u.query).get("q") or [""])[0]
+                qs = parse_qs(u.query)
+                q = (qs.get("q") or [""])[0]
                 if not q:
                     self._json({"error": "q required"}, 400)
                     return
+                src = (qs.get("sources") or [""])[0]
+                origins = set(s for s in src.split(",") if s) or None   # 체크된 플랫폼만(없으면 전체)
                 try:
-                    self._json(query_payload(state.engine, q))
+                    self._json(query_payload(state.engine, q, origins=origins))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return

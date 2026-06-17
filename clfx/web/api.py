@@ -28,11 +28,26 @@ def events_payload(engine):
     return engine._memo("events_payload", _build)
 
 
-def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False):
+def _origin_of(e):
+    for t in (e.tags or []):
+        if t.startswith("origin:"):
+            return t[len("origin:"):]
+    return None
+
+
+def _by_origins(events, origins):
+    """origins(set) 주어지면 그 origin만(미태깅은 통과 — MOCK/무태그 안전). None/빈=전체."""
+    if not origins:
+        return list(events)
+    return [e for e in events if (_origin_of(e) is None or _origin_of(e) in origins)]
+
+
+def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origins=None):
     """자연어 질의 → op 판정(route_intent) → engine 실행 → dict.
     이 디스패치가 op→engine 매핑의 단일 진실원천(cli.cmd_query도 이걸 쓴다).
     llm 미지정=make_llm()(웹 copilot, 항상 gemma4 답). llm=None=digest(테스트, ollama 비호출).
-    answer_only_summary=True면 요약 intent에만 answer(CLI용 — 비요약은 LLM 비호출·summary None)."""
+    answer_only_summary=True면 요약 intent에만 answer(CLI용 — 비요약은 LLM 비호출·summary None).
+    origins(set) 주어지면 체크된 플랫폼(origin)만 답변 근거 — 파싱은 전량, 답변 범위만 좁힘(무손실)."""
     intent = route_intent(q)
     op = intent["op"]
     a = intent.get("actor")               # §3: 주체 필터(None=전체)
@@ -46,13 +61,14 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False):
         res = engine.timeline(actor=a)
     else:
         res = engine.search(intent.get("kw", ""), actor=a)
+    res = _by_origins(res, origins)               # ← 체크된 플랫폼만(답변 범위)
     if answer_only_summary and not intent.get("summarize"):
         summary = None                            # CLI 비요약 → LLM/답 없음(make_llm 비호출)
     else:
         use_llm = make_llm() if llm is _DEFAULT_LLM else llm   # 웹=gemma4 / 테스트(llm=None)=digest
         if op == "search" and not res:
-            # 막연한 대화형 질문(특정 키워드 매칭 0건) → 전체 행위 개요로 답(결정적 집계 근거).
-            summary = answer_overview(q, engine, llm=use_llm)
+            # 막연한 대화형 질문(특정 키워드 매칭 0건) → 전체 행위 개요로 답(소스 필터된 집계 근거).
+            summary = answer_overview(q, _by_origins(engine.events, origins), llm=use_llm)
         else:
             summary = answer(q, res, llm=use_llm) # 검색된 res만 근거. ollama 없으면 digest.
     return {"op": op, "intent": intent, "actor": a,

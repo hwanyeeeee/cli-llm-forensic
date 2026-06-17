@@ -92,6 +92,19 @@ def test_route_on_date():
     intent = route_intent("2026-06-11 무슨 대화했어 요약해줘")
     assert intent["op"] == "on_date" and intent["day"] == "2026-06-11" and intent["summarize"] is True
 
+
+def test_route_flexible_date_slash():
+    i = route_intent("6/15일 내용 요약해줘")
+    assert i["op"] == "on_date" and i["day"] == "06-15" and i["summarize"] is True
+
+
+def test_route_flexible_date_korean():
+    assert route_intent("6월 15일 뭐했어")["day"] == "06-15"
+
+
+def test_route_full_date_still_works():
+    assert route_intent("2026-06-15 요약")["day"] == "2026-06-15"
+
 def test_summarize_cites_only_real_sources():
     eng = QueryEngine(_events())
     res = eng.who_did("read", ".env")
@@ -155,7 +168,7 @@ def test_answer_overview_digest_no_llm():
     # 막연한 질문 → 전체 행위 개요(결정적 집계). llm 없으면 digest.
     from clfx.query.llm import answer_overview
     eng = QueryEngine(_events())
-    out = answer_overview("이 사람 주로 뭐해?", eng, llm=None)
+    out = answer_overview("이 사람 주로 뭐해?", eng.events, llm=None)   # 이벤트 리스트 기반(소스 필터 가능)
     assert out["mode"] == "digest"
     assert "전체 행위 개요" in out["text"] and "총 이벤트" in out["text"]
     assert out["citations"]                          # top files 근거(파일 패널 역추적)
@@ -169,14 +182,14 @@ def test_answer_overview_uses_llm():
             seen["p"] = prompt
             return "주로 .env 파일 접근, 에이전트(B) 자율 읽기 중심입니다."
     eng = QueryEngine(_events())
-    out = answer_overview("이 사람 주로 뭐해?", eng, llm=Stub())
+    out = answer_overview("이 사람 주로 뭐해?", eng.events, llm=Stub())
     assert out["mode"] == "llm" and out["text"]
     assert "전체 집계" in seen["p"] and "이 사람 주로" in seen["p"]   # 집계 컨텍스트+질문 포함
 
 
 def test_answer_overview_empty_engine():
     from clfx.query.llm import answer_overview
-    out = answer_overview("뭐해?", QueryEngine([]), llm=None)
+    out = answer_overview("뭐해?", [], llm=None)
     assert out["mode"] == "empty"                    # 기록 0건 → empty
 
 
