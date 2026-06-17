@@ -1,5 +1,6 @@
 """소스(.claude 루트) 자동탐지. 단일 PC의 Windows + WSL 후보를 나열한다.
 판정·라벨은 cli._origin_label 재사용(단일 출처). 환경 비의존 위해 candidates 주입 가능."""
+import glob
 import os
 from pathlib import Path
 from clfx.cli import _origin_label
@@ -13,6 +14,9 @@ def _default_candidates():
     up = os.environ.get("USERPROFILE")                           # Windows home(있으면)
     if up:
         cands.append(os.path.join(up, ".claude"))
+    # WSL/리눅스에서 Windows Claude 기록 보기: /mnt/c/Users/*/.claude (Windows에선 /mnt 없음→빈 결과)
+    for c in sorted(glob.glob("/mnt/c/Users/*/.claude")):
+        cands.append(c)
     # WSL distros (Windows에서 실행 시 보임). 없으면 조용히 스킵.
     wsl_root = Path(r"\\wsl.localhost")
     try:
