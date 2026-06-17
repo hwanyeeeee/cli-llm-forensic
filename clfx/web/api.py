@@ -105,55 +105,58 @@ def keywords_payload(engine):
 
 
 def scan_to_engine(roots, on_progress=None):
-    """선택 루트들을 병렬 parse+analyze(인메모리) → QueryEngine. 디스크 analyzed.jsonl 불요.
-    per-root enrich: bypass 세션은 같은 소스 transcript에서만 매칭(멀티루트 정합).
-    on_progress(files_done, files_total, events, current_root): 진행=파일 단위
-    (parse: history+transcript, enrich: transcript 재읽기 둘 다 카운트 → UNC 느린 패스도 매끄럽게).
-    병합은 입력 루트 순서로 결정적(I2: search/who_did/secrets는 raw 순서 반환 → run마다 인용 순서 고정)."""
-    from clfx.cli import parse_source_tagged   # 지역 import — cli↔web.api 순환 회피
+    """파일단위 병렬 parse(UNC 지연 중첩) + 단일 읽기서 bypass sessionId 수집(enrich 2차 재읽기 제거).
+    무손실·결정적: root 입력순 → 파일순(jsonl_files: history먼저→sorted transcripts) → 파일내 line순 조립(I2).
+    기존 순차(parse_source_tagged+enrich)와 이벤트 전량·순서·태그 동일 — 속도만 개선.
+    on_progress(files_done, files_total, events, current_root): 진행=파일 단위(단일패스 → 중복카운트 없음)."""
+    from clfx.cli import _origin_label          # 지역 import — cli↔web.api 순환 회피
+    from clfx.parser import parse_file
 
     roots = list(roots)
     if not roots:
         if on_progress:
             on_progress(0, 0, 0, None)
         return QueryEngine([])
-    # 사전 카운트: 각 루트 parse 파일수(jsonl_files) + enrich 재읽기(transcript_files)
-    total_files = 0
-    for r in roots:
-        probe = ClaudeSource(r)
-        total_files += len(probe.jsonl_files()) + len(probe.transcript_files())
+    srcs = [ClaudeSource(r) for r in roots]
+    file_lists = [s.jsonl_files() for s in srcs]            # [history(존재시), *sorted transcripts]
+    hists = [s.root / "history.jsonl" for s in srcs]
+    total_files = sum(len(fl) for fl in file_lists)         # 단일패스 → 정확(기존 중복카운트보다 작음)
     if on_progress:
-        on_progress(0, total_files, 0, None)     # 즉시 0/N 표시
+        on_progress(0, total_files, 0, None)
+    tasks = [(ri, fi, p, (p == hists[ri]))
+             for ri, fl in enumerate(file_lists) for fi, p in enumerate(fl)]
     lock = threading.Lock()
-    prog = {"files": 0, "events": 0}
+    prog = {"files": 0}
+    results = {}                                            # (ri,fi) -> events
+    bypass_by_root = [set() for _ in roots]
 
-    def _one(item):
-        i, root = item
-
-        def incr(_path):
-            with lock:
-                prog["files"] += 1
-                f, ev = prog["files"], prog["events"]
-            if on_progress:
-                on_progress(f, total_files, ev, root)
-
-        src = ClaudeSource(root, on_file=incr)
-        evs = parse_source_tagged(src, root)     # parse 패스(on_file 발화)
-        enrich(evs, src)                         # enrich 패스(같은 src 재사용 → transcript 재읽기 카운트)
+    def _work(task):
+        ri, fi, p, is_hist = task
+        evs, byp = parse_file(srcs[ri], p, is_hist)         # 단일 읽기 → events + bypass(레코드 무상태·병렬안전)
         with lock:
-            prog["events"] += len(evs)
-            f, ev = prog["files"], prog["events"]
+            prog["files"] += 1
+            f = prog["files"]
         if on_progress:
-            on_progress(f, total_files, ev, root)   # 루트 완료 — 누적 events 반영(on_file은 파싱 중 events=0)
-        return i, evs
+            on_progress(f, total_files, 0, roots[ri])
+        return ri, fi, evs, byp
 
-    results = [None] * len(roots)
-    with ThreadPoolExecutor(max_workers=min(8, len(roots))) as ex:
-        for i, evs in ex.map(_one, list(enumerate(roots))):
-            results[i] = evs
+    with ThreadPoolExecutor(max_workers=min(16, max(1, len(tasks)))) as ex:
+        for ri, fi, evs, byp in ex.map(_work, tasks):       # 결과는 메인스레드서 수집(results/bypass 경합 없음)
+            results[(ri, fi)] = evs
+            bypass_by_root[ri] |= byp                       # set union — 순서무관 결정적
     events = []
-    for evs in results:                          # 입력 루트 순서 결정적 병합(I2)
-        events.extend(evs)
+    for ri, root in enumerate(roots):                       # 입력 루트 순서(I2)
+        tag = f"origin:{_origin_label(root)}"
+        root_evs = []
+        for fi in range(len(file_lists[ri])):               # 파일 순서(history먼저→sorted transcripts)
+            for e in results[(ri, fi)]:                     # 파일내 line 순서
+                if tag not in e.tags:
+                    e.tags.append(tag)                      # origin 태그 먼저(parse_source_tagged와 동일 순서)
+                root_evs.append(e)
+        enrich(root_evs, srcs[ri], bypass=bypass_by_root[ri])   # 수집된 bypass로 태깅(재읽기 X)
+        events.extend(root_evs)
+    if on_progress:
+        on_progress(total_files, total_files, len(events), None)
     return QueryEngine(events)
 
 

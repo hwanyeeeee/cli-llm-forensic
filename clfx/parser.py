@@ -26,8 +26,9 @@ def clip(s):
     return s[:PREVIEW_MAX] + "…"
 
 
-def _history_events(src):
-    for rec in src.history_records():
+def _history_events_from(records, src):
+    # records(레코드 이터러블) 기반 — paste 해석(resolve_paste/paste_cache_path)에 src 필요 → src 통째 전달.
+    for rec in records:
         obj = rec.obj
         if not isinstance(obj, dict):     # 비-dict 최상위 JSON 줄(배열/문자열 등) → 안전 스킵
             continue
@@ -64,8 +65,13 @@ def _history_events(src):
             )
 
 
-def _transcript_events(src):
-    for rec in src.transcript_records():
+def _history_events(src):
+    yield from _history_events_from(src.history_records(), src)
+
+
+def _transcript_events_from(records, agent):
+    # records 기반 — transcript는 src.agent만 참조하므로 agent만 받음(나머지 src 불요).
+    for rec in records:
         o = rec.obj
         if not isinstance(o, dict):        # 비-dict 최상위 JSON 줄 → 안전 스킵
             continue
@@ -79,7 +85,7 @@ def _transcript_events(src):
         if isinstance(f, dict):              # 계약: file 키가 있으면(빈 dict라도) read 발행
             yield Event(
                 ts=ts,
-                agent=src.agent,
+                agent=agent,
                 session=sess,
                 actor="agent",
                 action="read",
@@ -114,7 +120,7 @@ def _transcript_events(src):
                     media = (img_src.get("media_type") or "image") if isinstance(img_src, dict) else "image"
                     yield Event(
                         ts=ts,
-                        agent=src.agent,
+                        agent=agent,
                         session=sess,
                         actor="user",
                         action="paste",
@@ -128,7 +134,7 @@ def _transcript_events(src):
                         continue
                     yield Event(
                         ts=ts,
-                        agent=src.agent,
+                        agent=agent,
                         session=sess,
                         actor="user",
                         action="prompt",
@@ -158,7 +164,7 @@ def _transcript_events(src):
                         continue
                     yield Event(
                         ts=ts,
-                        agent=src.agent,
+                        agent=agent,
                         session=sess,
                         actor="agent",
                         action=action,
@@ -170,7 +176,7 @@ def _transcript_events(src):
                     # 계약: assistant text는 무조건 response 발행(빈 응답 skip 안 함).
                     yield Event(
                         ts=ts,
-                        agent=src.agent,
+                        agent=agent,
                         session=sess,
                         actor="agent",
                         action="response",
@@ -179,6 +185,27 @@ def _transcript_events(src):
                         source=s,
                     )
         # 5. any other type: emit nothing
+
+
+def _transcript_events(src):
+    yield from _transcript_events_from(src.transcript_records(), src.agent)
+
+
+def _is_bypass_record(o):
+    """bypassPermissions permission-mode 레코드(sessionId 보유) — attribution._bypass_sessions와 동일 판정."""
+    return (isinstance(o, dict) and o.get("type") == "permission-mode"
+            and o.get("permissionMode") == "bypassPermissions" and o.get("sessionId"))
+
+
+def parse_file(src, path, is_history):
+    """단일 파일 1회 읽기 → (events, bypass_sids). transcript면 같은 레코드서 bypass sessionId도 수집
+    (enrich 2차 재읽기 제거). 레코드 단위 무상태 → 파일 병렬 안전. 이벤트/순서는 parse_source와 동일."""
+    recs = list(src._iter_jsonl(path))          # 단일 읽기(materialize)
+    if is_history:
+        return list(_history_events_from(recs, src)), set()   # history엔 bypass 없음(=_bypass_sessions와 동일)
+    evs = list(_transcript_events_from(recs, src.agent))
+    bypass = {r.obj["sessionId"] for r in recs if _is_bypass_record(r.obj)}
+    return evs, bypass
 
 
 def parse_source(src):
