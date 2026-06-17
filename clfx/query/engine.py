@@ -1,4 +1,5 @@
 from clfx.analyze.timeline import timeline as _sort
+from clfx.event import ts_key
 
 
 class QueryEngine:
@@ -25,9 +26,13 @@ class QueryEngine:
         return [e for e in self.events if "secret" in e.tags or "pii" in e.tags]
 
     def timeline(self, start=None, end=None):
+        # range 필터도 ts_key로 비교 — raw e.ts가 epoch-ms int면 str start/end와 비교 시
+        # TypeError("'>=' not supported between int and str"). ts_key가 양쪽을 datetime으로 통일.
         evs = self.events
         if start:
-            evs = [e for e in evs if (e.ts or "") >= start]
+            s = ts_key(start)
+            evs = [e for e in evs if ts_key(e.ts) >= s]
         if end:
-            evs = [e for e in evs if (e.ts or "") <= end]
+            en = ts_key(end)
+            evs = [e for e in evs if ts_key(e.ts) <= en]
         return _sort(evs)
