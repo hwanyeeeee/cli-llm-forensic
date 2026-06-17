@@ -1,42 +1,104 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>clfx — 포렌식 대시보드</title>
-  <link rel="stylesheet" href="/app.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>clfx — CLI 에이전트 포렌식 대시보드</title>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <header>
-    <h1>clfx 포렌식 대시보드</h1>
-    <form id="q-form">
-      <input id="q" type="text" placeholder="자연어 질의: 누가 .env 읽었어? / 유출된 비밀 / 타임라인 요약해줘" autocomplete="off">
-      <button type="submit">질의</button>
-      <button type="button" id="reset">전체</button>
-    </form>
-    <div id="filters">
-      <span>actor:</span>
-      <label><input type="checkbox" class="f-actor" value="user" checked> user</label>
-      <label><input type="checkbox" class="f-actor" value="agent" checked> agent</label>
-      <span>tags:</span>
-      <label><input type="checkbox" class="f-tag" value="secret" checked> secret</label>
-      <label><input type="checkbox" class="f-tag" value="pii" checked> pii</label>
-      <label><input type="checkbox" class="f-tag" value="bypass-mode" checked> bypass</label>
-      <span>action:</span>
-      <label><input type="checkbox" class="f-action" value="prompt" checked> prompt</label>
-      <label><input type="checkbox" class="f-action" value="read" checked> read</label>
-      <label><input type="checkbox" class="f-action" value="bash" checked> bash</label>
-      <label><input type="checkbox" class="f-action" value="write" checked> write</label>
-      <label><input type="checkbox" class="f-action" value="paste" checked> paste</label>
-      <label><input type="checkbox" class="f-action" value="response" checked> response</label>
+
+<header>
+  <div class="brand">
+    <div class="logo">clfx</div>
+    <div>
+      <h1>CLI 에이전트 포렌식 대시보드</h1>
+      <div class="sub">Claude Code 기록 사후 분석 · 행위 주체 규명 (A 사용자 / B 에이전트)</div>
     </div>
-  </header>
-  <div id="banner" class="hidden"></div>
-  <div id="summary" class="hidden"></div>
-  <main>
-    <section id="timeline"></section>
-    <aside id="detail" class="hidden"></aside>
-  </main>
-  <script src="/app.js"></script>
+  </div>
+  <div class="case">
+    <span class="chip"><b>분석 대상</b> <span id="case-target">~/.claude</span></span>
+    <span class="chip ok" id="case-mode"><span class="dot"></span>서버 연결됨</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ LEFT: stats + charts ============ -->
+  <div class="col col-left">
+    <div class="panel">
+      <h2>분석 요약</h2>
+      <div class="stats">
+        <div class="stat"><div class="n" id="st-total">0</div><div class="l">총 이벤트</div></div>
+        <div class="stat"><div class="n" id="st-bypass">0</div><div class="l">bypass 모드 읽기</div></div>
+        <div class="stat user"><div class="n" id="st-user">0</div><div class="l">사용자(A) 행위</div></div>
+        <div class="stat agent"><div class="n" id="st-agent">0</div><div class="l">에이전트(B) 행위</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>활동 추이 <span class="tag">일자별 밀도 · 클릭→해당일</span></h2>
+      <div class="heat" id="bars"></div>
+    </div>
+
+    <div class="panel">
+      <h2>키워드 분포</h2>
+      <div class="donutwrap">
+        <svg class="donut" id="donut" width="120" height="120" viewBox="0 0 120 120"></svg>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MIDDLE: timeline (only scroller) ============ -->
+  <div class="col col-mid">
+    <div class="panel">
+      <div class="tl-head">
+        <h2>타임라인</h2>
+        <select class="datejump" id="datejump"></select>
+        <div class="filters" id="filters">
+          <span class="fchip u" data-f="user" aria-pressed="true">A 사용자</span>
+          <span class="fchip a" data-f="agent" aria-pressed="true">B 에이전트</span>
+          <span class="fchip" data-f="bypass-mode" aria-pressed="true">bypass</span>
+        </div>
+      </div>
+      <div class="tl-scroll" id="tlscroll"></div>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT: file list + detail (both fixed) ============ -->
+  <div class="col col-right">
+    <div class="panel">
+      <h2>접근 파일 목록 <span class="tag" id="fcount"></span></h2>
+      <div class="files" id="files"></div>
+    </div>
+    <div class="panel detail">
+      <h2>이벤트 상세</h2>
+      <div id="detail"><div class="empty">타임라인/파일에서 항목을 선택하면<br>원본 위치(file:line)까지 역추적됩니다.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- keyword distribution popup -->
+<div class="kwpop" id="kwpop"></div>
+
+<!-- ============ AI COPILOT (floating, collapsible) ============ -->
+<button class="copilot-fab" id="copfab" title="AI 질의응답">🤖</button>
+<div class="copilot" id="copilot">
+  <div class="cop-head">
+    <div class="ai">🤖</div>
+    <div><div class="t">clfx 코파일럿</div><div class="s">결정적 엔진 + LLM 요약 · source 추적</div></div>
+    <button class="cop-x" id="copx">×</button>
+  </div>
+  <div class="chatlog" id="chatlog"></div>
+  <div class="suggest" id="suggest"></div>
+  <div class="askbar">
+    <input id="ask" type="text" placeholder="누가 id_rsa 읽었어? / 타임라인 요약 / 6월 11일" autocomplete="off">
+    <button id="send">질의</button>
+  </div>
+  <div class="note">증거 주장은 결정적 엔진 · 모든 답변은 source(file:line)로 추적</div>
+</div>
+
+<script src="/app.js"></script>
 </body>
 </html>
