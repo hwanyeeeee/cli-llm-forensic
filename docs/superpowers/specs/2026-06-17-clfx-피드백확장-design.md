@@ -24,7 +24,7 @@
 | 4 | 복구 원리 | Claude 자체 보존(uploads/file-history+trackedFileBackups/backups) — 실측됨. |
 | 5 | 복구 방향 | Claude 아티팩트 **1차** + 디스크 carving **보조**(외부도구/후속). |
 | 6 | 주체 왜곡보정 | **모든 집계·시각화 actor 분리**(user/agent). |
-| 7 | 프롬프트 요약 | 로컬 ollama **gemma4:e12b**, 미실행 시 digest fallback. |
+| 7 | 프롬프트 요약 | 로컬 ollama **gemma4:12b**(실측 태그, e12b 아님), 미실행 시 digest fallback. |
 | 8 | 키워드 | 경량 빈도 + 수사사전(결정적, 의존성 0). |
 | 9 | MCP | 흩어진 `.mcp.json` + 글로벌 + transcript MCP 호출 **통합 1차** + Prefetch 상관 2차. |
 | 10 | 해시대조 | 수집본(uploads/paste/file-history) sha256 ↔ **사용자 지정 원본**. |
@@ -36,7 +36,7 @@ clfx.exe (PyInstaller --onefile, Windows)
  ├─ 엔진 (parse/analyze/query) ── 결정적 단일 진실원천 (확장)
  ├─ 내장 http.server (web/server.py) ── /api/* 제공 (신규 엔드포인트 추가)
  ├─ static (web/static/) ── 팀원 개편 UI (3컬럼·히트맵·도넛·파일목록·코파일럿)
- └─ 로컬 ollama 클라이언트 (gemma4:e12b, localhost:11434) ── 요약만, fallback digest
+ └─ 로컬 ollama 클라이언트 (gemma4:12b, localhost:11434) ── 요약만, fallback digest
 실행: clfx.exe analyzed.jsonl → 내장서버 → 브라우저 자동 오픈 → 대시보드
 ```
 
@@ -64,7 +64,7 @@ clfx.exe (PyInstaller --onefile, Windows)
 ## 3. 질의 / 요약
 
 - `route_intent`에 **actor 인식**("사용자/에이전트/누가") + on_date·who_did에 actor 필터.
-- "X월 X일 사용자 행위 요약해줘" → `on_date(day)` + `actor==user` 필터 → **gemma4:e12b 요약**(인용 source file:line 포함). ⑦
+- "X월 X일 사용자 행위 요약해줘" → `on_date(day)` + `actor==user` 필터 → **gemma4:12b 요약**(인용 source file:line 포함). ⑦
 - ollama 미실행/모델 없으면 **digest fallback**(기존 패턴). 증거는 결정적 엔진, 문장만 LLM.
 
 ## 4. 대시보드 + 신규 API (팀원 UI 통합)
@@ -95,7 +95,7 @@ clfx.exe (PyInstaller --onefile, Windows)
 - **temp ~30일 소실**: `/tmp` 흔적은 systemd-tmpfiles cleaner(매일, `D /tmp 30d`)가 30일 경과분 삭제. 접근·재부팅·환경따라 변동. 빠른 수집 필수. paste-cache 35% 소실과 같은 시간의존.
 - **환경의존**: `/tmp` 내용·MCP 설정 위치·systemd 활성도 환경별 상이(예 `.wsl-screenshot-cli`는 사용자 설치물, 팀원 머신엔 없음). **n=2 교차확인**(논문대비 §C) + 버전핀(`claude --version`).
 - **FAT32 디스크복구·Prefetch 파싱** = 난이도·OS의존 높아 후속/외부도구(B·C 단계).
-- **gemma4 MTP 가속**(3배)은 vLLM+NVIDIA 전제 → 현 Intel/ollama 환경 직접 적용 불가. "성능 후보: ollama speculative decoding" 메모, MVP는 e12b 기본.
+- **gemma4 MTP 가속**(3배)은 vLLM+NVIDIA 전제 → 현 Intel/ollama 환경 직접 적용 불가. "성능 후보: ollama speculative decoding" 메모, MVP는 gemma4:12b 기본.
 
 ## 7. 구현 단계화
 

@@ -40,7 +40,7 @@ acceptance: pytest tests/test_web_api.py tests/test_web_server.py -q
 
 ## 5단계: 교수님 피드백확장 A (분석·시각화)
 상세 플랜: `docs/superpowers/plans/2026-06-17-clfx-피드백확장-A-분석시각화.md` (Task 1~7). 설계: `docs/superpowers/specs/2026-06-17-clfx-피드백확장-design.md`.
-Task 1~7 — `analyze/keywords.py`(키워드 빈도+수사사전+패턴) → `engine.activity(by)`(활동량 actor분리) → `engine.files()`(접근파일 actor분리) → `query/llm.py` OllamaLLM(gemma4:e12b)+make_llm → `web/api.py`(activity/files/keywords payload+요약 LLM 연결) → `web/server.py`(/api/activity·files·keywords 라우트) → CLI query 요약 연결.
+Task 1~7 — `analyze/keywords.py`(키워드 빈도+수사사전+패턴) → `engine.activity(by)`(활동량 actor분리) → `engine.files()`(접근파일 actor분리) → `query/llm.py` OllamaLLM(gemma4:12b)+make_llm → `web/api.py`(activity/files/keywords payload+요약 LLM 연결) → `web/server.py`(/api/activity·files·keywords 라우트) → CLI query 요약 연결.
 원칙: 엔진 결정적 집계 단일 진실원천, 모든 집계 actor 분리(④), UI(팀원 be9a39b) fetch만. secret 탐지·마스킹 유지(강조X). C단계(MCP)·B단계(복구·해시)·exe는 별도 plan.
 
 acceptance: pytest tests/test_keywords.py tests/test_engine_aggregates.py tests/test_web_aggregates.py tests/test_llm_ollama.py tests/test_web_server.py -q
