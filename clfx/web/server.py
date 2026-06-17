@@ -26,9 +26,11 @@ _CT = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
 
 
 class ServerState:
-    """교체가능 엔진 보유(스캔 시 state.engine 교체). 전역 상태 회피용 가변 컨테이너."""
+    """교체가능 엔진 보유(스캔 시 state.engine 교체). 전역 상태 회피용 가변 컨테이너.
+    scan = 진행상황(POST /api/scan 처리 스레드가 갱신, GET /api/scan/progress 폴링이 읽음)."""
     def __init__(self, engine):
         self.engine = engine
+        self.scan = {"total": 0, "done": 0, "events": 0, "current": None, "finished": True, "error": None}
 
 
 def make_handler(state):
@@ -68,6 +70,8 @@ def make_handler(state):
                 except Exception as e:               # 서버는 안 죽는다
                     self._json({"error": str(e)}, 500)
                 return
+            if u.path == "/api/scan/progress":
+                self._json(state.scan); return
             if u.path == "/api/events":
                 try:
                     self._json(events_payload(state.engine))
@@ -112,16 +116,27 @@ def make_handler(state):
                     n = int(self.headers.get("Content-Length", 0))
                     body = json.loads(self.rfile.read(n) or b"{}")
                     roots = body.get("roots") or []
-                    state.engine = scan_to_engine(roots)     # 엔진 교체(요청 시점)
-                    evs = state.engine.events
+                    # 진행상황 초기화 → on_progress가 루트 완료마다 갱신 → 폴링 GET이 읽음(동기 POST 유지).
+                    state.scan = {"total": len(roots), "done": 0, "events": 0,
+                                  "current": None, "finished": False, "error": None}
+
+                    def _prog(d, t, ev, cur):
+                        state.scan.update(done=d, total=t, events=ev, current=cur)
+
+                    eng = scan_to_engine(roots, on_progress=_prog)
+                    state.engine = eng                       # 엔진 교체
+                    evs = eng.events
                     by = {}
                     for e in evs:
                         for t in e.tags:
                             if t.startswith("origin:"):
                                 k = t[len("origin:"):]
                                 by[k] = by.get(k, 0) + 1
+                    state.scan.update(done=state.scan["total"], events=len(evs),
+                                      finished=True, current=None)
                     self._json({"ok": True, "count": len(evs), "by_origin": by})
                 except Exception as e:
+                    state.scan.update(finished=True, error=str(e))
                     self._json({"ok": False, "error": str(e)}, 500)
                 return
             self._json({"error": "not found"}, 404)

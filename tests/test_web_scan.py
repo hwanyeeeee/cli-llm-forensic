@@ -31,6 +31,24 @@ def test_sources_payload_only_existing(monkeypatch):
     assert all(s["exists"] for s in out["sources"])
 
 
+def test_scan_to_engine_reports_progress():
+    from clfx.web.api import scan_to_engine
+    calls = []
+    eng = scan_to_engine(["tests/fixtures/dot-claude"], on_progress=lambda d,t,ev,cur: calls.append((d,t,ev)))
+    assert eng.events
+    assert calls and calls[-1][0] == calls[-1][1]          # done==total 마지막
+    assert calls[-1][2] > 0                                 # 누적 events>0
+
+
+def test_scan_merge_is_input_order_deterministic():
+    from clfx.web.api import scan_to_engine
+    # 같은 두 루트를 여러 번 스캔 → events의 (source.file,line) 시퀀스가 동일(run-to-run 결정적, I2)
+    roots = ["tests/fixtures/dot-claude", "tests/fixtures/dot-claude"]
+    seq1 = [(e.source.file, e.source.line) for e in scan_to_engine(roots).events]
+    seq2 = [(e.source.file, e.source.line) for e in scan_to_engine(roots).events]
+    assert seq1 == seq2 and len(seq1) > 0
+
+
 def test_scan_parallel_merges_all_roots(tmp_path):
     # 병렬 scan: fixture + 빈 루트 → fixture 이벤트만, 정상 병합(빈 루트 0건).
     empty = tmp_path / "empty" / ".claude"; empty.mkdir(parents=True)

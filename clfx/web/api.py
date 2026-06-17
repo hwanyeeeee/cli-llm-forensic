@@ -1,6 +1,6 @@
 """웹 대시보드용 순수 API 로직. HTTP 무관 — dict만 반환해 테스트가 쉽다.
 엔진(QueryEngine)이 단일 진실원천. 여기서 검색/탐지 로직을 재구현하지 않는다."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from clfx.query.llm import route_intent, summarize, answer, make_llm
 from clfx.analyze.keywords import keyword_stats
@@ -69,10 +69,12 @@ def keywords_payload(engine):
     return keyword_stats(engine.events)
 
 
-def scan_to_engine(roots):
+def scan_to_engine(roots, on_progress=None):
     """선택 루트들을 병렬 parse+analyze(인메모리) → QueryEngine. 디스크 analyzed.jsonl 불요.
     per-root enrich: bypass 세션은 같은 소스 transcript에서만 매칭(멀티루트 정합).
-    WSL UNC I/O가 느려 스레드 병렬. 병합 순서 무관(엔진이 질의 시 ts로 결정적 정렬)."""
+    WSL UNC I/O가 느려 스레드 병렬. 병합은 입력 루트 순서로 결정적(as_completed는 진행 보고용일 뿐,
+    events 순서에 영향 X → I2: search/who_did/secrets는 raw 순서 반환이라 run마다 인용 순서 고정 필요).
+    on_progress(done, total, events, current_root): 매 루트 완료 시 호출(옵션)."""
     from clfx.cli import parse_roots         # 지역 import — cli↔web.api 순환 회피
 
     def _one(root):
@@ -82,11 +84,23 @@ def scan_to_engine(roots):
 
     roots = list(roots)
     if not roots:
+        if on_progress:
+            on_progress(0, 0, 0, None)
         return QueryEngine([])
+    total = len(roots)
+    results = [None] * total
+    done = 0
+    with ThreadPoolExecutor(max_workers=min(8, total)) as ex:
+        futs = {ex.submit(_one, r): i for i, r in enumerate(roots)}
+        for fut in as_completed(futs):      # 완료 순(진행 보고) — 결과는 인덱스 슬롯에 저장
+            i = futs[fut]
+            results[i] = fut.result(); done += 1
+            if on_progress:
+                ev = sum(len(x) for x in results if x is not None)
+                on_progress(done, total, ev, roots[i])
     events = []
-    with ThreadPoolExecutor(max_workers=min(8, len(roots))) as ex:
-        for evs in ex.map(_one, roots):     # 입력순 결과 — 병합 순서 무관
-            events.extend(evs)
+    for evs in results:                     # 입력 루트 순서로 결정적 병합(I2)
+        events.extend(evs)
     return QueryEngine(events)
 
 

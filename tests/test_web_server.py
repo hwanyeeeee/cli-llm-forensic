@@ -203,6 +203,30 @@ def test_scan_empty_roots_ok_zero():
         httpd.shutdown()
 
 
+def test_scan_progress_route_shape():
+    httpd = _server_with(ServerState(QueryEngine([])))
+    try:
+        code, body = _get(httpd, "/api/scan/progress")
+        assert code == 200
+        d = json.loads(body)
+        assert {"total", "done", "events", "finished"} <= set(d)
+    finally:
+        httpd.shutdown()
+
+
+def test_scan_then_progress_finished():
+    state = ServerState(QueryEngine([]))
+    httpd = _server_with(state)
+    try:
+        code, _ = _post(httpd, "/api/scan", {"roots": ["tests/fixtures/dot-claude"]})
+        assert code == 200
+        _, body = _get(httpd, "/api/scan/progress")
+        d = json.loads(body)
+        assert d["finished"] is True and d["done"] == d["total"] and d["events"] > 0
+    finally:
+        httpd.shutdown()
+
+
 def test_static_dir_non_frozen():
     import os
     from clfx.web.server import _static_dir
