@@ -10,7 +10,7 @@ def _ev():
 
 class _FakeLLM:
     def __init__(self): self.called = False
-    def complete(self, prompt):
+    def complete(self, prompt, system=None):
         self.called = True
         return "요약문 (h.jsonl:7)"
 
@@ -24,7 +24,7 @@ def test_summarize_uses_llm_when_present():
 
 def test_summarize_falls_back_when_llm_raises():
     class Dead:
-        def complete(self, p): raise RuntimeError("ollama down")
+        def complete(self, p, system=None): raise RuntimeError("ollama down")
     out = summarize([_ev()], llm=Dead())
     assert out["mode"] == "digest"          # 죽으면 digest
 
@@ -47,7 +47,7 @@ def test_answer_llm_error_surfaced_on_failure():
     # LLM 실패 시 사유를 payload에 실어 UI가 원인(Connection refused/timeout) 표시 가능.
     from clfx.query.llm import answer
     class Dead:
-        def complete(self, p): raise RuntimeError("Connection refused")
+        def complete(self, p, system=None): raise RuntimeError("Connection refused")
     evs = [Event(ts="2026-06-11T09:00:00Z", agent="claude", session="s", actor="agent",
                  action="read", target="id_rsa", preview="x", source=Source("h.jsonl", 7), tags=[])]
     out = answer("누가 읽었어?", evs, llm=Dead())
@@ -70,8 +70,27 @@ def test_complete_uses_chat_endpoint(monkeypatch):
     assert out == "요약 결과"
     assert sent["url"].endswith("/api/chat")
     assert sent["body"]["messages"][0]["content"] == "질문"
-    assert sent["body"]["keep_alive"] == "30m" and sent["body"]["options"]["num_predict"] == 384
+    assert sent["body"]["keep_alive"] == "30m" and sent["body"]["options"]["num_predict"] == 512
     assert sent["timeout"] == 300
+
+
+def test_complete_sends_system_message(monkeypatch):
+    # system(역할·규칙) ↔ user(질문·데이터) 분리 — 지시 무시·영어 echo 방지.
+    import clfx.query.llm as L, json as _j
+    sent = {}
+    class R:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return _j.dumps({"message": {"content": "요약 문단"}}).encode()
+    def fake(req, timeout=None):
+        sent["body"] = _j.loads(req.data.decode()); return R()
+    monkeypatch.setattr(L.urllib.request, "urlopen", fake)
+    out = L.OllamaLLM().complete("질문본문", system="역할/규칙")
+    assert out == "요약 문단"
+    roles = [m["role"] for m in sent["body"]["messages"]]
+    assert roles == ["system", "user"]
+    assert sent["body"]["messages"][0]["content"] == "역할/규칙"
+    assert sent["body"]["messages"][1]["content"] == "질문본문"
 
 
 def test_complete_thinking_fallback(monkeypatch):

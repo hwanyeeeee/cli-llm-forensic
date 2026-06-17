@@ -120,7 +120,7 @@ def test_summarize_fallback_when_llm_dead():
     assert out["mode"] == "digest"
 
 class _DeadLLM:
-    def complete(self, prompt): raise RuntimeError("ollama down")
+    def complete(self, prompt, system=None): raise RuntimeError("ollama down")
 
 
 def test_answer_digest_fallback_no_llm():
@@ -137,7 +137,7 @@ def test_answer_uses_llm_with_question():
     from clfx.event import Event, Source
     seen = {}
     class Stub:
-        def complete(self, prompt):
+        def complete(self, prompt, system=None):
             seen["p"] = prompt
             return "에이전트(B)가 id_rsa를 읽었습니다 (h.jsonl:7)."
     evs = [Event("2026-06-11T09:00:00Z","claude","s1","agent","read","id_rsa","x",Source("h.jsonl",7),[])]
@@ -156,7 +156,7 @@ def test_answer_empty_events_skips_llm():
     from clfx.query.llm import answer
     called = {"n": 0}
     class Stub:
-        def complete(self, prompt):
+        def complete(self, prompt, system=None):
             called["n"] += 1
             return "허위 가능 답"
     out = answer("아무거나", [], llm=Stub())
@@ -178,7 +178,7 @@ def test_answer_overview_uses_llm():
     from clfx.query.llm import answer_overview
     seen = {}
     class Stub:
-        def complete(self, prompt):
+        def complete(self, prompt, system=None):
             seen["p"] = prompt
             return "주로 .env 파일 접근, 에이전트(B) 자율 읽기 중심입니다."
     eng = QueryEngine(_events())
@@ -207,18 +207,34 @@ def test_answer_uses_preview_in_prompt():
     from clfx.event import Event, Source
     seen = {}
     class Stub:
-        def complete(self, p): seen["p"] = p; return "6/16에 사용자가 frida로 메모리 덤프를 요청했습니다 (h:1)."
+        def complete(self, p, system=None): seen["p"] = p; return "6/16에 사용자가 frida로 메모리 덤프를 요청했습니다 (h:1)."
     evs = [Event("2026-06-16T01:00:00Z", "claude", "s", "user", "prompt", "", "frida 메모리 덤프 요청", Source("h", 1), [])]
     out = answer("6/16 요약", evs, llm=Stub())
     assert out["mode"] == "llm" and "frida" in out["text"]
     assert "frida 메모리 덤프 요청" in seen["p"]       # preview 내용이 프롬프트에
 
 
+def test_answer_passes_system_and_korean_cue():
+    # 규칙은 system, 데이터는 user로 분리 — gemma4가 지시 무시·영어 echo 안 하게.
+    from clfx.query.llm import answer
+    from clfx.event import Event, Source
+    seen = {}
+    class Stub:
+        def complete(self, prompt, system=None):
+            seen["sys"] = system; seen["user"] = prompt
+            return "6/16에 사용자가 플랜모드를 테스트했습니다 (h:7)."
+    evs = [Event("2026-06-16T01:00:00Z", "claude", "s", "user", "prompt", "", "플랜모드 테스트", Source("h", 7), [])]
+    out = answer("6/16 요약", evs, llm=Stub())
+    assert out["mode"] == "llm" and "했습니다" in out["text"]
+    assert "한국어" in seen["sys"] and "목록" in seen["sys"]      # 규칙은 system에
+    assert "[이벤트]" in seen["user"]                            # 데이터는 user에
+
+
 def test_answer_empty_llm_response_falls_back():
     from clfx.query.llm import answer
     from clfx.event import Event, Source
     class Blank:
-        def complete(self, p): return "   "             # 빈/공백 응답
+        def complete(self, p, system=None): return "   "             # 빈/공백 응답
     evs = [Event("2026-06-16T01:00:00Z", "claude", "s", "user", "prompt", "", "내용", Source("h", 1), [])]
     out = answer("요약", evs, llm=Blank())
     assert out["mode"] == "digest" and out["text"].strip()   # 빈 "결과 N건" 안 됨 — 내용 폴백
@@ -242,7 +258,7 @@ def test_answer_large_set_calls_llm_with_bounded_prompt():
     from clfx.event import Event, Source
     seen = {}
     class Stub:
-        def complete(self, p): seen["len"] = len(p); seen["p"] = p; return "요약 산문 (h.jsonl:1)."
+        def complete(self, p, system=None): seen["len"] = len(p); seen["p"] = p; return "요약 산문 (h.jsonl:1)."
     evs = [Event(f"2026-06-11T00:00:{i%60:02d}Z", "claude", "s", "agent", "response", "",
                  f"응답{i}" * 20, Source("h.jsonl", i), []) for i in range(500)]
     out = answer("타임라인 요약해줘", evs, llm=Stub())
