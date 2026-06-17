@@ -9,6 +9,7 @@
 
 import json
 import os
+import re
 
 from clfx.analyze.secrets import mask, scan
 from clfx.event import ts_key
@@ -22,16 +23,48 @@ def _mask_str(s):
     return mask(s, f) if f else s
 
 
+# F3: 키이름 기준 강제 마스킹 — 저엔트로피 토큰도 scan/mask와 병행해 마스킹.
+_SENS = r"token|api[-_]?key|secret|password|authorization|auth|access[-_]?token|bearer"
+_URL_KV = re.compile(r"(?i)([?&#](?:" + _SENS + r")=)([^&#]*)")
+_ARG_EQ = re.compile(r"(?i)^(--?(?:" + _SENS + r")=)(.*)$")
+_ARG_FLAG = re.compile(r"(?i)^--?(?:" + _SENS + r")$")
+_BEARER = re.compile(r"(?i)(bearer\s+)(\S+)")
+
+
+def _mask_url(u):
+    if not isinstance(u, str):
+        return u
+    u = _URL_KV.sub(lambda m: m.group(1) + "‹secret›", u)   # ?token=.. / &api_key=.. / #secret=..
+    return _mask_str(u)                                     # 고엔트로피 패턴도 병행
+
+
+def _mask_args(args):
+    out, mask_next = [], False
+    for a in args:
+        if not isinstance(a, str):
+            out.append(a); continue
+        if mask_next:                                       # 직전이 분리형 민감 플래그(--token VAL)
+            out.append("‹secret›"); mask_next = False; continue
+        if _ARG_FLAG.match(a):                              # --token / --api-key (분리형) → 다음 값 마스킹
+            out.append(a); mask_next = True; continue
+        m = _ARG_EQ.match(a)
+        if m:                                               # --token=VAL / --api-key=VAL
+            out.append(m.group(1) + "‹secret›"); continue
+        b = _BEARER.sub(lambda mm: mm.group(1) + "‹secret›", a)  # Authorization: Bearer VAL
+        out.append(_mask_str(b))                            # 인라인 고엔트로피도 병행
+    return out
+
+
 def _mask_config(cfg):
-    """MCP 서버 설정 dict → 마스킹 사본. env 값 전부 ‹secret›(키 보존), url/args는 scan/mask."""
+    """MCP 서버 설정 dict → 마스킹 사본. env 값 전부 ‹secret›(키 보존), url/args는 키이름+scan/mask 병행."""
     out = dict(cfg)
     env = out.get("env")
     if isinstance(env, dict):
         out["env"] = {k: "‹secret›" for k in env}      # 값은 민감 → 전부 마스킹, 키는 증거로 보존
     if isinstance(out.get("url"), str):
-        out["url"] = _mask_str(out["url"])
+        out["url"] = _mask_url(out["url"])
     if isinstance(out.get("args"), list):
-        out["args"] = [_mask_str(a) for a in out["args"]]
+        out["args"] = _mask_args(out["args"])
     return out
 
 

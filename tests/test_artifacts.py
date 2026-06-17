@@ -230,3 +230,50 @@ def test_tmp_retention_expired_clamps_to_zero(tmp_path):
     now = f.stat().st_mtime + 40 * 86400        # 40일 경과(>30 보존)
     out = tmp_retention([str(tmp_path)], now_epoch=now)
     assert out["retention"][0]["expires_in_days"] == 0   # 만료 → 0 클램프
+
+
+# ── [F1] UNC WSL 경로 해석(완전성 갭) ──────────────────────────────
+def test_resolve_unc_wsl_on_windows(monkeypatch):
+    # Windows: UNC를 직접 접근(역슬래시 정규화), 빈 리스트가 아님(완전성).
+    monkeypatch.setattr(os, "name", "nt")
+    got = A.resolve_candidates(
+        r"\\wsl.localhost\Ubuntu\home\u\x.env",
+        r"\\wsl.localhost\Ubuntu\home\u\.claude",
+    )
+    assert got == [r"\\wsl.localhost\Ubuntu\home\u\x.env"]
+    assert got != []
+
+
+def test_resolve_unc_wsl_on_linux(monkeypatch):
+    # posix: UNC → distro 내부 POSIX 경로, 빈 리스트가 아님(완전성).
+    monkeypatch.setattr(os, "name", "posix")
+    got = A.resolve_candidates(
+        r"\\wsl.localhost\Ubuntu\home\u\x.env",
+        r"\\wsl.localhost\Ubuntu\home\u\.claude",
+    )
+    assert got == ["/home/u/x.env"]
+    assert got != []
+
+
+def test_resolve_unc_wsl_dollar_mnt_on_linux(monkeypatch):
+    # posix: \\wsl$\<distro>\mnt\c\x → /mnt/c/x.
+    monkeypatch.setattr(os, "name", "posix")
+    got = A.resolve_candidates(
+        r"\\wsl$\Ubuntu\mnt\c\x",
+        r"\\wsl$\Ubuntu\home\u\.claude",
+    )
+    assert got == ["/mnt/c/x"]
+    assert got != []
+
+
+# ── [F2] _walk_tmp onerror 콜백(완전성 직격) ───────────────────────
+def test_walk_tmp_records_walk_onerror_in_errors(tmp_path, monkeypatch):
+    # os.walk가 목록조회 불가 하위 디렉터리에서 onerror를 호출 → walk_errors로 기록(무skip).
+    def fake_walk(d, topdown=True, followlinks=False, onerror=None):
+        if onerror:
+            onerror(OSError(13, "Permission denied", "/tmp/locked"))
+        return iter([])
+
+    monkeypatch.setattr("clfx.analyze.artifacts.os.walk", fake_walk)
+    files, errors = A._walk_tmp([str(tmp_path)])   # tmp_path 실재 → isdir 통과
+    assert any(e["path"] == "/tmp/locked" for e in errors)
