@@ -230,3 +230,31 @@ def test_non_string_payloads_coerced_no_crash(tmp_path):
     assert any(e.action == "paste" and e.preview == "42" for e in evs)
     assert any(e.action == "prompt" and e.preview == "7" for e in evs)
     assert any(e.action == "response" and e.preview == "3.5" for e in evs)
+
+
+def test_parse_file_transcript_events_and_bypass(tmp_path):
+    # 단일 transcript 파일 1회 읽기 → events + bypass sessionId(2차 재읽기 없이 수집).
+    import json as _j
+    from clfx.parser import parse_file
+    root = tmp_path / ".claude"; (root / "projects" / "p").mkdir(parents=True)
+    lines = [
+        {"type": "permission-mode", "permissionMode": "bypassPermissions", "sessionId": "sX"},
+        {"type": "user", "sessionId": "sX", "message": {"content": [{"type": "text", "text": "안녕"}]}},
+    ]
+    fp = root / "projects" / "p" / "t.jsonl"
+    fp.write_text("\n".join(_j.dumps(x) for x in lines) + "\n", encoding="utf-8")
+    src = ClaudeSource(str(root))
+    evs, byp = parse_file(src, fp, is_history=False)
+    assert byp == {"sX"}                              # bypass sessionId 수집
+    assert [e.action for e in evs] == ["prompt"]      # permission-mode는 이벤트 0, user text→prompt
+
+
+def test_parse_file_history_no_bypass(tmp_path):
+    # history 파일은 bypass 수집 안 함(=_bypass_sessions와 동일: transcript만 읽음).
+    import json as _j
+    from clfx.parser import parse_file
+    root = tmp_path / ".claude"; root.mkdir(parents=True)
+    h = root / "history.jsonl"
+    h.write_text(_j.dumps({"display": "x", "pastedContents": {}}) + "\n", encoding="utf-8")
+    evs, byp = parse_file(ClaudeSource(str(root)), h, is_history=True)
+    assert byp == set()

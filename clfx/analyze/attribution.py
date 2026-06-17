@@ -16,12 +16,14 @@ def _bypass_sessions(src):
     return out
 
 
-def enrich(events, src):
+def enrich(events, src, bypass=None):
     """tag-only enrich 패스. actor는 절대 변경 안 함(parser가 확정).
     (1) secrets.scan(preview) → email=pii / 그 외=secret 태그 + preview 마스킹.
     (2) bypassPermissions 세션(sessionId 매칭)의 read Event에 bypass-mode 태그.
+    bypass=None이면 _bypass_sessions(src) 재읽기(CLI/하위호환). set 주어지면 그걸 사용(2차 재읽기 X).
     sidechain/agent-name 미사용(범위 밖, 의도적)."""
-    bypass = _bypass_sessions(src)
+    if bypass is None:
+        bypass = _bypass_sessions(src)
     for e in events:
         findings = scan(e.preview)
         kinds = {f.kind for f in findings}

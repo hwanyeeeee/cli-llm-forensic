@@ -73,6 +73,35 @@ def test_scan_merge_is_input_order_deterministic():
     assert seq1 == seq2 and len(seq1) > 0
 
 
+def test_scan_equivalent_to_sequential():
+    # 병렬·단일패스 결과 == 기존 순차(parse_source_tagged+enrich): 이벤트 전량·순서·태그 동일(무손실·I2 증명).
+    from clfx.web.api import scan_to_engine
+    from clfx.cli import parse_source_tagged
+    from clfx.sources.claude import ClaudeSource
+    from clfx.analyze.attribution import enrich
+    root = "tests/fixtures/dot-claude"
+    src = ClaudeSource(root); ref = parse_source_tagged(src, root); enrich(ref, src)
+    got = scan_to_engine([root]).events
+    assert len(got) == len(ref) and len(ref) > 0
+    for a, b in zip(got, ref):
+        assert (a.ts, a.actor, a.action, a.target, a.preview, a.source.file, a.source.line, sorted(a.tags)) \
+            == (b.ts, b.actor, b.action, b.target, b.preview, b.source.file, b.source.line, sorted(b.tags))
+
+
+def test_scan_bypass_collected_equals_reread():
+    # 단일읽기 수집 bypass 태깅 == _bypass_sessions 재읽기 태깅(같은 read 이벤트에 bypass-mode).
+    from clfx.web.api import scan_to_engine
+    from clfx.cli import parse_source_tagged
+    from clfx.sources.claude import ClaudeSource
+    from clfx.analyze.attribution import enrich
+    root = "tests/fixtures/dot-claude"
+    src = ClaudeSource(root); ref = parse_source_tagged(src, root); enrich(ref, src)
+    got = scan_to_engine([root]).events
+    ref_b = {(e.source.file, e.source.line) for e in ref if "bypass-mode" in e.tags}
+    got_b = {(e.source.file, e.source.line) for e in got if "bypass-mode" in e.tags}
+    assert got_b == ref_b
+
+
 def test_scan_parallel_merges_all_roots(tmp_path):
     # 병렬 scan: fixture + 빈 루트 → fixture 이벤트만, 정상 병합(빈 루트 0건).
     empty = tmp_path / "empty" / ".claude"; empty.mkdir(parents=True)
