@@ -106,6 +106,26 @@
   ```
   내 결과: ____
 
+## E. Windows `C:\tmp` — 별도 정리 정책 + 소유자로 주체 구분 불가
+
+WSL `/tmp`(C 섹션, systemd 30일)와 **완전히 별개**다. `C:\tmp`(WSL에서 `/mnt/c/tmp`)는 **Windows 파일시스템**이라 systemd-tmpfiles가 닿지 않는다.
+
+- **Windows는 `C:\tmp`(사용자 폴더)를 자동 정리하지 않는다.** 실측: 스케줄 태스크 `CleanupTemporaryState`·`DsSvcCleanup` 은 존재하나 *시스템 임시상태* 대상이지 `C:\tmp` 대상이 아니다. → **무기한 잔존**(실측: 가장 오래된 파일 `2026-03-05`, 3달+ 보존). 즉 WSL `/tmp`(~30일)보다 **훨씬 오래 남는다** = 오래된 증거 보존(포렌식 가치↑).
+- **Claude는 Windows `C:\tmp\claude\` 에도 흔적을 남긴다**: `cache-break-*.diff`(내용 `Index: prompt-state` / `--- before / +++ after`) = Claude Code의 **프롬프트 캐시 무효화** 산물. 사람이 만드는 파일이 아니다(실측 15개, 2026-02-13).
+- **⚠ 소유자(ACL)로는 주체를 구분할 수 없다 (④ 왜곡의 OS 근거)**: 실측 `C:\tmp` 전 파일의 Windows ACL Owner = **전부 `HWANSKTOP\best1`**(사용자 계정). **WSL Claude도 사용자 Windows 계정 권한으로 `/mnt/c` 에 쓰므로** 사람이 만든 것과 에이전트가 만든 것의 소유자가 **동일**하다. → 소유자만 보면 둘 다 "사용자"로 보여 **에이전트 행위가 사용자 행위로 오인**된다.
+  - **단 "주체를 알 수 없다"는 과장이다.** OS 소유자 메타데이터로만 불가할 뿐, **경로**(`claude/`)·**패턴/내용**(`cache-break`/`prompt-state`)·**시각 상관**(파일 mtime ↔ Claude 세션 transcript)으로는 귀속 가능하다. 실제로 `cache-break-*.diff` 는 Claude로 식별된다.
+  - → **도구 원칙**: 소유자/ACL을 신뢰하지 말고(왜곡원), 경로·패턴·시각 상관으로 주체를 귀속한다. 이것이 ④ 왜곡 보정의 핵심이다.
+- 검증 명령:
+  ```bash
+  # Windows ACL 소유자(전부 사용자 계정 → 주체 구분 불가)
+  powershell.exe -NoProfile -Command "Get-ChildItem 'C:\\tmp' -File | Select Name,CreationTime,@{N='Owner';E={(Get-Acl \$_.FullName).Owner}} | Format-Table" 2>/dev/null | head
+  ls /mnt/c/tmp/claude/ 2>/dev/null | head           # Claude cache-break 흔적
+  find /mnt/c/tmp -maxdepth 1 -type f -mtime +30 | wc -l   # 1달+ 잔존(Windows라 안 지워짐)
+  ```
+  내 결과: ____
+
+> **결론**: `C:\tmp` 는 정리 정책이 없어 장기 잔존하고(WSL `/tmp` 30일과 대비), Claude 흔적(`claude/cache-break`)도 남으며, **ACL 소유자로는 사람/에이전트를 구분할 수 없다**(동일 계정). 주체 귀속은 경로·패턴·시각 상관으로 한다 — 소유자에 속지 않는 것이 ④ 보정.
+
 ---
 
 ## 포렌식 함의 (교수님 피드백 ①②와 연결)

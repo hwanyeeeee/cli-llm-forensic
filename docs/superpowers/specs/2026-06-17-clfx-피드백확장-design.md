@@ -46,7 +46,8 @@ clfx.exe (PyInstaller --onefile, Windows)
 
 - **`uploads/<session>/<hash>-<원본명>`** → 업로드 원본 파일·메타(①). 원본 그대로 보존됨.
 - **`file-history/<id>/<contenthash>@v<N>`** + transcript `file-history-snapshot.trackedFileBackups` 매핑 → 편집 전/후 버전(②, 복구원).
-- **`/tmp`·`/tmp/claude-<uid>/<proj>/<session>/tasks`·`shell-snapshots/`** → 에이전트 temp 작업 흔적. `/tmp` 공용이므로 **에이전트 귀속 휴리스틱**(mktemp 패턴·claude-uid·mtime 상관·내용).
+- **`/tmp`·`/tmp/claude-<uid>/<proj>/<session>/tasks`·`shell-snapshots/`** (WSL) → 에이전트 temp 작업 흔적. `/tmp` 공용이므로 **에이전트 귀속 휴리스틱**(mktemp 패턴·claude-uid·mtime 상관·내용).
+- **Windows `C:\tmp`**(⑧·④): Claude는 `C:\tmp\claude\cache-break-*.diff`(`prompt-state` before/after)에도 흔적을 남긴다. Windows tmp는 정리 정책이 없어 **무기한 잔존**(WSL `/tmp` 30일과 대비, 실측 3달+) → 오래된 증거 보존. ⚠ **ACL 소유자가 사람=에이전트 동일 계정**이라 소유자로는 주체 구분 불가 → 경로·패턴·시각 상관으로 귀속(상세 `docs/실측-temp-원본보존-원리.md §E`).
 - **MCP 설정 통합**(⑧): 프로젝트별 `<proj>/.mcp.json` + 글로벌 `~/.claude.json` mcpServers + transcript의 MCP 도구 호출 → "어느 프로젝트가 어떤 MCP 썼나" 통합.
 - **2차/보조**: Prefetch(`/mnt/c/Windows/Prefetch/*.pf`), 디스크 carving(외부도구). → C·B 단계.
 
@@ -54,7 +55,7 @@ clfx.exe (PyInstaller --onefile, Windows)
 
 ## 2. 분석 확장 (analyze)
 
-- **actor 분리 집계**(④): 모든 집계·시각화가 user/agent 별도 계열. "에이전트 사용 → 사용자 오인" 왜곡 원천 차단. engine에 actor 필터 추가.
+- **actor 분리 집계**(④): 모든 집계·시각화가 user/agent 별도 계열. "에이전트 사용 → 사용자 오인" 왜곡 원천 차단. engine에 actor 필터 추가. **OS 소유자/ACL로는 주체 구분 불가**(WSL Claude도 사용자 Windows 계정 권한 → 사람=에이전트 동일 소유자, §E 실측) — 소유자를 신뢰하지 말고 `actor`(parser 확정)·경로·패턴·시각 상관으로 귀속한다.
 - **키워드 빈도 + 수사사전**(⑥): 결정적. 공백/구두점 분리 + 한국어 불용어·조사 경량 제거 + 수사 위험키워드 사전 매칭. 집중형(특정 시점 몰림)/지속형(장기 분산) 패턴 판정. 의존성 0(형태소기 미사용).
 - **sha256 대조**(①): 수집본(uploads/paste 본문/file-history) sha256 계산 → 사용자 지정 "기밀/원본 파일" 해시와 대조. 일치 = "이 파일이 LLM에 올라갔다" 유출 입증. (uploads 앞 8hex는 sha256 아님 → 별도 계산.)
 - **복구**(②): Claude 아티팩트 우선 — uploads 원본 + file-history 버전(trackedFileBackups 매핑)으로 편집 전 상태 복원. 디스크 carving은 Claude 미추적분만(외부도구).
