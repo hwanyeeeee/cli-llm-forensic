@@ -10,7 +10,8 @@ from clfx.event import Event
 from clfx.query.engine import QueryEngine
 from clfx.web.api import (events_payload, query_payload, stats_payload,
                           activity_payload, files_payload, keywords_payload,
-                          sources_payload, scan_to_engine, forensic_scan)
+                          sources_payload, scan_to_engine, forensic_scan,
+                          mcp_payload)
 
 def _static_dir():
     """정적 파일 디렉터리. PyInstaller onefile은 sys._MEIPASS에 추출되므로 그 경로 우선."""
@@ -35,6 +36,10 @@ class ServerState:
         # FS 분석 실패해도 빈 계약 유지(스캔 응답은 성공).
         self.artifacts = {"scanned": 0, "missing": 0, "tmp_scanned": 0, "tmp_roots": [],
                           "errors": [], "hashes": [], "attribution": []}
+        # MCP 통합 결과(POST /api/scan서 mcp_payload로 갱신, GET /api/mcp가 읽음).
+        # MCP 분석 실패해도 빈 계약 유지(스캔 응답은 성공).
+        self.mcp = {"configs": [], "usage": [], "configured_unused": [],
+                    "used_unconfigured": [], "errors": []}
 
 
 def make_handler(state):
@@ -126,6 +131,12 @@ def make_handler(state):
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
+            if u.path == "/api/mcp":
+                try:
+                    self._json(state.mcp)
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
             self._json({"error": "not found"}, 404)
 
         def do_POST(self):
@@ -149,6 +160,11 @@ def make_handler(state):
                     except Exception:
                         state.artifacts = {"scanned": 0, "missing": 0, "tmp_scanned": 0,
                                            "tmp_roots": [], "errors": [], "hashes": [], "attribution": []}
+                    try:                                     # MCP 실패해도 스캔 응답은 성공(빈 계약 유지)
+                        state.mcp = mcp_payload(eng, roots)
+                    except Exception:
+                        state.mcp = {"configs": [], "usage": [], "configured_unused": [],
+                                     "used_unconfigured": [], "errors": []}
                     import threading
                     from clfx.query.llm import prewarm
                     threading.Thread(target=prewarm, daemon=True).start()   # 모델 미리 로드(쿼리 전 워밍, fire-and-forget)

@@ -142,3 +142,21 @@ def test_query_payload_secrets_actor_filter(monkeypatch):
     p = query_payload(_engine(), "사용자 secret 요약")
     assert p["op"] == "secrets" and p["actor"] == "user"
     assert p["count"] >= 1 and all(e["actor"] == "user" for e in p["events"])
+
+
+def test_mcp_payload_has_contract_keys():
+    from clfx.web.api import scan_to_engine, mcp_payload
+    eng = scan_to_engine(["tests/fixtures/mcp"])
+    out = mcp_payload(eng, ["tests/fixtures/mcp"])
+    for k in ("configs", "usage", "configured_unused", "used_unconfigured", "errors"):
+        assert k in out
+    # 픽스처 transcript의 mcp__ 호출이 usage로 잡힘
+    servers = {u["server"] for u in out["usage"]}
+    assert "playwright" in servers
+
+
+def test_forensic_scan_includes_retention():
+    from clfx.web.api import forensic_scan
+    out = forensic_scan([], roots=[], tmp_dirs=[])   # tmp_dirs=[] → 실제 머신 tmp 스캔 안 함(결정성)
+    assert "retention" in out
+    assert out["retention"] == []

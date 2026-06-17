@@ -53,7 +53,7 @@ class Event:
     agent: str          # claude | codex | gemini
     session: str
     actor: str          # user | agent
-    action: str         # prompt | read | bash | write | paste | response
+    action: str         # prompt | read | bash | write | paste | response | mcp
     target: str
     preview: str
     source: Source

@@ -8,7 +8,7 @@ Event {
   "agent":    "claude | codex | gemini",
   "session":  "세션 id",
   "actor":    "user | agent",                         // 사람이 입력했나, 에이전트가 알아서 했나
-  "action":   "prompt | read | bash | write | paste | response",   // 무슨 행동
+  "action":   "prompt | read | bash | write | paste | response | mcp",   // 무슨 행동 (mcp = MCP 툴 호출)
   "target":   "대상 (파일 경로 / 명령 / URL)",
   "preview":  "내용 미리보기 (시크릿은 가림)",
   "tags":     ["secret", "pii"],                      // 분석으로 붙는 표시 (없으면 빈 배열)

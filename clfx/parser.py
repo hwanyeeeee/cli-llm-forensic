@@ -153,12 +153,22 @@ def _transcript_events_from(records, agent):
                     inp = part.get("input") or {}
                     if not isinstance(inp, dict):
                         inp = {}
+                    tu_preview = ""                       # 기본: 미리보기 없음(bash/write)
                     if name == "Bash":
                         action, target = "bash", inp.get("command") or ""
                     elif name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
                         # NotebookEdit는 notebook_path 우선, 없으면 file_path
                         action = "write"
                         target = inp.get("notebook_path") or inp.get("file_path") or ""
+                    elif name and name.startswith("mcp__"):
+                        # MCP 툴 호출 → 외부 프로그램/서비스 흔적. target=풀네임, preview=입력 인자.
+                        # 결정성: sort_keys. secret은 enrich()가 후속에 모든 preview를 scan+mask.
+                        action, target = "mcp", name
+                        try:
+                            import json as _json
+                            tu_preview = clip(_json.dumps(inp, ensure_ascii=False, sort_keys=True))
+                        except (TypeError, ValueError):
+                            tu_preview = clip(str(inp))
                     else:
                         # Read/Grep/Glob 등 → 미발행. 읽기는 toolUseResult read가 담당(중복 방지).
                         continue
@@ -169,7 +179,7 @@ def _transcript_events_from(records, agent):
                         actor="agent",
                         action=action,
                         target=target,
-                        preview="",
+                        preview=tu_preview,
                         source=s,
                     )
                 elif ptype == "text":

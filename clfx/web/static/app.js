@@ -624,7 +624,7 @@ async function loadAggregates(){
 /* ---------- 아티팩트 포렌식(해시 대조 + 주체 왜곡 보정) ----------
    엔진(/api/artifacts)이 단일 진실원천 — JS 재집계/재판정 금지, 값 그대로 그림. XSS: 모든 동적 문자열 esc(). */
 async function loadArtifacts(){
-  try{ const d=await jget("/api/artifacts"); renderLeaks(d); renderAttrib(d); }
+  try{ const d=await jget("/api/artifacts"); renderLeaks(d); renderAttrib(d); renderRetention(d.retention); }
   catch(_){ $("#leaks").innerHTML='<div class="empty">아티팩트 분석 불러오기 실패</div>'; }
 }
 function renderLeaks(d){
@@ -665,6 +665,40 @@ function renderAttrib(d){
       ${note}
       <div class="ameta">${who} <span class="ats">FS ${esc(r.fs_mtime||"-")} ↔ transcript ${esc(r.transcript_ts||"-")}</span></div>
       ${src}</div>`;
+  }).join("");
+}
+
+/* ---------- MCP 연결 흔적(설정 vs 실사용) + tmp 보존기간 ----------
+   엔진/API가 단일 진실원천 — JS 재집계 금지(값 그대로 렌더). XSS: 모든 동적 문자열 esc(). */
+async function loadMcp(){
+  const box=$("#mcp"); if(!box)return;
+  try{
+    const d=await jget("/api/mcp");
+    let html="";
+    if(d.used_unconfigured&&d.used_unconfigured.length){
+      html+=`<div class="warn">⚠ 설정 없이 사용된 서버: ${d.used_unconfigured.map(esc).join(", ")}</div>`;
+    }
+    html+=`<div class="sub">설정된 서버 ${(d.configs?d.configs.length:0)}개</div>`;
+    html+=(d.configs||[]).map(c=>
+      `<div class="row"><b>${esc(c.server)}</b> <span class="muted">(${esc(c.scope)})</span> ${esc(c.command||"")}`+
+      (c.env_keys&&c.env_keys.length?` <span class="muted">env: ${c.env_keys.map(esc).join(",")}</span>`:"")+
+      `</div>`).join("");
+    html+=`<div class="sub">실호출 ${(d.usage?d.usage.length:0)}종</div>`;
+    html+=(d.usage||[]).map(u=>
+      `<div class="row">${esc(u.server)}__${esc(u.tool)} <span class="muted">×${esc(u.count)}</span></div>`).join("");
+    if(d.configured_unused&&d.configured_unused.length){
+      html+=`<div class="sub muted">설정O 미사용: ${d.configured_unused.map(esc).join(", ")}</div>`;
+    }
+    box.innerHTML=html||'<span class="muted">MCP 흔적 없음</span>';
+  }catch(_){ box.innerHTML='<span class="muted">불러오기 실패</span>'; }
+}
+function renderRetention(rows){
+  const box=$("#retention"); if(!box)return;
+  if(!rows||!rows.length){ box.innerHTML='<span class="muted">tmp 잔존 없음</span>'; return; }
+  box.innerHTML=rows.map(r=>{
+    const soon=r.expires_in_days>0&&r.expires_in_days<=7;   // 만료 임박(≤7일) 경고 강조
+    return `<div class="row${soon?" warn":""}">${esc(r.path)} `+
+      `<span class="muted">나이 ${esc(r.age_days)}d · 만료 ${r.expires_in_days>0?esc(r.expires_in_days)+"d 후":"경과"}</span></div>`;
   }).join("");
 }
 /* ---------- 컬럼 폭 드래그 리사이즈(좌|중, 중|우 경계 거터) ---------- */
@@ -717,6 +751,7 @@ async function boot(){
     srcActive=null;                           // 집계는 전체 기준(소스필터는 EVENTS 로드 후 활성)
     renderStats();renderHeatmap();renderDonut();renderDateJump();renderFiles();
     loadArtifacts();                          // 아티팩트 패널(점진 — EVENTS 무관, await 안 함)
+    loadMcp();                                 // MCP 연결흔적 패널(점진 — await 안 함)
     $("#tlscroll").innerHTML='<div class="empty">타임라인 불러오는 중… (전체 이벤트 로드)</div>';
     setCaseChip(true);
     addMsg("ai",`기록 로드 완료. 총 <b>${SRV_STATS.total}</b>건 · bypass 모드 자율 행위 <b>${SRV_STATS.bypass}</b>건. 무엇을 조사할까요?`);

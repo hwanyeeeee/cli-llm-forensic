@@ -177,8 +177,9 @@ def test_forensic_scan_contract():
     # (event, root) 리스트는 scan이 조립. 빈 입력서 키/정렬만 확인(tmp_dirs=[] 주입해 머신 tmp 비스캔=테스트 결정성).
     out = forensic_scan([], tmp_dirs=[])
     assert set(out) == {"scanned", "missing", "tmp_scanned", "tmp_roots",
-                        "errors", "hashes", "attribution"}
+                        "errors", "hashes", "attribution", "retention"}
     assert out["hashes"] == [] and out["attribution"] == [] and out["errors"] == []
+    assert out["retention"] == []
 
 
 def test_scan_to_engine_default_unchanged():
@@ -202,3 +203,30 @@ def test_scan_to_engine_collect_artifacts_returns_pairs():
     assert isinstance(e, Event) and isinstance(root, str)
     # ev_root의 Event는 엔진의 Event와 동일 객체(태그 포함 최종 상태) — 입력순 누적.
     assert ev_root[0][0] is eng.events[0]
+
+
+# ── Task 7: tmp 보존기간(retention) ────────────────────────────────
+from clfx.analyze.artifacts import tmp_retention
+
+
+def test_tmp_retention_reports_age_and_expiry(tmp_path):
+    f = tmp_path / "leak.txt"
+    f.write_text("secret payload", encoding="utf-8")
+    ten_days_ago = f.stat().st_mtime           # 실제 mtime
+    now = ten_days_ago + 10 * 86400            # 10일 후를 '현재'로 주입(결정성)
+    out = tmp_retention([str(tmp_path)], now_epoch=now)
+    rows = out["retention"]
+    assert len(rows) == 1                       # 모든 tmp 정규파일(무skip)
+    r = rows[0]
+    assert r["path"] == str(f)
+    assert abs(r["age_days"] - 10.0) < 0.01     # 나이 ≈ 10일
+    assert abs(r["expires_in_days"] - 20.0) < 0.01  # 30 - 10 = 20일 잔여
+    assert out["errors"] == []
+
+
+def test_tmp_retention_expired_clamps_to_zero(tmp_path):
+    f = tmp_path / "old.txt"
+    f.write_text("x", encoding="utf-8")
+    now = f.stat().st_mtime + 40 * 86400        # 40일 경과(>30 보존)
+    out = tmp_retention([str(tmp_path)], now_epoch=now)
+    assert out["retention"][0]["expires_in_days"] == 0   # 만료 → 0 클램프
