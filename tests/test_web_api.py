@@ -1,6 +1,6 @@
 from clfx.event import Event, Source
 from clfx.query.engine import QueryEngine
-from clfx.web.api import events_payload, query_payload
+from clfx.web.api import events_payload, query_payload, stats_payload
 
 
 def _ev(ts, actor, action, target, preview="", tags=None, file="h.jsonl", line=1):
@@ -25,6 +25,11 @@ def test_events_payload_sorted_and_complete():
     first = p["events"][0]
     assert first["source"] == {"file": "h.jsonl", "line": 7}
     assert "‹secret›" in first["preview"]
+
+
+def test_stats_payload_counts():
+    s = stats_payload(_engine())
+    assert s == {"total": 3, "user": 1, "agent": 2, "bypass": 0}
 
 
 def test_query_payload_who_read_env(monkeypatch):

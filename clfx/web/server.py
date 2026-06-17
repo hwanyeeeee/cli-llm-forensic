@@ -8,7 +8,7 @@ from urllib.parse import urlparse, parse_qs
 
 from clfx.event import Event
 from clfx.query.engine import QueryEngine
-from clfx.web.api import (events_payload, query_payload,
+from clfx.web.api import (events_payload, query_payload, stats_payload,
                           activity_payload, files_payload, keywords_payload,
                           sources_payload, scan_to_engine)
 
@@ -72,6 +72,12 @@ def make_handler(state):
                 return
             if u.path == "/api/scan/progress":
                 self._json(state.scan); return
+            if u.path == "/api/stats":               # 경량 타일 집계(events 직렬화 전 즉시 표시)
+                try:
+                    self._json(stats_payload(state.engine))
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
             if u.path == "/api/events":
                 try:
                     self._json(events_payload(state.engine))
