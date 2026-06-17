@@ -16,7 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 진행률 바 완료 → 사용자 재빌드 대기
+- 위치: 진행률 바 정확도 개선(파일단위) 진행 중
+- 후속: 사용자 지적 — %가 소스개수 기준이라 windows 끝나면 즉시 50% 후 WSL(UNC 느림) 내내 고정. **파일개수 기준으로 위임**: ClaudeSource on_file 훅(_iter_jsonl chokepoint)+사전 파일수 카운트(parse+enrich 두 패스), scan_to_engine 파일단위 on_progress, UI 경과시간/ETA. cli.parse_source_tagged 분리(DRY). 결정적 병합 유지.
 - 완료·커밋: 진행률 바(on_progress+/api/scan/progress+폴링 % 바, codex R1→CLEAN, 169 green, final-verify OK). **사용자 재빌드 1회로 누적 전부 적용**: GUI 창·WSL탐지(wsl.exe -l -q)·gemma4 대화형(모든질의)·exists 필터·병렬 스캔·진행률 바. 다음: B plan(복구·해시·④JOIN)→C(MCP·tmp). 미push(다수 ahead).
 - 수행 중: **GUI+WSL탐지+gemma4 대화형 전부 완료·커밋**(codex R1~R2→CLEAN, 163 green, final-verify OK). 모든 질의 gemma4 대화형(answer_only_summary: 웹=항상, CLI=요약만), 빈결과 LLM스킵, 증거=엔진 불변, localhost ollama. **사용자: build-exe.bat 재빌드 1회 → WSL탐지+대화형 gemma4+빈결과안전 전부 적용.** 스모크는 clfx serve만(launcher.py는 webbrowser.open 폴백→Windows Chrome 팝업, 금지). 다음: B plan(복구·해시·④JOIN)→C(MCP·tmp=\\wsl.localhost\Ubuntu\tmp). 미push(32 ahead).
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
