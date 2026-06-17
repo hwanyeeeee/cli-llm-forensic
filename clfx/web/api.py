@@ -15,15 +15,17 @@ _DEFAULT_LLM = object()   # query_payload llm 미지정 센티넬 — 웹은 mak
 
 
 def events_payload(engine):
-    """전체 이벤트를 ts 정렬해 직렬화(초기 타임라인용).
+    """전체 이벤트를 ts 정렬해 직렬화(초기 타임라인용). 엔진 메모이즈(재요청 시 풀스캔 회피).
     경계서 ts를 norm_ts로 통일(I1) — analyzed.jsonl에 epoch-ms int 섞여도 항상 ISO str/None →
     app.js slice/includes 안전(int ts crash 차단). timeline() 정렬 계약은 유지."""
-    out = []
-    for e in engine.timeline():
-        d = e.to_dict()
-        d["ts"] = norm_ts(d.get("ts"))
-        out.append(d)
-    return {"events": out, "count": len(out)}
+    def _build():
+        out = []
+        for e in engine.timeline():        # sorted_events 캐시 사용
+            d = e.to_dict()
+            d["ts"] = norm_ts(d.get("ts"))
+            out.append(d)
+        return {"events": out, "count": len(out)}
+    return engine._memo("events_payload", _build)
 
 
 def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False):
@@ -66,8 +68,8 @@ def files_payload(engine):
 
 
 def keywords_payload(engine):
-    """키워드 빈도 집계 — UI 도넛용(⑥). 결정적, 수사사전·패턴 포함."""
-    return keyword_stats(engine.events)
+    """키워드 빈도 집계 — UI 도넛용(⑥). 결정적, 수사사전·패턴 포함. 엔진 메모이즈(재요청 풀스캔 회피)."""
+    return engine._memo("keywords", lambda: keyword_stats(engine.events))
 
 
 def scan_to_engine(roots, on_progress=None):

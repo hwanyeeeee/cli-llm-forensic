@@ -9,7 +9,18 @@ class QueryEngine:
     증거 주장은 전적으로 이 엔진이 담당(LLM 없이도 동작·안 흔들림)."""
 
     def __init__(self, events):
-        self.events = list(events)
+        self.events = list(events)        # raw 입력순서 — I2 인용순서 보존(절대 in-place 정렬 금지)
+        self._cache = {}                  # 무거운 집계 메모이즈(엔진 불변 → 무효화 불요; 새 스캔=새 엔진=새 캐시)
+
+    def _memo(self, key, fn):
+        if key not in self._cache:
+            self._cache[key] = fn()
+        return self._cache[key]
+
+    @property
+    def sorted_events(self):
+        """timeline 정렬을 1회만(events_payload 등 가장 흔한 경로). self.events(raw)는 불변."""
+        return self._memo("sorted", lambda: _sort(self.events))
 
     def search(self, kw, actor=None):
         # actor=None=전체(기존 동작 보존). set이면 그 주체만(§3 actor 질의).
@@ -38,6 +49,8 @@ class QueryEngine:
     def timeline(self, start=None, end=None, actor=None):
         # range 필터도 ts_key로 비교 — raw e.ts가 epoch-ms int면 str start/end와 비교 시
         # TypeError("'>=' not supported between int and str"). ts_key가 양쪽을 datetime으로 통일.
+        if start is None and end is None and actor is None:
+            return self.sorted_events          # 캐시(events_payload 초기 로드 — 가장 흔한 경로)
         evs = self.events
         if start:
             s = ts_key(start)
@@ -50,6 +63,10 @@ class QueryEngine:
         return _sort(evs)
 
     def activity(self, by="day"):
+        by = "day" if by not in ("day", "month") else by   # 키 정규화(잘못된 by가 캐시 오염 방지)
+        return self._memo(f"activity:{by}", lambda: self._activity(by))
+
+    def _activity(self, by):
         """활동량 집계(actor 분리). by=day → ts[:10], month → ts[:7].
         반환: [{"bucket": "2026-06-11", "user": N, "agent": N, "total": N}, ...] (bucket 정렬, unknown 맨뒤)."""
         n = 10 if by == "day" else 7
@@ -67,6 +84,9 @@ class QueryEngine:
     _FILE_ACTIONS = ("read", "write", "paste", "upload")
 
     def files(self):
+        return self._memo("files", self._files)
+
+    def _files(self):
         """접근 파일 목록(actor 분리·action별·태그). read/write/paste/upload만.
         반환: [{"target", "count", "by_actor", "actions": {action:n}, "tags": [..]}, ...] (접근 많은 순)."""
         agg = {}
