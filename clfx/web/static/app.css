@@ -271,3 +271,8 @@ header{
 .scan-src .na{margin-left:auto;font-size:11px;color:var(--secret);}
 #scan-go{margin-top:8px;padding:9px 18px;border-radius:8px;border:0;background:#238636;color:#fff;cursor:pointer;font-size:14px;}
 #scan-status{margin-top:12px;font-size:13px;color:var(--muted);}
+#scan-progress{margin-top:14px;}
+.bar-track{height:8px;background:var(--border,#30363d);border-radius:6px;overflow:hidden;}
+.bar-fill{height:100%;width:0;background:#238636;border-radius:6px;transition:width .25s ease;}
+.bar-fill.active{background-image:linear-gradient(90deg,#238636,#3fb950,#238636);background-size:200% 100%;animation:barflow 1.1s linear infinite;}
+@keyframes barflow{from{background-position:200% 0;}to{background-position:0 0;}}

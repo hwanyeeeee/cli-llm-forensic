@@ -479,27 +479,51 @@ $("#suggest").addEventListener("click",e=>{if(e.target.classList.contains("sg"))
 $("#rescan").addEventListener("click",()=>showScan());
 $("#scan-go").addEventListener("click",async()=>{
   const roots=[...document.querySelectorAll("#scan-sources input:checked")].map(c=>c.dataset.path);
-  const st=$("#scan-status");
-  if(!roots.length){st.textContent="소스를 1개 이상 선택하세요.";return;}
-  st.textContent="스캔 중…";
+  if(!roots.length){$("#scan-status").textContent="소스를 1개 이상 선택하세요.";return;}
+  $("#scan-go").disabled=true;
+  showProgress(0,"스캔 준비…",true);
+  let polling=true;
+  (async()=>{                                   // POST와 동시에 진행률 폴링(ThreadingHTTPServer)
+    while(polling){
+      try{
+        const pr=await (await fetch("/api/scan/progress")).json();
+        const pct=pr.total?Math.round(pr.done/pr.total*100):0;
+        if(!pr.finished) showProgress(pct, `파싱 중 ${pr.done}/${pr.total} · 누적 ${pr.events||0}건`, true);
+      }catch(_){}
+      await new Promise(r=>setTimeout(r,300));
+    }
+  })();
   try{
     const r=await fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roots})});
     const d=await r.json();
+    polling=false;
     if(!d.ok)throw new Error(d.error||"스캔 실패");
-    const by=Object.entries(d.by_origin||{}).map(([k,v])=>`${k} ${v}`).join(" · ");
-    st.textContent=`완료: ${d.count}건${by?" ("+by+")":""}`;
+    showProgress(100, `완료: ${d.count}건`, false);
     $("#chatlog").innerHTML="";       // 재로드 시 코파일럿 인사 중복 방지
     await boot();                     // 채워진 엔진으로 대시보드 재로드
-  }catch(err){st.textContent="스캔 실패: "+esc(err.message);}
+  }catch(err){
+    polling=false; $("#scan-go").disabled=false;
+    hideProgress(); $("#scan-status").textContent="스캔 실패: "+esc(err.message);
+  }
 });
 
 /* ---------- util ---------- */
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
+/* ---------- 스캔 진행률 바 ---------- */
+function showProgress(pct,label,active){
+  const w=$("#scan-progress"); w.hidden=false;
+  const bar=$("#scan-bar"); bar.style.width=pct+"%"; bar.classList.toggle("active",!!active);
+  $("#scan-status").textContent=label||"";
+}
+function hideProgress(){ $("#scan-progress").hidden=true; $("#scan-bar").classList.remove("active"); }
+
 /* ---------- 스캔 화면(데이터 없을 때) ---------- */
 async function showScan(){
   $(".wrap").style.display="none";
   $("#rescan").hidden=true;
+  $("#scan-go").disabled=false;     // 재진입 시 항상 활성(0건 스캔/다시스캔 stuck 방지)
+  hideProgress();
   const scr=$("#scan-screen"); scr.hidden=false;
   const box=$("#scan-sources"); box.innerHTML="<div class='muted'>소스 탐지 중…</div>";
   $("#scan-status").textContent="";
