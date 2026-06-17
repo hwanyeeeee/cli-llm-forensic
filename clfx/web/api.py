@@ -104,11 +104,13 @@ def keywords_payload(engine):
     return engine._memo("keywords", lambda: keyword_stats(engine.events))
 
 
-def scan_to_engine(roots, on_progress=None):
+def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     """파일단위 병렬 parse(UNC 지연 중첩) + 단일 읽기서 bypass sessionId 수집(enrich 2차 재읽기 제거).
     무손실·결정적: root 입력순 → 파일순(jsonl_files: history먼저→sorted transcripts) → 파일내 line순 조립(I2).
     기존 순차(parse_source_tagged+enrich)와 이벤트 전량·순서·태그 동일 — 속도만 개선.
-    on_progress(files_done, files_total, events, current_root): 진행=파일 단위(단일패스 → 중복카운트 없음)."""
+    on_progress(files_done, files_total, events, current_root): 진행=파일 단위(단일패스 → 중복카운트 없음).
+    collect_artifacts=False(기본): QueryEngine만 반환(기존 100% 동일 — 회귀 불변).
+    True: (QueryEngine, ev_root) 반환. ev_root=[(Event, root_str)...] 입력순 누적(enrich 끝난 최종 태그 포함, 같은 객체)."""
     from clfx.cli import _origin_label          # 지역 import — cli↔web.api 순환 회피
     from clfx.parser import parse_file
 
@@ -116,7 +118,7 @@ def scan_to_engine(roots, on_progress=None):
     if not roots:
         if on_progress:
             on_progress(0, 0, 0, None)
-        return QueryEngine([])
+        return (QueryEngine([]), []) if collect_artifacts else QueryEngine([])
     srcs = [ClaudeSource(r) for r in roots]
     file_lists = [s.jsonl_files() for s in srcs]            # [history(존재시), *sorted transcripts]
     hists = [s.root / "history.jsonl" for s in srcs]
@@ -145,6 +147,7 @@ def scan_to_engine(roots, on_progress=None):
             results[(ri, fi)] = evs
             bypass_by_root[ri] |= byp                       # set union — 순서무관 결정적
     events = []
+    ev_root = []                                            # collect_artifacts=True일 때만 채워 반환
     for ri, root in enumerate(roots):                       # 입력 루트 순서(I2)
         tag = f"origin:{_origin_label(root)}"
         root_evs = []
@@ -155,9 +158,24 @@ def scan_to_engine(roots, on_progress=None):
                 root_evs.append(e)
         enrich(root_evs, srcs[ri], bypass=bypass_by_root[ri])   # 수집된 bypass로 태깅(재읽기 X)
         events.extend(root_evs)
+        if collect_artifacts:
+            ev_root.extend((e, str(root)) for e in root_evs)    # enrich 끝난 최종 상태 객체 + root 문자열
     if on_progress:
         on_progress(total_files, total_files, len(events), None)
-    return QueryEngine(events)
+    engine = QueryEngine(events)
+    return (engine, ev_root) if collect_artifacts else engine
+
+
+def forensic_scan(events_with_root, roots=None, tmp_dirs=None):
+    """아티팩트 포렌식 단일 진입점 — hash_clusters(①복제/유출) + attribution_join(④주체왜곡) 합본.
+    events_with_root=[(Event, root_str)]. roots None이면 events_with_root서 distinct root를 sorted로 도출.
+    read-only FS만(artifacts 계층 위임). 반환 키: scanned,missing,tmp_scanned,tmp_roots,errors,hashes,attribution."""
+    from clfx.analyze import artifacts
+    if roots is None:
+        roots = sorted({root for _e, root in (events_with_root or [])})
+    out = artifacts.hash_clusters(events_with_root, roots=roots, tmp_dirs=tmp_dirs)
+    out["attribution"] = artifacts.attribution_join(events_with_root)
+    return out
 
 
 def sources_payload():

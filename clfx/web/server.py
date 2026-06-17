@@ -10,7 +10,7 @@ from clfx.event import Event
 from clfx.query.engine import QueryEngine
 from clfx.web.api import (events_payload, query_payload, stats_payload,
                           activity_payload, files_payload, keywords_payload,
-                          sources_payload, scan_to_engine)
+                          sources_payload, scan_to_engine, forensic_scan)
 
 def _static_dir():
     """정적 파일 디렉터리. PyInstaller onefile은 sys._MEIPASS에 추출되므로 그 경로 우선."""
@@ -31,6 +31,10 @@ class ServerState:
     def __init__(self, engine):
         self.engine = engine
         self.scan = {"total": 0, "done": 0, "events": 0, "current": None, "finished": True, "error": None}
+        # 아티팩트 포렌식 결과(POST /api/scan서 forensic_scan으로 갱신, GET /api/artifacts가 읽음).
+        # FS 분석 실패해도 빈 계약 유지(스캔 응답은 성공).
+        self.artifacts = {"scanned": 0, "missing": 0, "tmp_scanned": 0, "tmp_roots": [],
+                          "errors": [], "hashes": [], "attribution": []}
 
 
 def make_handler(state):
@@ -116,6 +120,12 @@ def make_handler(state):
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
+            if u.path == "/api/artifacts":
+                try:
+                    self._json(state.artifacts)
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
             self._json({"error": "not found"}, 404)
 
         def do_POST(self):
@@ -132,8 +142,13 @@ def make_handler(state):
                     def _prog(d, t, ev, cur):
                         state.scan.update(done=d, total=t, events=ev, current=cur)
 
-                    eng = scan_to_engine(roots, on_progress=_prog)
+                    eng, ev_root = scan_to_engine(roots, on_progress=_prog, collect_artifacts=True)
                     state.engine = eng                       # 엔진 교체
+                    try:                                     # FS 실패해도 스캔 응답은 성공(빈 계약 유지)
+                        state.artifacts = forensic_scan(ev_root, roots=roots)
+                    except Exception:
+                        state.artifacts = {"scanned": 0, "missing": 0, "tmp_scanned": 0,
+                                           "tmp_roots": [], "errors": [], "hashes": [], "attribution": []}
                     import threading
                     from clfx.query.llm import prewarm
                     threading.Thread(target=prewarm, daemon=True).start()   # 모델 미리 로드(쿼리 전 워밍, fire-and-forget)
