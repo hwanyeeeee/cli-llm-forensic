@@ -89,7 +89,12 @@ function kwCounts(){const m={};EVENTS.forEach(e=>(e.kw||[]).forEach(k=>m[k]=(m[k
 const $=s=>document.querySelector(s);
 let SEL=null;
 const active={user:true,agent:true,"bypass-mode":true};
-const openDays={};
+const openDays={};        // 날짜→펼침 여부(true만 펼침, 기본 접힘). 카드는 펼친 날만 생성(가상화·무손실).
+const dayShown={};        // 날짜→현재 렌더한 카드 수(페이지네이션, TL_PAGE 단위 '더 보기'). 전 이벤트 도달 가능.
+const TL_PAGE=300;        // 한 날 1회 렌더 카드 수(나머지는 '더 보기'로 점진 — 이벤트 절대 안 버림).
+let TL_GROUPS={};         // 마지막 렌더의 날짜→이벤트인덱스[] (토글/더보기서 재계산 없이 재사용).
+let TL_AUTOOPENED=false;  // 데이터 로드당 1회 최근 날 자동 펼침(boot서 재무장).
+let TARGET_IDX=null;      // target→첫 등장 EVENTS 인덱스 Map(renderFiles O(1) 상세연결).
 let srcActive=null;   // 활성 소스(origin) 집합. null/미설정이면 전체 통과.
 
 /* ---------- source(origin) filter — 단일 PC의 WSL/Windows 출처 구분 ---------- */
@@ -107,11 +112,18 @@ function renderSrcFilters(){
 
 /* ---------- stats ---------- */
 function renderStats(){
-  const evs=EVENTS.filter(inSrc);   // 소스 토글 반영(EVENTS 기반 — 통계는 선택 소스 범위)
-  $("#st-total").textContent=evs.length;
-  $("#st-bypass").textContent=evs.filter(e=>e.tags.includes("bypass-mode")).length;
-  $("#st-user").textContent=evs.filter(e=>e.actor==="user").length;
-  $("#st-agent").textContent=evs.filter(e=>e.actor==="agent").length;
+  // 소스 토글 반영(EVENTS 기반). 11.7만 전량 1패스 집계(4중 filter 스캔 제거 — 멈춤 완화).
+  let total=0,byp=0,u=0,a=0;
+  for(const e of EVENTS){
+    if(!inSrc(e))continue;
+    total++;
+    if(e.tags.includes("bypass-mode"))byp++;
+    if(e.actor==="user")u++; else if(e.actor==="agent")a++;
+  }
+  $("#st-total").textContent=total;
+  $("#st-bypass").textContent=byp;
+  $("#st-user").textContent=u;
+  $("#st-agent").textContent=a;
 }
 
 /* ---------- date helpers ---------- */
@@ -160,7 +172,7 @@ function renderHeatmap(){
 /* ---------- 날짜 점프 (드롭다운 + 히트맵 공용) ---------- */
 function jumpToDay(d){
   if(!d)return;
-  openDays[d]=true;renderTimeline();
+  openDays[d]=true;dayShown[d]=TL_PAGE;renderTimeline();
   const g=document.querySelector(`.daygrp[data-day="${d}"]`);
   if(g)g.scrollIntoView({behavior:"smooth",block:"start"});
   document.querySelectorAll(".hcell").forEach(c=>c.classList.toggle("on",c.dataset.d===d));
@@ -218,7 +230,7 @@ function renderFiles(){
     // 엔진 접근파일 집계(actor 분리·횟수·태그 서버값) 그대로 — JS 재집계 아님.
     rows=SRV_FILES.files.map(f=>{
       const ba=f.by_actor||{};
-      const idx=EVENTS.findIndex(e=>e.target===f.target);   // 상세 패널 연결(표시 이벤트 매핑; 없으면 -1)
+      const idx=(TARGET_IDX&&TARGET_IDX.has(f.target))?TARGET_IDX.get(f.target):-1;   // 상세 연결 O(1)(첫 등장 인덱스)
       return [f.target,{u:ba.user||0,a:ba.agent||0,tags:cleanTags(f.tags),idx}];
     });
   }else{       // !LIVE(MOCK/offline) 전용 JS 파생
@@ -265,17 +277,40 @@ function evCard(e,i){
       ${e.preview?`<div class="cprev">${esc(e.preview)}</div>`:""}
     </div></div>`;
 }
+// 펼친 날 카드 HTML(페이지네이션: TL_PAGE까지 + 나머지 '더 보기'). 전 이벤트 도달 가능(무손실).
+function dayBodyHTML(d){
+  const idxs=TL_GROUPS[d]||[];
+  const shown=Math.min(dayShown[d]||TL_PAGE, idxs.length);
+  let html=idxs.slice(0,shown).map(i=>evCard(EVENTS[i],i)).join("");
+  const rem=idxs.length-shown;
+  if(rem>0) html+=`<button class="more" data-day="${d}">더 보기 (남은 ${rem}건)</button>`;
+  return `<div class="timeline">${html}</div>`;
+}
+// 한 날 그룹만 갱신(전체 재빌드 금지). 펼치면 카드 렌더, 접으면 비움.
+function renderDayGroup(d){
+  const g=document.querySelector(`.daygrp[data-day="${d}"]`);
+  if(!g)return;
+  const open=openDays[d]===true;
+  g.classList.toggle("open",open);
+  g.querySelector(".daybody").innerHTML=open?dayBodyHTML(d):"";
+}
 function renderTimeline(){
   const groups={};
   EVENTS.forEach((e,i)=>{if(passFilter(e)){const d=dayOf(e.ts);(groups[d]=groups[d]||[]).push(i);}});
+  TL_GROUPS=groups;
   const dates=Object.keys(groups).sort();
   if(!dates.length){$("#tlscroll").innerHTML=`<div class="empty">필터에 맞는 이벤트 없음</div>`;return;}
+  if(!TL_AUTOOPENED){                       // 데이터 로드당 1회: 가장 최근 날만 펼침(초기 DOM 최소)
+    const last=dates[dates.length-1];
+    openDays[last]=true; dayShown[last]=TL_PAGE; TL_AUTOOPENED=true;
+  }
+  // 모든 날 헤더+건수는 전체 데이터 기준 항상 렌더(무손실). 카드는 펼친 날만 생성(가상화).
   $("#tlscroll").innerHTML=dates.map(d=>{
     const idxs=groups[d];
-    const u=idxs.filter(i=>EVENTS[i].actor==="user").length;
+    let u=0,byp=0;
+    for(const i of idxs){if(EVENTS[i].actor==="user")u++; if(EVENTS[i].tags.includes("bypass-mode"))byp++;}
     const a=idxs.length-u;
-    const byp=idxs.filter(i=>EVENTS[i].tags.includes("bypass-mode")).length;
-    const open=openDays[d]!==false;
+    const open=openDays[d]===true;
     return `<div class="daygrp ${open?'open':''}" data-day="${d}">
       <div class="dayhdr">
         <span class="caret">▶</span>
@@ -286,7 +321,7 @@ function renderTimeline(){
           <span class="pill">${idxs.length}건</span>
         </span>
       </div>
-      <div class="daybody"><div class="timeline">${idxs.map(i=>evCard(EVENTS[i],i)).join("")}</div></div>
+      <div class="daybody">${open?dayBodyHTML(d):""}</div>
     </div>`;
   }).join("");
 }
@@ -304,7 +339,9 @@ function renderDetail(i){
     <div class="row"><span class="k">세션</span><span class="v">${esc(e.session||"")}</span></div>
     <div class="row"><span class="k">출처</span><span class="v"><span class="src">${esc(e.src)}</span></span></div>
     <pre>${esc(e.preview||"(preview 없음)")}</pre>`;
-  renderTimeline();renderFiles();
+  // 전체 재빌드 금지(클릭마다 멈춤 원인). .sel만 이동(현재 DOM에 있는 카드/파일행에).
+  document.querySelectorAll(".ev.sel,.frow.sel").forEach(el=>el.classList.remove("sel"));
+  document.querySelectorAll(`.ev[data-i="${i}"],.frow[data-i="${i}"]`).forEach(el=>el.classList.add("sel"));
 }
 
 /* ---------- events ---------- */
@@ -320,8 +357,16 @@ $("#srcfilters").addEventListener("click",ev=>{
   renderAll();   // 소스 토글 → 타임라인·통계 갱신(EVENTS 기반). 서버집계(히트맵/도넛/파일)는 전체 범위 유지.
 });
 $("#tlscroll").addEventListener("click",ev=>{
+  const more=ev.target.closest(".more");
+  if(more){const d=more.dataset.day;dayShown[d]=(dayShown[d]||TL_PAGE)+TL_PAGE;renderDayGroup(d);return;}  // 다음 페이지 append
   const hdr=ev.target.closest(".dayhdr");
-  if(hdr){const g=hdr.parentElement,d=g.dataset.day;openDays[d]=!g.classList.contains("open");renderTimeline();return;}
+  if(hdr){
+    const d=hdr.parentElement.dataset.day;
+    openDays[d]=!(openDays[d]===true);
+    if(openDays[d])dayShown[d]=TL_PAGE;        // 펼칠 때 페이지 초기화
+    renderDayGroup(d);                          // 그 날 그룹만 갱신(전체 재빌드 금지)
+    return;
+  }
   const c=ev.target.closest(".ev");if(c)renderDetail(+c.dataset.i);
 });
 $("#files").addEventListener("click",ev=>{const c=ev.target.closest(".frow");if(c)renderDetail(+c.dataset.i);});
@@ -567,6 +612,9 @@ async function boot(){
   $("#scan-screen").hidden=true; $(".wrap").style.display="";   // 대시보드 복귀(재스캔 후)
   LIVE=!!live;
   EVENTS=(live||MOCK).map(normalize);
+  TARGET_IDX=new Map();               // target→첫 등장 인덱스(renderFiles 상세연결 O(1))
+  EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
+  TL_AUTOOPENED=false;                // 새 데이터 → 최근 날 자동 펼침 1회 재무장
   if(LIVE) await loadAggregates();   // 집계 패널 데이터 출처를 엔진으로(JS 재집계 금지)
   srcActive=new Set(originLabels());  // 소스 토글 기본 전체 on
   renderSrcFilters();
