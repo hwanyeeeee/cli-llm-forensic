@@ -42,4 +42,5 @@
 | `superpowers/plans/2026-06-17-clfx-exe-스캔UX.md` | exe 인자0 실행→브라우저 자동→스캔화면 소스선택→인메모리 parse+analyze→대시보드 (자동탐지·/api/scan·launcher·PyInstaller, Task 1~5) |
 | `llm-handoff.md` | LLM 파트 인계(설계원칙·현재흐름·gemma 지시준수 과제·codex 지적 7건·보안) — 담당 팀원 인수용 |
 | `superpowers/plans/2026-06-18-clfx-B-아티팩트-해시귀속.md` | B단계 ①+④ 구현 플랜(read-only FS 해시대조·복제유출탐지·FS↔transcript JOIN 주체왜곡보정, Task1~6 TDD) |
+| `superpowers/plans/2026-06-18-clfx-C-MCP통합-tmp보존.md` | C단계 ⑧ 구현 플랜(MCP 설정·실사용 통합·used_unconfigured 신호 + tmp 보존기간, Prefetch 보류, Task1~10 TDD) |
 | `plan.md` / `STATE.md` | 개발 진행판 (개발 시작 후) |
