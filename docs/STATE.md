@@ -15,11 +15,7 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 5단계 피드백확장 A (분석·시각화)
-- 수행 중: A단계 R1~R5 BLOCK 수정완료(acceptance 32, 전체 117 pass). codex R6 RC=1 BLOCK3건 → 약속한 하드 stop 지점. 티어: app.js:423(LIVE fetch실패시 JS폴백=단일진실위반)·app.js:308(unknown-ts 스파크라인 NaN)=팀원 UI영역, keywords.py:27(한국어 조사 미분리 "비밀번호를"이 사전 미스)=백엔드 품질. crash아닌 polish/edge/품질 티어. 사용자 결정 대기(## ❓).
+- 수행 중: 사용자 결정 (a)=최종 1라운드. panel1이 R6 BLOCK3건 수정(app.js LIVE 3갈래 분기·팝업 unknown-ts 필터·keywords 한국어 조사분리). R7 검증 중(acceptance+codex).
 - 후속(승인됨): (a)불변식 체크리스트 +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan.
 - 재시도: 0
-- 리뷰라운드: 6 (R6 하드 stop 도달 — 사용자 결정 필요)
-
-## ❓ 결정 필요
-- 항목: codex R6 BLOCK 3건(약속한 하드 stop). 남은 건 crash 아닌 polish/edge/품질.
-- 선택지: (a) 최종 1라운드 3건 다 수정 후 종료 / (b) keywords 품질만 백엔드 수정+Stage5 종료, app.js 2건은 팀원 UI 분리 / (c) 백엔드 현상태 종료, app.js·keypoint 후속
+- 리뷰라운드: 6 (R7 검증; 또 BLOCK이면 하드 stop)
