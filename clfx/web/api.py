@@ -167,15 +167,28 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
 
 
 def forensic_scan(events_with_root, roots=None, tmp_dirs=None):
-    """아티팩트 포렌식 단일 진입점 — hash_clusters(①복제/유출) + attribution_join(④주체왜곡) 합본.
-    events_with_root=[(Event, root_str)]. roots None이면 events_with_root서 distinct root를 sorted로 도출.
-    read-only FS만(artifacts 계층 위임). 반환 키: scanned,missing,tmp_scanned,tmp_roots,errors,hashes,attribution."""
+    """아티팩트 포렌식 단일 진입점 — hash_clusters(①복제/유출) + attribution_join(④주체왜곡)
+    + tmp_retention(C: 보존기간) 합본. events_with_root=[(Event, root_str)].
+    roots None이면 events_with_root서 distinct root를 sorted로 도출.
+    tmp_dirs None이면 artifacts.tmp_roots(roots)로 도출. read-only FS만(artifacts 계층 위임).
+    반환 키: scanned,missing,tmp_scanned,tmp_roots,errors,hashes,attribution,retention."""
     from clfx.analyze import artifacts
     if roots is None:
         roots = sorted({root for _e, root in (events_with_root or [])})
+    if tmp_dirs is None:
+        tmp_dirs = artifacts.tmp_roots(roots)
     out = artifacts.hash_clusters(events_with_root, roots=roots, tmp_dirs=tmp_dirs)
     out["attribution"] = artifacts.attribution_join(events_with_root)
+    ret = artifacts.tmp_retention(tmp_dirs)
+    out["retention"] = ret["retention"]
+    out["errors"] = sorted(out["errors"] + ret["errors"], key=lambda e: e["path"])  # 보존 스캔 실패도 병합
     return out
+
+
+def mcp_payload(engine, roots):
+    """MCP 통합 페이로드 — 설정 스캔 + 엔진 이벤트 실사용 대조. /api/mcp 단일 진입점."""
+    from clfx.analyze import mcp as mcpmod
+    return mcpmod.mcp_summary(roots, engine.events)
 
 
 def sources_payload():

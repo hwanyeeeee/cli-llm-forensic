@@ -109,3 +109,35 @@ def test_scan_parallel_merges_all_roots(tmp_path):
     assert len(eng.events) > 0
     # 엔진은 저장 시 정렬 안 함(질의 시 정렬) → 여기선 병합 완전성만 단언.
     assert any("origin:" in t for e in eng.events for t in e.tags)
+
+
+_MCP_EMPTY = {"configs": [], "usage": [], "configured_unused": [],
+              "used_unconfigured": [], "errors": []}
+
+
+def test_serverstate_mcp_empty_contract():
+    # ServerState는 engine 인자 필수. 초기 state.mcp는 빈 계약 유지(스캔 전 GET /api/mcp 안전).
+    from clfx.web.server import ServerState
+    from clfx.query.engine import QueryEngine
+    s = ServerState(QueryEngine([]))
+    assert s.mcp == _MCP_EMPTY
+
+
+def test_api_mcp_route_returns_contract():
+    # GET /api/mcp 는 200 + 빈 계약(스캔 전). server.py 라우트 배선 증명.
+    import json, threading
+    import urllib.request, urllib.error
+    from http.server import ThreadingHTTPServer
+    from clfx.web.server import make_handler, ServerState
+    from clfx.query.engine import QueryEngine
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ServerState(QueryEngine([]))))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        port = httpd.server_address[1]
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/mcp")
+        with urllib.request.urlopen(req) as r:
+            code, body = r.status, r.read().decode("utf-8")
+        assert code == 200
+        assert json.loads(body) == _MCP_EMPTY
+    finally:
+        httpd.shutdown()

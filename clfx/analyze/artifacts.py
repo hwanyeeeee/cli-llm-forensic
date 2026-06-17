@@ -147,6 +147,41 @@ def _walk_tmp(tmp_dirs):
     return sorted(set(files)), errors
 
 
+RETENTION_DAYS = 30        # Claude tmp 보존기간 실측치(docs/실측-temp-원본보존-원리.md)
+
+
+def tmp_retention(tmp_dirs, now_epoch=None):
+    """tmp 전수 → 각 정규파일 보존기간 메타. read-only stat. _walk_tmp 재사용.
+    now_epoch: 나이 계산 기준 현재시각(테스트 주입용; None이면 time.time()).
+    반환 {"retention":[...정렬: path...], "errors":[...정렬: path...]}."""
+    import time
+    if now_epoch is None:
+        now_epoch = time.time()
+    files, walk_errors = _walk_tmp(tmp_dirs)
+    # _walk_tmp의 errors는 [{path, reason}, ...] — 그대로 누적(접근 실패 흔적 보존).
+    errors = [{"path": e["path"], "reason": e["reason"]} for e in walk_errors]
+    rows = []
+    for p in files:
+        try:
+            st = os.stat(p)
+        except OSError as e:
+            errors.append({"path": p, "reason": type(e).__name__})   # 완전성: 조용한 누락 금지
+            continue
+        age_days = (now_epoch - st.st_mtime) / 86400.0
+        expires = RETENTION_DAYS - age_days
+        rows.append({
+            "path": p,
+            "size": st.st_size,
+            "mtime": _iso(st.st_mtime),
+            "atime": _iso(st.st_atime),
+            "age_days": round(age_days, 2),
+            "expires_in_days": round(expires, 2) if expires > 0 else 0,
+        })
+    rows.sort(key=lambda r: r["path"])
+    errors.sort(key=lambda e: e["path"])
+    return {"retention": rows, "errors": errors}
+
+
 def hash_clusters(events_with_root, roots=None, tmp_dirs=None):
     """참조 파일 해시 + tmp 전수 스캔 → 동일 해시 군집(복제/유출)."""
     # 1. 참조 파일: file-action 이벤트 → resolve_existing.

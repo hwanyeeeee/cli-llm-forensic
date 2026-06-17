@@ -258,3 +258,17 @@ def test_parse_file_history_no_bypass(tmp_path):
     h.write_text(_j.dumps({"display": "x", "pastedContents": {}}) + "\n", encoding="utf-8")
     evs, byp = parse_file(ClaudeSource(str(root)), h, is_history=True)
     assert byp == set()
+
+
+def test_mcp_tool_use_emits_mcp_action(tmp_path):
+    from clfx.sources.claude import ClaudeSource
+    from clfx.parser import parse_source
+    # 픽스처를 ClaudeSource로 파싱
+    src = ClaudeSource("tests/fixtures/mcp")
+    events = list(parse_source(src))
+    mcp_evs = [e for e in events if e.action == "mcp"]
+    assert len(mcp_evs) == 3                       # 모든 mcp__ 호출 발행(무skip)
+    assert mcp_evs[0].actor == "agent"             # MCP 호출 주체=에이전트
+    assert mcp_evs[0].target == "mcp__playwright__browser_click"
+    # preview는 입력 인자 JSON(결정성: sort_keys) — 아직 마스킹 전(파서 단계)
+    assert "selector" in mcp_evs[0].preview
