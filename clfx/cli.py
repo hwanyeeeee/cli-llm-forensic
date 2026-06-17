@@ -43,16 +43,22 @@ def _origin_label(root):
     return "other"
 
 
+def parse_roots(roots):
+    """여러 .claude 루트 → origin 태깅된 Event 리스트(병합). parse/scan 공용. enrich는 호출자 책임.
+    WSL/Windows는 별 세션이라 dedup 불요."""
+    evs = []
+    for root in roots:                       # nargs="+" → 항상 list. 여러 루트(WSL+Windows .claude)를 한 번에.
+        tag = f"origin:{_origin_label(root)}"
+        for e in parse_source(ClaudeSource(root)):
+            if tag not in e.tags:            # 출처 태그(스키마 불변 — tags[] 사용). source.file과 함께 머신 보존.
+                e.tags.append(tag)
+            evs.append(e)
+    return evs
+
+
 def cmd_parse(args):
     try:
-        evs = []
-        for root in args.root:               # nargs="+" → 항상 list. 여러 루트(WSL+Windows .claude)를 한 번에.
-            tag = f"origin:{_origin_label(root)}"
-            for e in parse_source(ClaudeSource(root)):
-                if tag not in e.tags:        # 출처 태그(스키마 불변 — tags[] 사용). source.file과 함께 머신 보존.
-                    e.tags.append(tag)
-                evs.append(e)
-        # WSL/Windows는 별 세션이라 dedup 불요.
+        evs = parse_roots(args.root)
         _write_events(evs, args.out)
     except Exception as e:
         print(f"clfx parse: {e}", file=sys.stderr)
