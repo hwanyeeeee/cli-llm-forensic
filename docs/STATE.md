@@ -16,7 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: bat 견고화 완료 — 사용자 재빌드·검증 대기
+- 위치: 배치3(로딩표시·리사이즈·키워드TFIDF·LLM연결) panel1 위임 중
+- 진행: 재빌드 검증서 4건 발견 → batch3 위임(/tmp/panel1-batch3.txt). (1)부팅 빈0화면→await전 즉시 로딩표시 (2)리사이즈해도 콘텐츠 원래칸 갇힘→내부 flex:1채움(.files max-height제거) (3)키워드 여전히 노이즈(observation/2026/this/tool)→**TF-IDF**(문서=세션, idf로 ubiquitous 강등=e-discovery 실무표준)+숫자컷 (4)gemma4 진짜 미연결(개요 작은 프롬프트도 digest)=원인 localhost→IPv6 ::1, ollama는 127.0.0.1만→**host 127.0.0.1**+llm_error 표면화. 사용자 요청: 키워드는 실무 알고리즘(TF-IDF) 사용. #1/#2/#4ui=프론트, #3/#4=백엔드.
 - 진행: build-exe.bat 견고화 커밋 10cdb94(taskkill+클린 build/dist/spec+--noconfirm+산출물 시각출력 — "재빌드해도 exe 최신화 안됨" 해결: 원인=실행중 락/캐시). 이제 재빌드만 해도 항상 최신. CRLF/ASCII 확인.
 - 진행: 백엔드2 완료·커밋 2faf57e(LLM 프롬프트 경계 _prompt_context+timeout120→요약 정상·citations 전량, 키워드 대화한정+불용어+min_count→for/mnt/user 제거, 186 green). **누적 미적용분(재빌드 1회로 전부 적용)**: 프론트4(d6c4bf2 점진부팅·거터·최신순·칩)+백엔드2(2faf57e LLM요약·키워드)+백엔드(7e1e4f9 개요답변, 2d0be63 stats). 검증포인트: ①대시보드 즉시(타임라인만 로딩) ②컬럼 경계 드래그 ③"타임라인 요약해줘"=문장 ④"이 사람 주로 뭐해?"=개요답 ⑤키워드 for/mnt/user 없음 ⑥최신순 ⑦칩 색/취소선. 다음(승인대기): B plan(원본복구·해시대조①②+④transcript↔아티팩트 JOIN귀속)→C plan(MCP⑧·tmp retention). 미push(다수 ahead).
 - 진행: 프론트4 완료·커밋 d6c4bf2(점진부팅+/api/stats타일·컬럼거터·타임라인최신순·필터칩 색/취소선, 182 green). ollama 정상 확인(gemma4:12b 떠있음, 코드모델명 일치). **백엔드2 panel1 위임**(/tmp/panel1-backend2.txt): (1)"타임라인 요약해줘"가 로그덤프 — 원인=전체이벤트(1147~11.7만) LLM프롬프트 투입→타임아웃/컨텍스트초과→digest폴백. fix=_prompt_context로 프롬프트 경계(대량=집계헤더+표본60)+timeout120, citations 전량유지(무손실). (2)키워드 for/user/mnt 노이즈 — fix=action prompt/response만 집계+불용어확장+min_count>=2(요구문서 키워드-추출-개선안.md). 둘 다 백엔드(llm.py/keywords.py), 형식 유지. 다음 재빌드 1회로 프론트4+백엔드2 전부 적용.
