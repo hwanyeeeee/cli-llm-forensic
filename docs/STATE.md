@@ -15,7 +15,7 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 5단계 피드백확장 A (분석·시각화)
-- 수행 중: R8 2건 수정(acceptance 65·전체 133). codex R9 RC=1 BLOCK1=actor 파일명오인 잔여(/tmp/user·CLAUDE 점없음). 정공법: _extract_filename으로 타깃 추출→그 span 제거→한국어 substring·영어 단어경계로 actor 탐지. R10 green 목표.
+- 수행 중: R9 route_intent 정공법 적용(acceptance 66·전체 134). codex R10=usage-limit(RC2, 6:16PM 리셋)→§6-2 폴백 리뷰어 CLEAN(actor 8케이스 통과). 리뷰어가 짚은 app.js showKwPop all[0] 방어(불변식상 비도달이나 공짜) 후 final-verify→커밋·push.
 - 후속(승인됨): (a)불변식 체크리스트 +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan.
 - 재시도: 0
-- 리뷰라운드: 9 (actor 파일명오인 정공법 — 타깃span 제거 후 탐지)
+- 리뷰라운드: 9 (codex usage-limit→폴백 CLEAN; all[0] 방어 후 종료)
