@@ -14,7 +14,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 실데이터 hardening (codex 정석 재리뷰)
-- 수행 중: timeline 연대순 codex 재리뷰 R1~R2 수정·커밋(b699486, ts_key datetime 정렬). 사용자 결정 "푸시 먼저"(UI 틀 급함) → 푸시 진행.
-- 후속(푸시 후): ① codex R3 = engine.timeline(start/end) range가 raw ts 비교 → mixed crash(현재 미트리거 경로). ts_key로 수정 필요. ② UI 대폭 수정 = 팀원 담당. ③ 교수님 피드백 8건 spec 작성(9번 Codex 범용화 보류).
+- 위치: 피드백 spec brainstorming (+ ts hardening 완결)
+- 수행 중: ts 정렬 결함 R1~R3 완결(b699486 ts_key + 27e5936 engine range, codex CLEAN, 92 test). 교수님 피드백 8건 spec brainstorming 중(exe=PyInstaller 단일exe+내장서버 결정). UI 대폭수정=팀원, 9번 범용화 보류.
+- 미푸시: b699486 이후(R2 일부)·27e5936(R3) — 다음 푸시 묶음.
 - 재시도: 0
-- 리뷰라운드: 0 (R3는 후속 분리)
+- 리뷰라운드: 0
