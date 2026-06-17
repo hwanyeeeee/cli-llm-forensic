@@ -15,7 +15,7 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 후속 1~4 착수 (multi-root parse → (b)픽스처 → B/C plan → exe)
-- 수행 중: 사용자 1~4 승인. 먼저 multi-root parse(WSL+Windows 동시 스캔=단일PC 타겟) panel1 위임 — parse가 root 여러개 받게. 이후 (b)·B·C·exe.
+- 수행 중: multi-root parse 완료·커밋(cac2ac8, 전체 135). 다음=소스(WSL/Windows) 선택 — parse origin 태깅 + UI 소스 필터 토글 panel1 위임. 이후 (b)·B·C·exe.
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0
