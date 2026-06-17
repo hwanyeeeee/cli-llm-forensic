@@ -137,3 +137,15 @@ def test_answer_empty_events_says_none():
     from clfx.query.llm import answer
     out = answer("말도 안되는 질문", [], llm=None)
     assert out["mode"] == "digest" and out["text"]      # 빈 결과도 답 반환("못 찾음")
+
+
+def test_answer_empty_events_skips_llm():
+    from clfx.query.llm import answer
+    called = {"n": 0}
+    class Stub:
+        def complete(self, prompt):
+            called["n"] += 1
+            return "허위 가능 답"
+    out = answer("아무거나", [], llm=Stub())
+    assert out["mode"] == "digest" and out["citations"] == []
+    assert called["n"] == 0                          # 근거 0건 → LLM 호출 안 됨(날조 차단)
