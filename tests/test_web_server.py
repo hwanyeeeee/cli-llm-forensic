@@ -7,7 +7,7 @@ from http.server import ThreadingHTTPServer
 
 from clfx.event import Event, Source
 from clfx.query.engine import QueryEngine
-from clfx.web.server import make_handler
+from clfx.web.server import make_handler, ServerState, build_state
 from clfx.cli import build_parser, main
 
 
@@ -21,10 +21,29 @@ def _engine():
 
 
 def _server():
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(_engine()))
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ServerState(_engine())))
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
     return httpd
+
+
+def _server_with(state):
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(state))
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    return httpd
+
+
+def _post(httpd, path, obj):
+    port = httpd.server_address[1]
+    data = json.dumps(obj).encode("utf-8")
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data,
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, r.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8")
 
 
 def _get(httpd, path):
@@ -138,5 +157,47 @@ def test_keywords_endpoint():
         assert code == 200
         import json as _j
         assert "keywords" in _j.loads(body)
+    finally:
+        httpd.shutdown()
+
+
+def test_build_state_none_is_empty():
+    st = build_state(None)
+    assert st.engine.events == []
+
+
+def test_sources_endpoint():
+    httpd = _server_with(ServerState(QueryEngine([])))
+    try:
+        code, body = _get(httpd, "/api/sources")
+        assert code == 200
+        assert "sources" in json.loads(body)
+    finally:
+        httpd.shutdown()
+
+
+def test_scan_route_populates_engine():
+    state = ServerState(QueryEngine([]))
+    httpd = _server_with(state)
+    try:
+        code, body = _post(httpd, "/api/scan", {"roots": ["tests/fixtures/dot-claude"]})
+        assert code == 200
+        d = json.loads(body)
+        assert d["ok"] is True and d["count"] > 0
+        assert isinstance(d["by_origin"], dict)
+        # 엔진 교체 확인: 이후 /api/events 채워짐
+        code2, body2 = _get(httpd, "/api/events")
+        assert json.loads(body2)["count"] > 0
+    finally:
+        httpd.shutdown()
+
+
+def test_scan_empty_roots_ok_zero():
+    httpd = _server_with(ServerState(QueryEngine([])))
+    try:
+        code, body = _post(httpd, "/api/scan", {"roots": []})
+        assert code == 200
+        d = json.loads(body)
+        assert d["ok"] is True and d["count"] == 0
     finally:
         httpd.shutdown()

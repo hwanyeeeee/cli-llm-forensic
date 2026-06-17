@@ -9,15 +9,22 @@ from urllib.parse import urlparse, parse_qs
 from clfx.event import Event
 from clfx.query.engine import QueryEngine
 from clfx.web.api import (events_payload, query_payload,
-                          activity_payload, files_payload, keywords_payload)
+                          activity_payload, files_payload, keywords_payload,
+                          sources_payload, scan_to_engine)
 
 _STATIC = os.path.join(os.path.dirname(__file__), "static")
 _ROUTES = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css"}
 _CT = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
 
 
-def make_handler(engine):
-    """engine 주입 핸들러 클래스 팩토리(전역 상태 금지)."""
+class ServerState:
+    """교체가능 엔진 보유(스캔 시 state.engine 교체). 전역 상태 회피용 가변 컨테이너."""
+    def __init__(self, engine):
+        self.engine = engine
+
+
+def make_handler(state):
+    """ServerState(가변 엔진) 주입 핸들러 팩토리. 스캔으로 state.engine 교체 가능(요청 시점 읽기)."""
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, body_bytes, code, content_type):
@@ -47,9 +54,15 @@ def make_handler(engine):
             if u.path in _ROUTES:
                 self._static(_ROUTES[u.path])
                 return
+            if u.path == "/api/sources":
+                try:
+                    self._json(sources_payload())
+                except Exception as e:               # 서버는 안 죽는다
+                    self._json({"error": str(e)}, 500)
+                return
             if u.path == "/api/events":
                 try:
-                    self._json(events_payload(engine))
+                    self._json(events_payload(state.engine))
                 except Exception as e:               # 서버는 안 죽는다
                     self._json({"error": str(e)}, 500)
                 return
@@ -59,28 +72,49 @@ def make_handler(engine):
                     self._json({"error": "q required"}, 400)
                     return
                 try:
-                    self._json(query_payload(engine, q))
+                    self._json(query_payload(state.engine, q))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
             if u.path == "/api/activity":
                 by = (parse_qs(u.query).get("by") or ["day"])[0]
                 try:
-                    self._json(activity_payload(engine, by=by))
+                    self._json(activity_payload(state.engine, by=by))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
             if u.path == "/api/files":
                 try:
-                    self._json(files_payload(engine))
+                    self._json(files_payload(state.engine))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
             if u.path == "/api/keywords":
                 try:
-                    self._json(keywords_payload(engine))
+                    self._json(keywords_payload(state.engine))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
+                return
+            self._json({"error": "not found"}, 404)
+
+        def do_POST(self):
+            u = urlparse(self.path)
+            if u.path == "/api/scan":
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                    body = json.loads(self.rfile.read(n) or b"{}")
+                    roots = body.get("roots") or []
+                    state.engine = scan_to_engine(roots)     # 엔진 교체(요청 시점)
+                    evs = state.engine.events
+                    by = {}
+                    for e in evs:
+                        for t in e.tags:
+                            if t.startswith("origin:"):
+                                k = t[len("origin:"):]
+                                by[k] = by.get(k, 0) + 1
+                    self._json({"ok": True, "count": len(evs), "by_origin": by})
+                except Exception as e:
+                    self._json({"ok": False, "error": str(e)}, 500)
                 return
             self._json({"error": "not found"}, 404)
 
@@ -98,9 +132,15 @@ def load_engine(analyzed_path):
     return QueryEngine(events)
 
 
-def serve(analyzed_path, host="127.0.0.1", port=8787):
-    engine = load_engine(analyzed_path)
-    httpd = ThreadingHTTPServer((host, port), make_handler(engine))
+def build_state(analyzed_path):
+    """analyzed_path 있으면 load, None이면 빈 엔진. serve/테스트 공용(블록 없이 단언 가능)."""
+    engine = load_engine(analyzed_path) if analyzed_path else QueryEngine([])
+    return ServerState(engine)
+
+
+def serve(analyzed_path=None, host="127.0.0.1", port=8787):
+    state = build_state(analyzed_path)
+    httpd = ThreadingHTTPServer((host, port), make_handler(state))
     print(f"clfx dashboard: http://{host}:{port}  (Ctrl+C to stop)", file=sys.stderr)
     try:
         httpd.serve_forever()
