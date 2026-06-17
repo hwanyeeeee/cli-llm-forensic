@@ -1,6 +1,7 @@
 """웹 대시보드용 순수 API 로직. HTTP 무관 — dict만 반환해 테스트가 쉽다.
 엔진(QueryEngine)이 단일 진실원천. 여기서 검색/탐지 로직을 재구현하지 않는다."""
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from clfx.query.llm import route_intent, summarize, answer, make_llm
 from clfx.analyze.keywords import keyword_stats
@@ -72,34 +73,52 @@ def keywords_payload(engine):
 def scan_to_engine(roots, on_progress=None):
     """선택 루트들을 병렬 parse+analyze(인메모리) → QueryEngine. 디스크 analyzed.jsonl 불요.
     per-root enrich: bypass 세션은 같은 소스 transcript에서만 매칭(멀티루트 정합).
-    WSL UNC I/O가 느려 스레드 병렬. 병합은 입력 루트 순서로 결정적(as_completed는 진행 보고용일 뿐,
-    events 순서에 영향 X → I2: search/who_did/secrets는 raw 순서 반환이라 run마다 인용 순서 고정 필요).
-    on_progress(done, total, events, current_root): 매 루트 완료 시 호출(옵션)."""
-    from clfx.cli import parse_roots         # 지역 import — cli↔web.api 순환 회피
-
-    def _one(root):
-        evs = parse_roots([root])           # 태그된 단일 루트
-        enrich(evs, ClaudeSource(root))     # src=그 루트 → bypass 세션 정합
-        return evs
+    on_progress(files_done, files_total, events, current_root): 진행=파일 단위
+    (parse: history+transcript, enrich: transcript 재읽기 둘 다 카운트 → UNC 느린 패스도 매끄럽게).
+    병합은 입력 루트 순서로 결정적(I2: search/who_did/secrets는 raw 순서 반환 → run마다 인용 순서 고정)."""
+    from clfx.cli import parse_source_tagged   # 지역 import — cli↔web.api 순환 회피
 
     roots = list(roots)
     if not roots:
         if on_progress:
             on_progress(0, 0, 0, None)
         return QueryEngine([])
-    total = len(roots)
-    results = [None] * total
-    done = 0
-    with ThreadPoolExecutor(max_workers=min(8, total)) as ex:
-        futs = {ex.submit(_one, r): i for i, r in enumerate(roots)}
-        for fut in as_completed(futs):      # 완료 순(진행 보고) — 결과는 인덱스 슬롯에 저장
-            i = futs[fut]
-            results[i] = fut.result(); done += 1
+    # 사전 카운트: 각 루트 parse 파일수(jsonl_files) + enrich 재읽기(transcript_files)
+    total_files = 0
+    for r in roots:
+        probe = ClaudeSource(r)
+        total_files += len(probe.jsonl_files()) + len(probe.transcript_files())
+    if on_progress:
+        on_progress(0, total_files, 0, None)     # 즉시 0/N 표시
+    lock = threading.Lock()
+    prog = {"files": 0, "events": 0}
+
+    def _one(item):
+        i, root = item
+
+        def incr(_path):
+            with lock:
+                prog["files"] += 1
+                f, ev = prog["files"], prog["events"]
             if on_progress:
-                ev = sum(len(x) for x in results if x is not None)
-                on_progress(done, total, ev, roots[i])
+                on_progress(f, total_files, ev, root)
+
+        src = ClaudeSource(root, on_file=incr)
+        evs = parse_source_tagged(src, root)     # parse 패스(on_file 발화)
+        enrich(evs, src)                         # enrich 패스(같은 src 재사용 → transcript 재읽기 카운트)
+        with lock:
+            prog["events"] += len(evs)
+            f, ev = prog["files"], prog["events"]
+        if on_progress:
+            on_progress(f, total_files, ev, root)   # 루트 완료 — 누적 events 반영(on_file은 파싱 중 events=0)
+        return i, evs
+
+    results = [None] * len(roots)
+    with ThreadPoolExecutor(max_workers=min(8, len(roots))) as ex:
+        for i, evs in ex.map(_one, list(enumerate(roots))):
+            results[i] = evs
     events = []
-    for evs in results:                     # 입력 루트 순서로 결정적 병합(I2)
+    for evs in results:                          # 입력 루트 순서 결정적 병합(I2)
         events.extend(evs)
     return QueryEngine(events)
 

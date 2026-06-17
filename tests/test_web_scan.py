@@ -31,6 +31,30 @@ def test_sources_payload_only_existing(monkeypatch):
     assert all(s["exists"] for s in out["sources"])
 
 
+def test_scan_progress_is_file_count_based():
+    from clfx.web.api import scan_to_engine
+    calls = []
+    eng = scan_to_engine(["tests/fixtures/dot-claude"], on_progress=lambda d,t,ev,cur: calls.append((d,t)))
+    assert eng.events
+    total = calls[-1][1]
+    assert total > 0
+    assert calls[-1][0] == total            # 최종 done==total(파일 전부 처리)
+    assert all(d <= t for d,t in calls)     # done은 total 이하 단조
+
+
+def test_claudesource_on_file_fires_per_file(tmp_path):
+    from clfx.sources.claude import ClaudeSource
+    import json as _j
+    root = tmp_path / ".claude"; (root/"projects"/"p").mkdir(parents=True)
+    (root/"history.jsonl").write_text(_j.dumps({"display":"x"})+"\n", encoding="utf-8")
+    (root/"projects"/"p"/"a.jsonl").write_text("", encoding="utf-8")
+    seen=[]
+    src=ClaudeSource(str(root), on_file=lambda p: seen.append(p))
+    list(src.history_records()); list(src.transcript_records())
+    assert len(seen) == 2                   # history + a.jsonl 각 1회
+    assert len(src.jsonl_files()) == 2 and len(src.transcript_files()) == 1
+
+
 def test_scan_to_engine_reports_progress():
     from clfx.web.api import scan_to_engine
     calls = []
