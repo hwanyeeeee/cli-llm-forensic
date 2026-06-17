@@ -119,8 +119,12 @@ def summarize(events, llm=None):
         return {"text": _prompt_context(events), "citations": citations, "mode": "digest"}
     try:
         ctx = _prompt_context(events)   # 내용 포함(마스킹 preview). 대량=집계+표본 경계. citations는 전량.
-        prompt = "다음 포렌식 이벤트를 사실만으로 요약하라. 각 문장 끝에 (file:line) 인용.\n" + ctx
-        text = llm.complete(prompt)
+        system = (
+            "당신은 디지털 포렌식 분석가입니다. 주어진 이벤트를 사실만으로 한국어 서술형 문단으로 요약합니다.\n"
+            "목록·영어·지시문 반복 금지. 각 핵심 문장 끝에 (파일명:줄) 인용."
+        )
+        user = f"[이벤트]\n{ctx}\n\n한국어 서술형 문단으로 요약:"
+        text = llm.complete(user, system=system)
         if text and text.strip():
             return {"text": text, "citations": citations, "mode": "llm"}
         return {"text": ctx, "citations": citations, "mode": "digest", "llm_error": "빈 응답"}   # 빈 응답 폴백
@@ -141,13 +145,17 @@ def answer(question, events, llm=None):
         return {"text": _prompt_context(events), "citations": citations, "mode": "digest"}
     try:
         ev = _prompt_context(events)   # 내용 포함(마스킹 preview). 대량은 집계+표본 경계. 증거 citations는 전량.
-        prompt = (
-            "너는 Claude Code 기록 포렌식 분석가다. 아래 [이벤트]만 근거로 [질문]에 한국어 자연어로 답하라.\n"
-            "규칙: (1) '~했습니다' 식 서술형 문장으로 행위를 요약(목록 나열 금지). (2) 이벤트에 없는 사실 추측·날조 금지. "
-            "(3) 핵심 근거 끝에 (file:line) 인용. (4) 행위 주체는 A=사용자 / B=에이전트로 구분.\n\n"
-            f"[질문]\n{question}\n\n[이벤트]\n{ev}\n"
+        system = (
+            "당신은 디지털 포렌식 분석가입니다. 사용자의 [질문]에 대해 주어진 [이벤트] 로그만 근거로 답합니다.\n"
+            "규칙:\n"
+            "1. 반드시 한국어 자연어 서술형 문단으로 답한다(목록·불릿·번호·표 금지).\n"
+            "2. 지시문이나 영어를 반복하지 말고, 요약/답변 본문만 출력한다.\n"
+            "3. 이벤트에 없는 사실은 추측·날조하지 않는다.\n"
+            "4. 행위 주체는 A=사용자, B=에이전트로 구분한다.\n"
+            "5. 핵심 근거 문장 끝에 (파일명:줄) 형식으로 인용한다."
         )
-        text = llm.complete(prompt)
+        user = f"[질문]\n{question}\n\n[이벤트]\n{ev}\n\n위 이벤트를 근거로 한국어 서술형 문단으로 답변:"
+        text = llm.complete(user, system=system)
         if text and text.strip():
             return {"text": text, "citations": citations, "mode": "llm"}
         # 빈 응답 → 결정적 내용 폴백(자연어 아니어도 빈 "결과 N건"보다 정보 많음)
@@ -200,13 +208,15 @@ def answer_overview(question, events, llm=None):
     if llm is None:
         return {"text": digest_text, "citations": citations, "mode": "digest"}
     try:
-        prompt = (
-            "너는 Claude Code 기록 포렌식 분석가다. 아래 [전체 집계]만 근거로 [질문]에 한국어로 간결히 답하라.\n"
-            "규칙: (1) 집계에 없는 사실 추측·날조 금지. (2) 행위 주체는 A=사용자 / B=에이전트로 구분. "
-            "(3) 수치는 집계 그대로 인용.\n\n"
-            f"[질문]\n{question}\n\n[전체 집계]\n{ctx}\n"
+        system = (
+            "당신은 디지털 포렌식 분석가입니다. 주어진 [전체 집계]만 근거로 한국어 서술형 문단으로 간결히 답합니다.\n"
+            "목록·영어·지시문 반복 금지. 추측·날조 금지. 행위 주체 A=사용자/B=에이전트. 수치는 집계 그대로."
         )
-        return {"text": llm.complete(prompt), "citations": citations, "mode": "llm"}
+        user = f"[질문]\n{question}\n\n[전체 집계]\n{ctx}\n\n한국어 서술형 문단으로 답변:"
+        text = llm.complete(user, system=system)
+        if text and text.strip():
+            return {"text": text, "citations": citations, "mode": "llm"}
+        return {"text": digest_text, "citations": citations, "mode": "digest", "llm_error": "빈 응답"}
     except Exception as e:
         return {"text": digest_text, "citations": citations,
                 "mode": "digest", "llm_error": str(e)[:200]}
@@ -221,15 +231,20 @@ class OllamaLLM:
         self.host = host.rstrip("/")
         self.timeout = timeout
 
-    def complete(self, prompt):
+    def complete(self, prompt, system=None):
         # /api/chat 사용 — 인스트럭트 모델의 채팅 템플릿을 ollama가 적용(/api/generate raw 프롬프트는
-        # 템플릿 미적용으로 빈 생성될 수 있음). content 비면 thinking 폴백, 그래도 비면 진단 에러.
+        # 템플릿 미적용으로 빈 생성될 수 있음). system(역할·규칙)↔user(질문·데이터) 분리 → 지시 무시·영어 echo 방지.
+        # content 비면 thinking 폴백, 그래도 비면 진단 에러.
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
         body = json.dumps({
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "stream": False,
             "keep_alive": "30m",                 # 모델 상주(다음 쿼리 콜드로드 제거)
-            "options": {"num_predict": 384},     # 출력 경계 → 생성시간 bound(timed out 완화)
+            "options": {"num_predict": 512},     # 출력 경계 → 생성시간 bound + 한국어 서술 문단 여유
         }).encode("utf-8")
         req = urllib.request.Request(self.host + "/api/chat", data=body,
                                      headers={"Content-Type": "application/json"})
