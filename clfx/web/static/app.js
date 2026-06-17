@@ -481,6 +481,7 @@ $("#scan-go").addEventListener("click",async()=>{
   const roots=[...document.querySelectorAll("#scan-sources input:checked")].map(c=>c.dataset.path);
   if(!roots.length){$("#scan-status").textContent="소스를 1개 이상 선택하세요.";return;}
   $("#scan-go").disabled=true;
+  const t0=Date.now();
   showProgress(0,"스캔 준비…",true);
   let polling=true;
   (async()=>{                                   // POST와 동시에 진행률 폴링(ThreadingHTTPServer)
@@ -488,7 +489,10 @@ $("#scan-go").addEventListener("click",async()=>{
       try{
         const pr=await (await fetch("/api/scan/progress")).json();
         const pct=pr.total?Math.round(pr.done/pr.total*100):0;
-        if(!pr.finished) showProgress(pct, `파싱 중 ${pr.done}/${pr.total} · 누적 ${pr.events||0}건`, true);
+        const sec=Math.round((Date.now()-t0)/1000);
+        let label=`파싱 중 ${pr.done}/${pr.total} 파일 (${pct}%) · 누적 ${pr.events||0}건 · 경과 ${sec}초`;
+        if(pct>=5 && pct<100){ const eta=Math.round(sec*(100-pct)/pct); label+=` · 예상 ${eta}초`; }
+        if(!pr.finished) showProgress(pct, label, true);
       }catch(_){}
       await new Promise(r=>setTimeout(r,300));
     }
@@ -498,7 +502,8 @@ $("#scan-go").addEventListener("click",async()=>{
     const d=await r.json();
     polling=false;
     if(!d.ok)throw new Error(d.error||"스캔 실패");
-    showProgress(100, `완료: ${d.count}건`, false);
+    const sec=Math.round((Date.now()-t0)/1000);
+    showProgress(100, `완료: ${d.count}건 · ${sec}초`, false);
     $("#chatlog").innerHTML="";       // 재로드 시 코파일럿 인사 중복 방지
     await boot();                     // 채워진 엔진으로 대시보드 재로드
   }catch(err){
