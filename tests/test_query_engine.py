@@ -43,6 +43,15 @@ def test_timeline_range_mixed_epoch_ms_no_crash():
     assert out == [mid, "2026-06-11T18:00:00Z"]   # before/after 제외, 연대순
 
 
+def test_timeline_search_mixed_ts_fixture(mixed_engine):
+    # 공용 mixed-ts 픽스처 → timeline 연대순(None 먼저, epoch 2026-02-08 그 다음) crash 없음.
+    ts = [e.ts for e in mixed_engine.timeline()]
+    assert ts[0] is None                       # None 맨 앞
+    assert ts[1] == 1770555950996              # epoch-ms(2026-02-08) — 6/11·6/12 ISO보다 앞
+    assert len(ts) == 4
+    assert mixed_engine.on_date("2026-02-08")  # epoch-ms ts startswith crash 없음
+
+
 def _aev(actor, action, ts, target="x", preview=""):
     return Event(ts, "claude", "s", actor, action, target, preview, Source("f", 1))
 
