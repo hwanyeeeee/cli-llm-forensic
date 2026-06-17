@@ -16,7 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 파일단위 진행률 진행 중 → 이후 perf 최적화 + 레이아웃
+- 위치: 타임라인 가상화(멈춤 수정) 진행 중
+- 진행: 파일단위 진행률 완료·커밋(codex CLEAN, 171). **FE1 타임라인 가상화 위임**: 펼친 날만 카드 렌더(헤더·건수는 전량)·큰 날 '더 보기'·renderDetail 부분갱신·TARGET_IDX Map·클라 스캔 캐시. 무손실(전 이벤트 메모리 유지·도달가능). 다음: 레이아웃(창채움+패널resize, /tmp/panel1-layout.txt) → P1 서버캐시(영향 작아 후순위) → P2b 전송 페이지네이션(필요시).
 - 진행: 파일단위 진행률 위임(ClaudeSource on_file 훅+사전 파일수 카운트 parse+enrich 두 패스, scan_to_engine 파일단위 on_progress, UI 경과시간/ETA, cli.parse_source_tagged 분리, 결정적 병합).
 - **대기 큐(순서)**: (A)perf 최적화 (B)레이아웃. 둘 다 무손실(파싱/분석 절대 안 줄임 — 사용자 강제약). 진단 완료(서브에이전트):
   - 멈춤 주범=클라가 11.7만 이벤트 DOM 통째 렌더(app.js:268 renderTimeline innerHTML, 필터/클릭마다 전체 재렌더) + /api/events 수십MB JSON 통째.
