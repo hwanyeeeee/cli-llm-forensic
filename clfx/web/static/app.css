@@ -256,6 +256,7 @@ header{
 }
 
 /* ---------- 스캔 화면(데이터 없을 때) ---------- */
+#scan-screen[hidden]{display:none;}   /* [hidden] 명시 우선 — display:grid가 브라우저 기본 [hidden]{display:none} 덮어 대시보드 가리는 버그 차단 */
 #scan-screen{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:50;padding:24px;}
 .scan-card{max-width:640px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:28px;box-shadow:0 8px 28px rgba(27,36,51,.12);}
 .scan-card h2{margin:0 0 6px;color:var(--txt);}
