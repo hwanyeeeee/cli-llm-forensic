@@ -3,7 +3,7 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from clfx.query.llm import route_intent, summarize, answer, make_llm
+from clfx.query.llm import route_intent, summarize, answer, answer_overview, make_llm
 from clfx.analyze.keywords import keyword_stats
 from clfx.event import norm_ts
 from clfx.sources.claude import ClaudeSource
@@ -50,7 +50,11 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False):
         summary = None                            # CLI 비요약 → LLM/답 없음(make_llm 비호출)
     else:
         use_llm = make_llm() if llm is _DEFAULT_LLM else llm   # 웹=gemma4 / 테스트(llm=None)=digest
-        summary = answer(q, res, llm=use_llm)     # 검색된 res만 근거. ollama 없으면 digest.
+        if op == "search" and not res:
+            # 막연한 대화형 질문(특정 키워드 매칭 0건) → 전체 행위 개요로 답(결정적 집계 근거).
+            summary = answer_overview(q, engine, llm=use_llm)
+        else:
+            summary = answer(q, res, llm=use_llm) # 검색된 res만 근거. ollama 없으면 digest.
     return {"op": op, "intent": intent, "actor": a,
             "events": [e.to_dict() for e in res], "count": len(res),
             "summary": summary}

@@ -93,6 +93,17 @@ def test_query_payload_cli_nonsummary_skips_llm(monkeypatch):
     assert p["op"] == "who_did" and p["summary"] is None
 
 
+def test_query_payload_vague_question_gives_overview(monkeypatch):
+    # 막연한 대화형 질문(특정 키워드 매칭 0건) → empty 아닌 전체 행위 개요(결정적 집계).
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)   # ollama 비의존 → digest
+    p = api.query_payload(_engine(), "이 사람 주로 뭐해?")
+    assert p["op"] == "search" and p["count"] == 0               # 리터럴 검색은 0건
+    assert p["summary"]["mode"] == "digest"                      # empty 아님 — 개요로 답
+    assert "전체 행위 개요" in p["summary"]["text"]
+    assert p["summary"]["citations"]                             # top files 근거
+
+
 def test_query_payload_actor_filter(monkeypatch):
     # §3: "사용자" 질의 → on_date actor=user → 결과 전부 user. ollama 무관 결정적.
     import clfx.web.api as api

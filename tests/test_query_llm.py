@@ -136,7 +136,7 @@ def test_answer_uses_llm_with_question():
 def test_answer_empty_events_says_none():
     from clfx.query.llm import answer
     out = answer("말도 안되는 질문", [], llm=None)
-    assert out["mode"] == "digest" and out["text"]      # 빈 결과도 답 반환("못 찾음")
+    assert out["mode"] == "empty" and out["text"]       # 빈 결과=empty(LLM 미연결과 구분)
 
 
 def test_answer_empty_events_skips_llm():
@@ -147,5 +147,34 @@ def test_answer_empty_events_skips_llm():
             called["n"] += 1
             return "허위 가능 답"
     out = answer("아무거나", [], llm=Stub())
-    assert out["mode"] == "digest" and out["citations"] == []
+    assert out["mode"] == "empty" and out["citations"] == []
     assert called["n"] == 0                          # 근거 0건 → LLM 호출 안 됨(날조 차단)
+
+
+def test_answer_overview_digest_no_llm():
+    # 막연한 질문 → 전체 행위 개요(결정적 집계). llm 없으면 digest.
+    from clfx.query.llm import answer_overview
+    eng = QueryEngine(_events())
+    out = answer_overview("이 사람 주로 뭐해?", eng, llm=None)
+    assert out["mode"] == "digest"
+    assert "전체 행위 개요" in out["text"] and "총 이벤트" in out["text"]
+    assert out["citations"]                          # top files 근거(파일 패널 역추적)
+
+
+def test_answer_overview_uses_llm():
+    from clfx.query.llm import answer_overview
+    seen = {}
+    class Stub:
+        def complete(self, prompt):
+            seen["p"] = prompt
+            return "주로 .env 파일 접근, 에이전트(B) 자율 읽기 중심입니다."
+    eng = QueryEngine(_events())
+    out = answer_overview("이 사람 주로 뭐해?", eng, llm=Stub())
+    assert out["mode"] == "llm" and out["text"]
+    assert "전체 집계" in seen["p"] and "이 사람 주로" in seen["p"]   # 집계 컨텍스트+질문 포함
+
+
+def test_answer_overview_empty_engine():
+    from clfx.query.llm import answer_overview
+    out = answer_overview("뭐해?", QueryEngine([]), llm=None)
+    assert out["mode"] == "empty"                    # 기록 0건 → empty
