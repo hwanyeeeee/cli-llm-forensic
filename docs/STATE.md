@@ -16,8 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 스캔 개선(exists필터+병렬) 진행 중
-- 후속 위임: 사용자 피드백 2건 — (1)존재안하는 소스 숨김(sources_payload exists=True만, root/.claude "없음" 안 보이게), (2)scan_to_engine 병렬화(ThreadPoolExecutor, WSL UNC I/O). 멀티 distro는 wsl.exe -l -q로 이미 처리. 끝나면 사용자 재빌드.
+- 위치: 스캔 진행률 바 진행 중
+- 완료·커밋: 스캔개선(exists필터+병렬, codex NIT만=사용자 의도). 165 green. **panel1에 진행률 바 위임**: scan_to_engine on_progress 콜백 + GET /api/scan/progress(POST는 동기 유지) + UI 폴링 % 바(소스별·현재소스·누적건수·애니메이션 줄무늬). 끝나면 사용자 재빌드 1회로 그간 누적(GUI·WSL탐지·gemma4대화형·exists필터·병렬·진행률바) 전부.
 - 수행 중: **GUI+WSL탐지+gemma4 대화형 전부 완료·커밋**(codex R1~R2→CLEAN, 163 green, final-verify OK). 모든 질의 gemma4 대화형(answer_only_summary: 웹=항상, CLI=요약만), 빈결과 LLM스킵, 증거=엔진 불변, localhost ollama. **사용자: build-exe.bat 재빌드 1회 → WSL탐지+대화형 gemma4+빈결과안전 전부 적용.** 스모크는 clfx serve만(launcher.py는 webbrowser.open 폴백→Windows Chrome 팝업, 금지). 다음: B plan(복구·해시·④JOIN)→C(MCP·tmp=\\wsl.localhost\Ubuntu\tmp). 미push(32 ahead).
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
