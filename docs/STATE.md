@@ -16,7 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 배치3(로딩표시·리사이즈·키워드TFIDF·LLM연결) panel1 위임 중
+- 위치: 배치3 완료 — 사용자 재빌드·검증 대기
+- 진행: 배치3 완료·커밋 5dccb00(즉시 로딩표시·리사이즈 콘텐츠 flex채움·키워드 TF-IDF+숫자컷·LLM host 127.0.0.1+llm_error표면, 190 green, JS OK). **재빌드 후 검증**: ①빈화면 없이 즉시 "불러오는중" ②패널 늘리면 콘텐츠 채움 ③키워드 observation/2026/this 강등·수사어 상위 ④"타임라인 요약해줘"=gemma4 문장(127.0.0.1 연결). ④ 여전히 digest면 라벨에 사유(timeout/refused) 표시→원인확정. 다음(승인대기): B plan(복구·해시·④JOIN)→C plan(MCP·tmp).
 - 진행: 재빌드 검증서 4건 발견 → batch3 위임(/tmp/panel1-batch3.txt). (1)부팅 빈0화면→await전 즉시 로딩표시 (2)리사이즈해도 콘텐츠 원래칸 갇힘→내부 flex:1채움(.files max-height제거) (3)키워드 여전히 노이즈(observation/2026/this/tool)→**TF-IDF**(문서=세션, idf로 ubiquitous 강등=e-discovery 실무표준)+숫자컷 (4)gemma4 진짜 미연결(개요 작은 프롬프트도 digest)=원인 localhost→IPv6 ::1, ollama는 127.0.0.1만→**host 127.0.0.1**+llm_error 표면화. 사용자 요청: 키워드는 실무 알고리즘(TF-IDF) 사용. #1/#2/#4ui=프론트, #3/#4=백엔드.
 - 진행: build-exe.bat 견고화 커밋 10cdb94(taskkill+클린 build/dist/spec+--noconfirm+산출물 시각출력 — "재빌드해도 exe 최신화 안됨" 해결: 원인=실행중 락/캐시). 이제 재빌드만 해도 항상 최신. CRLF/ASCII 확인.
 - 진행: 백엔드2 완료·커밋 2faf57e(LLM 프롬프트 경계 _prompt_context+timeout120→요약 정상·citations 전량, 키워드 대화한정+불용어+min_count→for/mnt/user 제거, 186 green). **누적 미적용분(재빌드 1회로 전부 적용)**: 프론트4(d6c4bf2 점진부팅·거터·최신순·칩)+백엔드2(2faf57e LLM요약·키워드)+백엔드(7e1e4f9 개요답변, 2d0be63 stats). 검증포인트: ①대시보드 즉시(타임라인만 로딩) ②컬럼 경계 드래그 ③"타임라인 요약해줘"=문장 ④"이 사람 주로 뭐해?"=개요답 ⑤키워드 for/mnt/user 없음 ⑥최신순 ⑦칩 색/취소선. 다음(승인대기): B plan(원본복구·해시대조①②+④transcript↔아티팩트 JOIN귀속)→C plan(MCP⑧·tmp retention). 미push(다수 ahead).
