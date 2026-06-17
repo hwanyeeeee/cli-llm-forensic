@@ -16,7 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: 배치7+8 완료 — 사용자 재빌드·검증 대기
+- 위치: 배치9(gemma 한국어 서술형 강제) panel1 위임 중
+- 진행: 속도 완전 빨라짐 확인(batch7 성공). batch8 /api/chat로 빈응답 해결됐으나 gemma4가 한국어 지시 무시·**프롬프트 영어 echo+목록 나열**(가독성0). 원인=지시문+데이터 한 메시지 뭉침→이어쓰기/번역. batch9 위임(/tmp/panel1-batch9.txt): complete(prompt, system=None) system 분리, answer/overview/summarize가 system(역할·규칙: 한국어/목록금지/지시반복금지/A·B/인용)↔user(질문·데이터) 분리 + "한국어 서술형 답변:" 앵커, num_predict 512. panel1 idle이라 표준 위임 복귀. 그래도 영어/echo면 모델 지시준수 한계 → 모델교체 논의.
 - 진행: batch7 완료·커밋 cf4edfb(파일단위 병렬 max16 + parse_file 단일읽기 bypass수집→enrich 재읽기 제거, WSL UNC 대폭 단축. 무손실·I2: test_scan_equivalent_to_sequential가 기존 순차와 이벤트 단위 완전동일 강제). batch8 완료·커밋 c052b9f(**panel0 직접, 사용자 1회 승인**: gemma4 빈응답 원인=/api/generate raw 템플릿 미적용→/api/chat 전환+thinking폴백+진단). 207 green. **재빌드 후 검증**: ①WSL 파싱 빨라짐(진행률 파일수도 정확·작아짐) ②"6/16 요약"→gemma4 서술형 문장(빈응답이면 라벨에 empty:msg_keys 진단 뜸→보고). 다음(승인대기): B plan(복구·해시·④JOIN)→C plan(MCP·tmp).
 - 진행: batch6 완료·커밋 b1ef2c2. 사용자 질문: 파싱 최대속도냐? → **아니오**(루트 2스레드뿐, WSL UNC 수천파일 단일스레드 순차 + enrich가 transcript 2차 재읽기=I/O 2배, 26파일/s). batch7 위임(/tmp/panel1-batch7.txt): ①파일단위 병렬 파싱(ThreadPoolExecutor max16, UNC 지연 중첩) ②parse_file이 1회 읽을때 bypass sessionId 동시수집→enrich 재읽기 제거(I/O 절반). 무손실·결정성 절대원칙: root입력순→파일순(jsonl_files)→line순 조립=기존 순차결과와 이벤트 완전일치(동일성 회귀테스트로 보증, I2). parser per-record 무상태 확인됨. total_files 단일패스로 정확·작아짐. 다음(승인대기): B plan→C plan.
 - 진행: batch6 완료·커밋 b1ef2c2(LLM 컨텍스트에 마스킹 preview 120자 포함→gemma가 실제 내용 받아 서술형 자연어 요약, 빈응답 폴백, 201 green). **재빌드 후 검증**: "6/16 요약해줘"→"6/16에 사용자가 ~요청, 에이전트가 ~.md 작성" 식 자연어 문장(목록 아님). 다음(승인대기): B plan(원본복구·해시·④JOIN)→C plan(MCP·tmp).
