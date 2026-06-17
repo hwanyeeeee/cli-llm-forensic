@@ -254,3 +254,19 @@ header{
   .col-mid .panel{overflow:visible}
   .tl-scroll{overflow:visible}
 }
+
+/* ---------- 스캔 화면(데이터 없을 때) ---------- */
+#scan-screen{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:50;padding:24px;}
+.scan-card{max-width:640px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:28px;box-shadow:0 8px 28px rgba(27,36,51,.12);}
+.scan-card h2{margin:0 0 6px;color:var(--txt);}
+.scan-card p{color:var(--muted);margin:0 0 18px;font-size:14px;}
+.scan-card .muted{color:var(--faint);font-size:13px;}
+.scan-card .err{color:var(--secret);font-size:13px;}
+.scan-src{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer;}
+.scan-src.off{opacity:.5;cursor:not-allowed;}
+.scan-src .p{font-family:var(--mono);font-size:12px;color:var(--muted);word-break:break-all;}
+.scan-src .badge{font-size:11px;padding:2px 7px;border-radius:10px;background:var(--panel2);color:var(--muted);}
+.scan-src .badge.wsl{background:#1f6feb;color:#fff;}.scan-src .badge.windows{background:#8957e5;color:#fff;}
+.scan-src .na{margin-left:auto;font-size:11px;color:var(--secret);}
+#scan-go{margin-top:8px;padding:9px 18px;border-radius:8px;border:0;background:#238636;color:#fff;cursor:pointer;font-size:14px;}
+#scan-status{margin-top:12px;font-size:13px;color:var(--muted);}

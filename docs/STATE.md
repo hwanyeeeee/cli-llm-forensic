@@ -17,7 +17,7 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 ## 현재 작업
 - 도구: claude (opus·ultracode)
 - 위치: 6단계 exe+스캔 UX
-- 수행 중: subagent-driven. [Task1✓][Task2✓][Task3✓][Task3.5✓ discover /mnt/c, 152 green] 전부 커밋됨. **panel1에 Task4(스캔 화면 UI) 위임** — boot() 게이트(연결+0건→showScan), /api/sources 체크박스, /api/scan POST 후 boot() 재로드, 헤더 다시스캔 버튼. 프론트라 pytest 무영향 → 서버 스모크(curl)로 검증. 완전 코드 제공. 남은 codex BLOCK은 app.js(Task4=지금)+launcher(Task5)뿐. 이후 Task5(launcher+PyInstaller). B/C plan은 6단계 후.
+- 수행 중: subagent-driven. [Task1~3✓][Task3.5✓ discover][Task4 스캔UI 구현됨·서버 스모크 OK(실소스 wsl+windows 둘다 탐지, /api/scan 8건)·미커밋] codex Task4 = CSS 버그 1건(#scan-screen display:grid가 hidden 덮음→오버레이가 대시보드 가림). **panel1에 Task4.5(`#scan-screen[hidden]{display:none}` 1줄) 위임 중.** 수정 후 Task4 프론트 전체 한 커밋. 이후 Task5(launcher+PyInstaller). 렌더 검증은 panel0이 브라우저로. B/C plan은 6단계 후.
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0
