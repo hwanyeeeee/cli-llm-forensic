@@ -60,6 +60,18 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False):
             "summary": summary}
 
 
+def stats_payload(engine):
+    """요약 타일용 경량 집계(총건수·A/B·bypass). 엔진 메모이즈 — 초기 즉시 표시용
+    (전체 이벤트 직렬화 없이 빠르게 반환 → 대시보드 타일이 events 로드 전 바로 채워짐)."""
+    def _build():
+        total = len(engine.events)
+        user = sum(1 for e in engine.events if e.actor == "user")
+        agent = sum(1 for e in engine.events if e.actor == "agent")
+        bypass = sum(1 for e in engine.events if "bypass-mode" in (e.tags or []))
+        return {"total": total, "user": user, "agent": agent, "bypass": bypass}
+    return engine._memo("stats", _build)
+
+
 def activity_payload(engine, by="day"):
     """활동량 집계 — UI 히트맵용. actor 분리(④)."""
     by = by if by in ("day", "month") else "day"
