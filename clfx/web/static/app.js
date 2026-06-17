@@ -519,7 +519,11 @@ async function ask(q){
     const wait=document.createElement("div"); wait.className="msg ai"; wait.textContent="🤔 분석 중…";
     $("#chatlog").appendChild(wait); $("#chatlog").scrollTop=1e9;
     try{
-      const r=await fetch("/api/query?q="+encodeURIComponent(q));
+      // 체크된 소스(origin)만 답변 근거로 동봉. 전부 체크=전체 답변, 일부=그 플랫폼만.
+      const src=(typeof srcActive!=="undefined" && srcActive)?[...srcActive].join(","):"";
+      let url="/api/query?q="+encodeURIComponent(q);
+      if(src) url+="&sources="+encodeURIComponent(src);
+      const r=await fetch(url);
       const d=await r.json();
       if(d.error)throw new Error(d.error);
       wait.remove();

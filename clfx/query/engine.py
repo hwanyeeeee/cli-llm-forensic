@@ -30,10 +30,15 @@ class QueryEngine:
                 and (actor is None or e.actor == actor)]
 
     def on_date(self, day, actor=None):
-        # norm_ts로 epoch-ms int도 ISO Z 문자열로 통일 → raw int.startswith AttributeError 차단.
-        return [e for e in self.events
-                if (norm_ts(e.ts) or "").startswith(day)
-                and (actor is None or e.actor == actor)]
+        # day: "YYYY-MM-DD"(완전) 또는 "MM-DD"(월-일, 연도무관). norm_ts로 epoch-ms int도 ISO Z 통일.
+        full = len(day) == 10
+        out = []
+        for e in self.events:
+            d = norm_ts(e.ts) or ""
+            ok = d.startswith(day) if full else (len(d) >= 10 and d[5:10] == day)
+            if ok and (actor is None or e.actor == actor):
+                out.append(e)
+        return out
 
     def who_did(self, action, target_substr="", actor=None):
         t = (target_substr or "").lower()

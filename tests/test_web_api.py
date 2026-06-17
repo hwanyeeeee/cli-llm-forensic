@@ -42,6 +42,23 @@ def test_query_payload_who_read_env(monkeypatch):
     assert p["count"] == len(p["events"])
 
 
+def test_query_origin_filter(monkeypatch):
+    # 체크된 플랫폼(origin)만 답변 근거. 파싱은 전량, 답변 범위만 좁힘(무손실).
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)
+    eng = QueryEngine([
+        Event("2026-06-15T01:00:00Z", "claude", "s", "user", "prompt", "", "win쪽 일",
+              Source("h", 1), ["origin:windows"]),
+        Event("2026-06-15T02:00:00Z", "claude", "s", "agent", "read", "f", "wsl쪽",
+              Source("h", 2), ["origin:wsl"]),
+    ])
+    p = api.query_payload(eng, "6/15 요약", origins={"windows"})
+    assert p["op"] == "on_date" and p["count"] == 1
+    assert all("origin:windows" in e["tags"] for e in p["events"])
+    p2 = api.query_payload(eng, "6/15 요약", origins=None)   # 전체
+    assert p2["count"] == 2
+
+
 def test_query_payload_secrets(monkeypatch):
     import clfx.web.api as api
     monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)   # ollama 비의존(결정적)

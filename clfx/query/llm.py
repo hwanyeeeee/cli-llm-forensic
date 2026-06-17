@@ -51,9 +51,15 @@ def route_intent(q):
     elif ("에이전트" in actor_text or "클로드" in actor_text or "자동" in actor_text
             or re.search(r"(?:^|\W)(?:claude|agent)(?:\W|$)", actor_text)):
         actor = "agent"
-    m = re.search(r"(\d{4}-\d{2}-\d{2})", q)
+    m = re.search(r"(\d{4}-\d{2}-\d{2})", q)            # 완전 날짜 우선
     if m:
         return {"op": "on_date", "day": m.group(1), "actor": actor, "summarize": summarize}
+    m2 = re.search(r"(?<!\d)(\d{1,2})\s*[/월]\s*(\d{1,2})", q)   # 6/15, 6월 15(일)
+    if m2:
+        mm, dd = int(m2.group(1)), int(m2.group(2))
+        if 1 <= mm <= 12 and 1 <= dd <= 31:             # 범위 가드(24/7 등 오탐 차단)
+            return {"op": "on_date", "day": f"{mm:02d}-{dd:02d}",   # 월-일(연도무관)
+                    "actor": actor, "summarize": summarize}
     if any(w in ql for w in ("타임라인", "timeline", "시간순", "시간 순")):
         return {"op": "timeline", "actor": actor, "summarize": summarize}
     # read 동사가 명시되면 who_did 우선 — 파일명에 secret이 들어가도("누가 .secret.key 읽었어?") read 의도 보존.
@@ -138,38 +144,45 @@ def answer(question, events, llm=None):
                 "mode": "digest", "llm_error": str(e)[:200]}
 
 
-def _overview_context(engine):
-    """전체 행위의 결정적 집계 컨텍스트(문자열) + 대표 인용. 막연한 질문의 근거.
-    모든 수치는 엔진 집계(추적 가능) — LLM은 문장화만, 날조 없음."""
+def _overview_context(events):
+    """이벤트 리스트의 결정적 집계 컨텍스트(문자열) + 대표 인용. 막연한 질문의 근거(소스 필터된 부분집합 받음).
+    모든 수치는 집계(추적 가능) — LLM은 문장화만, 날조 없음."""
     from clfx.event import norm_ts
-    evs = engine.events
+    FILE_ACTIONS = ("read", "write", "paste", "upload")
     actors = {"user": 0, "agent": 0}
     actions = {}
-    for e in evs:
+    fcount = {}
+    fact = {}
+    times = []
+    for e in events:
         a = e.actor if e.actor in ("user", "agent") else "user"
         actors[a] += 1
         actions[e.action] = actions.get(e.action, 0) + 1
+        nt = norm_ts(e.ts)
+        if nt:
+            times.append(nt)
+        if e.action in FILE_ACTIONS and e.target:
+            fcount[e.target] = fcount.get(e.target, 0) + 1
+            d = fact.setdefault(e.target, {"user": 0, "agent": 0})
+            d[a] += 1
     top_actions = sorted(actions.items(), key=lambda x: (-x[1], x[0]))[:6]
-    top_files = engine.files()[:8]
-    se = engine.sorted_events
-    span = (f"{norm_ts(se[0].ts)} ~ {norm_ts(se[-1].ts)}" if se else "?")
+    top_files = sorted(fcount.items(), key=lambda x: (-x[1], x[0]))[:8]
+    span = (f"{min(times)} ~ {max(times)}" if times else "?")
     lines = [
-        f"- 총 이벤트: {len(evs)} (A 사용자 {actors['user']} / B 에이전트 {actors['agent']})",
+        f"- 총 이벤트: {len(events)} (A 사용자 {actors['user']} / B 에이전트 {actors['agent']})",
         f"- 기간: {span}",
         "- 주요 행위(빈도): " + (", ".join(f"{a}×{n}" for a, n in top_actions) or "없음"),
         "- 자주 접근한 파일:",
-    ] + [f"  · {f['target']} ({f['count']}회, A{f['by_actor']['user']}/B{f['by_actor']['agent']})"
-         for f in top_files]
-    citations = [f["target"] for f in top_files]   # 파일 패널서 역추적 가능(집계 근거)
-    return "\n".join(lines), citations
+    ] + [f"  · {t} ({c}회, A{fact[t]['user']}/B{fact[t]['agent']})" for t, c in top_files]
+    return "\n".join(lines), [t for t, _ in top_files]   # 파일 패널서 역추적 가능(집계 근거)
 
 
-def answer_overview(question, engine, llm=None):
-    """막연한/개요형 질문(특정 키워드 매칭 0건) → 전체 행위 결정적 집계를 근거로 대화형 답.
-    증거=엔진 집계(추적 가능), 산문=LLM. LLM 없거나 실패 시 결정적 개요(digest) 폴백."""
-    if not engine.events:
+def answer_overview(question, events, llm=None):
+    """막연한/개요형 질문(특정 키워드 매칭 0건) → 주어진 이벤트(소스 필터 가능) 결정적 집계 근거로 대화형 답.
+    증거=집계(추적 가능), 산문=LLM. LLM 없거나 실패 시 결정적 개요(digest) 폴백."""
+    if not events:
         return {"text": "분석할 기록이 없습니다.", "citations": [], "mode": "empty"}
-    ctx, citations = _overview_context(engine)
+    ctx, citations = _overview_context(events)
     digest_text = "전체 행위 개요\n" + ctx
     if llm is None:
         return {"text": digest_text, "citations": citations, "mode": "digest"}
