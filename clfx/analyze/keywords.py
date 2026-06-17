@@ -64,8 +64,9 @@ def _tokens(text):
 
 def keyword_stats(events, top=50, min_count=2):
     """대화(prompt/response) preview에서 TF-IDF로 변별적 키워드 추출(실무 e-discovery 표준).
-    문서=세션(e.session). df=term 등장 세션 수, idf=ln((1+N)/(1+df))+1(sklearn 평활), score=count×idf.
-    흔한 토큰(거의 모든 세션 등장 — observation/tool/this 등)은 idf↓로 강등, 드문 수사어는 상위.
+    문서=세션(e.session). df=term 등장 세션 수, idf=ln(N/df)(순수), score=count×idf.
+    모든 세션 등장 토큰(df==N — observation/tool/this/be 등)은 idf=0 → score 0 → 최하위 강등, 드문 수사어는 상위.
+    (세션 1개뿐이면 idf 무의미 → 빈도순 폴백.)
     read/bash/paste(파일내용·명령·경로)는 제외(for/mnt/user 노이즈 원천 차단). min_count 미만은 컷. 결정적.
     증거(이벤트)는 전량 유지 — 차트 입력/랭킹만 정제(무손실).
     반환: {"keywords": [{term,count,by_actor,investigative,pattern,days,by_day,score}, ...]}"""
@@ -95,7 +96,10 @@ def keyword_stats(events, top=50, min_count=2):
     n_docs = max(len(sessions), 1)
 
     def _score(term):
-        idf = math.log((1 + n_docs) / (1 + df[term])) + 1   # sklearn 평활 — 단일세션도 idf>0
+        if n_docs <= 1:                       # 세션 1개뿐 → idf 무의미, 빈도순 폴백(빈결과 방지)
+            return float(count[term])
+        # 순수 idf(평활/+1 제거): 모든 세션 등장 토큰(df==N)은 idf=0 → score 0 → 강등(this/be/that 자연 제거).
+        idf = math.log(n_docs / df[term])
         return count[term] * idf
 
     cand = [t for t, c in count.items() if c >= min_count]   # 1회성 컷

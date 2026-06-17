@@ -54,6 +54,30 @@ def test_answer_llm_error_surfaced_on_failure():
     assert out["mode"] == "digest" and "Connection refused" in out.get("llm_error", "")
 
 
+def test_complete_sends_keepalive_and_num_predict(monkeypatch):
+    # keep_alive(상주)+num_predict(출력경계)+timeout 300 → 콜드로드/생성시간 bound("timed out" 완화).
+    import clfx.query.llm as L, json as _json
+    sent = {}
+    class FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return _json.dumps({"response": "요약"}).encode()
+    def fake_urlopen(req, timeout=None):
+        sent["body"] = _json.loads(req.data.decode()); sent["timeout"] = timeout; return FakeResp()
+    monkeypatch.setattr(L.urllib.request, "urlopen", fake_urlopen)
+    out = L.OllamaLLM().complete("p")
+    assert out == "요약"
+    assert sent["body"]["keep_alive"] == "30m" and sent["body"]["options"]["num_predict"] == 384
+    assert sent["timeout"] == 300
+
+
+def test_prewarm_swallows_errors(monkeypatch):
+    import clfx.query.llm as L
+    def boom(*a, **k): raise OSError("no ollama")
+    monkeypatch.setattr(L.urllib.request, "urlopen", boom)
+    L.prewarm()        # 예외 안 나야(무시·fire-and-forget)
+
+
 def test_ollama_complete_builds_request(monkeypatch):
     # urlopen을 가짜로 — 실제 ollama 없이 요청 구성·파싱 검증
     import clfx.query.llm as m

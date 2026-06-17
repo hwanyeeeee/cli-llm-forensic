@@ -131,6 +131,9 @@ def make_handler(state):
 
                     eng = scan_to_engine(roots, on_progress=_prog)
                     state.engine = eng                       # 엔진 교체
+                    import threading
+                    from clfx.query.llm import prewarm
+                    threading.Thread(target=prewarm, daemon=True).start()   # 모델 미리 로드(쿼리 전 워밍, fire-and-forget)
                     evs = eng.events
                     by = {}
                     for e in evs:
