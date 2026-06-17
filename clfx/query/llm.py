@@ -109,8 +109,9 @@ def summarize(events, llm=None):
                   + _prompt_context(events))   # 산문 입력만 경계(대량=집계+표본). citations는 전량.
         text = llm.complete(prompt)
         return {"text": text, "citations": citations, "mode": "llm"}
-    except Exception:
-        return {"text": _prompt_context(events), "citations": citations, "mode": "digest"}
+    except Exception as e:
+        return {"text": _prompt_context(events), "citations": citations,
+                "mode": "digest", "llm_error": str(e)[:200]}
 
 
 def answer(question, events, llm=None):
@@ -132,8 +133,9 @@ def answer(question, events, llm=None):
             f"[질문]\n{question}\n\n[이벤트]\n{ev}\n"
         )
         return {"text": llm.complete(prompt), "citations": citations, "mode": "llm"}
-    except Exception:
-        return {"text": (_prompt_context(events) if events else _none), "citations": citations, "mode": "digest"}
+    except Exception as e:
+        return {"text": (_prompt_context(events) if events else _none), "citations": citations,
+                "mode": "digest", "llm_error": str(e)[:200]}
 
 
 def _overview_context(engine):
@@ -179,15 +181,16 @@ def answer_overview(question, engine, llm=None):
             f"[질문]\n{question}\n\n[전체 집계]\n{ctx}\n"
         )
         return {"text": llm.complete(prompt), "citations": citations, "mode": "llm"}
-    except Exception:
-        return {"text": digest_text, "citations": citations, "mode": "digest"}
+    except Exception as e:
+        return {"text": digest_text, "citations": citations,
+                "mode": "digest", "llm_error": str(e)[:200]}
 
 
 class OllamaLLM:
     """로컬 ollama 요약 클라이언트. 증거 외부전송 0(localhost).
     complete()가 실패하면 summarize가 digest로 폴백한다."""
 
-    def __init__(self, model="gemma4:12b", host="http://localhost:11434", timeout=120):
+    def __init__(self, model="gemma4:12b", host="http://127.0.0.1:11434", timeout=120):
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout

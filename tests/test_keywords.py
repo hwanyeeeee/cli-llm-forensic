@@ -150,3 +150,29 @@ def test_keywords_min_count_cuts_singletons():
     ]
     terms = {k["term"] for k in keyword_stats(evs, min_count=2)["keywords"]}
     assert "토큰" in terms and "일회성단어" not in terms          # 2회=유지, 1회=컷
+
+
+def test_tfidf_demotes_ubiquitous_terms():
+    # 같은 빈도라도, 모든 세션에 흔한 term(this)은 df↑→idf↓로 강등, 한 세션 변별어(kakao)는 idf↑로 상위.
+    # (count 동일·df만 차이 → TF-IDF 효과 격리. 이벤트당 dedup이라 count=세션수/이벤트수로 설계.)
+    # this 빈도(5)>kakao(4) → 순수 count면 this가 위(=실패). TF-IDF면 idf가 뒤집어 kakao가 위(=통과).
+    s = Source("h.jsonl", 1)
+    evs = []
+    for sx in range(5):              # this: 5개 세션에 1번씩 → count 5, df 5(어디에나 흔함)
+        evs.append(Event("2026-06-11T01:00:00Z", "claude", f"s{sx}", "user", "prompt", "", "this code", s, []))
+    for k in range(4):               # kakao: 단일 세션 sK에 4번 → count 4, df 1(변별적)
+        evs.append(Event(f"2026-06-11T02:00:0{k}Z", "claude", "sK", "user", "prompt", "", "kakao 복호화", s, []))
+    terms = [k["term"] for k in keyword_stats(evs, min_count=2)["keywords"]]
+    assert "kakao" in terms and "this" in terms
+    assert terms.index("kakao") < terms.index("this")    # 변별어가 흔한말보다 상위(TF-IDF)
+
+
+def test_digit_tokens_filtered():
+    # 순수 숫자(2026 등)는 키워드 아님 — 토큰 단계서 컷.
+    s = Source("h.jsonl", 1)
+    evs = [
+        Event("2026-06-11T02:00:00Z", "claude", "s", "user", "prompt", "", "2026 배포 일정", s, []),
+        Event("2026-06-11T03:00:00Z", "claude", "s", "user", "prompt", "", "2026 배포 검토", s, []),
+    ]
+    terms = {k["term"] for k in keyword_stats(evs, min_count=2)["keywords"]}
+    assert "2026" not in terms and "배포" in terms

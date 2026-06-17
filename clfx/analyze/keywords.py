@@ -1,5 +1,6 @@
 """키워드 빈도 분석(결정적, 의존성0). 증거 집계 — 엔진이 진실원천.
 한국어 형태소기 미사용(stdlib only) → 토큰 빈도 + 수사사전 매칭 + 시점 패턴."""
+import math
 import re
 from collections import Counter, defaultdict
 
@@ -55,23 +56,29 @@ def _tokens(text):
     for t in _TOKEN.findall(text or ""):
         t = _strip_particle(t)         # 조사 분리 후 stopword/길이 검사(병합·수사사전 매칭 위해)
         tl = t.lower()
-        if len(t) < 2 or tl in _STOP:
+        if len(t) < 2 or tl in _STOP or t.isdigit():   # 순수 숫자(2026 등) 컷 — 의미 없는 연도/수치 노이즈
             continue
         out.append(t)
     return out
 
 
 def keyword_stats(events, top=50, min_count=2):
-    """대화 텍스트(action: prompt/response)의 preview에서 키워드 빈도·actor분리·수사플래그·시점패턴 집계.
-    read/bash/paste(파일내용·명령·경로)는 제외 — for/mnt/user 노이즈 원천 차단(키워드-추출-개선안.md §3.①).
-    min_count 미만(1회성) 토큰은 컷(§3.③). 증거(이벤트)는 전량 유지 — 차트 입력만 정제(무손실).
-    반환: {"keywords": [{term,count,by_actor,investigative,pattern,days,by_day}, ...]}"""
+    """대화(prompt/response) preview에서 TF-IDF로 변별적 키워드 추출(실무 e-discovery 표준).
+    문서=세션(e.session). df=term 등장 세션 수, idf=ln((1+N)/(1+df))+1(sklearn 평활), score=count×idf.
+    흔한 토큰(거의 모든 세션 등장 — observation/tool/this 등)은 idf↓로 강등, 드문 수사어는 상위.
+    read/bash/paste(파일내용·명령·경로)는 제외(for/mnt/user 노이즈 원천 차단). min_count 미만은 컷. 결정적.
+    증거(이벤트)는 전량 유지 — 차트 입력/랭킹만 정제(무손실).
+    반환: {"keywords": [{term,count,by_actor,investigative,pattern,days,by_day,score}, ...]}"""
     count = Counter()
     by_actor = defaultdict(lambda: {"user": 0, "agent": 0})
     by_day = defaultdict(Counter)            # term -> {day: n}
+    doc_terms = defaultdict(set)             # session -> set(terms) (df 계산용)
+    sessions = set()
     for e in events:
         if e.action not in ("prompt", "response"):   # 대화 텍스트만(코드/경로/명령 노이즈 제외)
             continue
+        sess = e.session or "?"
+        sessions.add(sess)
         text = _MASK_SPAN.sub(" ", e.preview or "")  # 대화 텍스트=preview(target은 빈문자). ‹secret›·‹pii› 마커 제거.
         day = (norm_ts(e.ts) or "")[:10] or "unknown"   # int epoch-ms도 ISO Z로 통일 → 슬라이스 TypeError 방지
         seen = list(dict.fromkeys(_tokens(text)))   # 결정적 dedup(첫 등장 순서 보존, set 순회 비결정성 제거)
@@ -80,19 +87,31 @@ def keyword_stats(events, top=50, min_count=2):
             actor = e.actor if e.actor in ("user", "agent") else "user"
             by_actor[term][actor] += 1
             by_day[term][day] += 1
+            doc_terms[sess].add(term)
+    df = Counter()                           # term -> 등장 세션 수
+    for terms in doc_terms.values():
+        for term in terms:
+            df[term] += 1
+    n_docs = max(len(sessions), 1)
+
+    def _score(term):
+        idf = math.log((1 + n_docs) / (1 + df[term])) + 1   # sklearn 평활 — 단일세션도 idf>0
+        return count[term] * idf
+
+    cand = [t for t, c in count.items() if c >= min_count]   # 1회성 컷
+    # 결정적 정렬: TF-IDF 점수 내림차순 + term 사전순 tie-break(PYTHONHASHSEED 무관).
+    cand.sort(key=lambda t: (-_score(t), t))
     kws = []
-    # 결정적 정렬: count 내림차순 + term 사전순 tie-break(동점 키워드 순서 PYTHONHASHSEED 무관).
-    for term, c in sorted(count.items(), key=lambda kv: (-kv[1], kv[0]))[:top]:
-        if c < min_count:                    # 1회성 토큰 컷(상위 top 안에서 적용 → 결과가 top보다 적을 수 있음·정상)
-            continue
+    for term in cand[:top]:
         days = by_day[term]
         # 집중형: 한 날이 전체의 절반 이상. 지속형: 분산. (단일 등장은 집중형.)
         pattern = "집중형" if max(days.values()) / sum(days.values()) >= 0.5 else "지속형"
         kws.append({
-            "term": term, "count": c, "by_actor": dict(by_actor[term]),
+            "term": term, "count": count[term], "by_actor": dict(by_actor[term]),
             "investigative": term.lower() in {w.lower() for w in INVESTIGATIVE},
             "pattern": pattern, "days": len(days),
             # 일자별 분포(엔진 단일진실) — UI 팝업이 이걸 그린다(JS substring 재매칭 금지).
             "by_day": dict(sorted(days.items())),
+            "score": round(_score(term), 3),   # 정렬 근거(디버그) — UI 무시 가능
         })
     return {"keywords": kws}
