@@ -43,6 +43,13 @@ def test_stopword_and_short_filtered():
     assert "비밀번호" in terms
 
 
+def test_keyword_stats_mixed_ts_fixture(mixed_ts_events):
+    # 공용 mixed-ts 픽스처 → keyword_stats crash 없음 + epoch-ms 이벤트 by_day가 ISO 키.
+    kws = {k["term"]: k for k in keyword_stats(mixed_ts_events)["keywords"]}
+    assert "비밀번호" in kws
+    assert "2026-02-08" in kws["비밀번호"]["by_day"]   # epoch-ms int ts → ISO 일자 키
+
+
 def test_epoch_ms_ts_no_crash():
     # history발 epoch-ms int ts 섞임 → norm_ts 통일, (e.ts or "")[:10] 슬라이스 TypeError 안 남.
     evs = [_ev("user", "x", "비밀번호 점검", 1770555950996)]

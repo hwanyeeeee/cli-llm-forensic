@@ -50,6 +50,14 @@ def test_files_grouping_actor_split():
     assert eng.files()[0]["target"] == ".env"
 
 
+def test_activity_files_mixed_ts_fixture(mixed_engine):
+    # 공용 mixed-ts 픽스처(ISO+epoch-ms int+None) → activity/files 집계 crash 없음 + epoch 환산 버킷.
+    a = {r["bucket"]: r for r in mixed_engine.activity(by="day")}
+    assert "2026-02-08" in a and a["2026-02-08"]["user"] == 1   # epoch-ms → ISO 버킷
+    assert "unknown" in a                                       # None ts
+    assert mixed_engine.files()                                 # crash 없이 집계
+
+
 def test_activity_handles_epoch_ms_ts_no_crash():
     # history발 epoch-ms int ts 섞임 → norm_ts 통일, (e.ts or "")[:n] 슬라이스 TypeError 안 남 + 버킷 정상.
     epoch = 1770555950996  # 2026-02-08T13:05:50.996Z

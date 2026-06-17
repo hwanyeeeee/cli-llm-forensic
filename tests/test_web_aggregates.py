@@ -34,6 +34,15 @@ def test_keywords_payload():
     assert any(k["investigative"] for k in p["keywords"])
 
 
+def test_payloads_mixed_ts_fixture(mixed_engine):
+    # 공용 mixed-ts 픽스처 → 전 payload crash 없음 + events ts 전부 str/None(경계 정규화).
+    ep = events_payload(mixed_engine)
+    assert all(isinstance(e["ts"], str) or e["ts"] is None for e in ep["events"])
+    assert activity_payload(mixed_engine, by="month")["rows"]      # crash 없음
+    assert files_payload(mixed_engine)["files"]
+    assert keywords_payload(mixed_engine)["keywords"]
+
+
 def test_events_payload_normalizes_epoch_ms_ts():
     # I1: analyzed.jsonl에 epoch-ms int ts 섞여도 events_payload는 항상 ISO str(또는 None) → JS slice 안전.
     eng = QueryEngine([

@@ -2,6 +2,12 @@ import base64, hashlib, json
 from pathlib import Path
 import pytest
 
+from clfx.event import Event, Source
+
+# epoch-ms 정수 ts(2026-02-08T13:05:50.996Z) — 타입혼재(I1) 회귀 상수.
+# analyzed.jsonl이 epoch-ms int ts를 담아 from_dict로 엔진에 들어오는 경로(=파서 norm_ts 우회)를 모사.
+EPOCH_MS_TS = 1770555950996
+
 # .env 본문 (CLFXTEST 001~004) — A 붙여넣기 / B read 양쪽이 공유
 ENV_BODY = (
     "STRIPE_SECRET_KEY=sk_live_CLFXTEST001FAKEabcdefghijklmn0123\n"
@@ -101,6 +107,30 @@ def make_transcript(records):
 def write_jsonl(path: Path, records):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(json.dumps(r, ensure_ascii=False)+"\n" for r in records), encoding="utf-8")
+
+
+def _mev(actor, action, ts, target="x", preview="", tags=None):
+    return Event(ts=ts, agent="claude", session="s", actor=actor, action=action,
+                 target=target, preview=preview, source=Source("h.jsonl", 1), tags=list(tags or []))
+
+
+@pytest.fixture
+def mixed_ts_events():
+    """ISO + epoch-ms int + None ts 혼재 Event 리스트(I1 불변식 회귀용 공용 픽스처).
+    int ts를 *상시* 포함 → ts 타입혼재 결함(activity/keywords/on_date/timeline crash)이 재발하면
+    이 픽스처를 타는 acceptance가 codex 전에 선제로 빨개진다. norm_ts/ts_key가 정답 처리."""
+    return [
+        _mev("user", "paste", EPOCH_MS_TS, ".env", "비밀번호 유출 점검", ["secret"]),   # epoch-ms int
+        _mev("agent", "read", "2026-06-11T02:00:00.000Z", ".env", "점검", ["secret", "bypass-mode"]),
+        _mev("agent", "read", "2026-06-12T03:00:00.000Z", "app.py", "토큰 확인"),
+        _mev("user", "prompt", None, "", "요약 부탁"),                                  # None ts
+    ]
+
+
+@pytest.fixture
+def mixed_engine(mixed_ts_events):
+    from clfx.query.engine import QueryEngine
+    return QueryEngine(mixed_ts_events)
 
 
 @pytest.fixture
