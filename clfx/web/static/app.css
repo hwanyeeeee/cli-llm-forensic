@@ -216,6 +216,31 @@ header{
   padding:9px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:8px 0 0;max-height:150px;overflow:auto}
 .empty{color:var(--faint);font-size:12px;text-align:center;padding:18px 0}
 
+/* ---------- artifacts: leaks(해시 대조) + attribution(주체 왜곡) ---------- */
+.leakrow,.attribrow{border:1px solid var(--border);border-left:3px solid var(--faint);
+  border-radius:8px;padding:8px 10px;margin-bottom:8px;background:var(--panel)}
+.leakrow.leak{border-left-color:var(--bypass)}
+.leakrow.secret{border-left-color:var(--secret)}
+.attribrow.distort{border-left-color:var(--secret)}
+.lhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px}
+.lsha{font-family:var(--mono);font-weight:700;font-size:11.5px}
+.lct{color:var(--muted);font-family:var(--mono);font-size:10.5px}
+.lflag{font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.3px}
+.lflag.secret{background:rgba(220,38,38,.12);color:var(--secret);border:1px solid rgba(220,38,38,.4)}
+.lflag.leak{background:rgba(124,58,237,.12);color:#6d28d9;border:1px solid rgba(124,58,237,.4)}
+.lflag.tmp{background:rgba(2,132,199,.1);color:var(--accent);border:1px solid rgba(2,132,199,.35)}
+.lreason,.anote{font-size:10.5px;color:var(--muted);margin:5px 0}
+.lpath{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px}
+.lpp,.apath{font-family:var(--mono);font-size:11px;word-break:break-all;flex:1 1 auto;min-width:0}
+.apath{font-weight:600}
+.lpt{font-size:9px;padding:1px 5px;border-radius:5px;font-weight:700;flex:0 0 auto;
+  background:rgba(148,160,174,.16);color:var(--muted)}
+.lpt.tmp{background:rgba(2,132,199,.1);color:var(--accent)}
+.lpt.ref{background:rgba(22,163,74,.12);color:var(--ok)}
+.ameta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;margin:5px 0}
+.ats{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.leakrow .src,.attribrow .src{margin-top:4px;display:inline-block;font-size:10px}
+
 /* ---------- AI copilot (floating, collapsible) ---------- */
 .copilot-fab{
   position:fixed;right:22px;bottom:22px;z-index:50;
