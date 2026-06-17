@@ -3,6 +3,10 @@
 from clfx.query.llm import route_intent, summarize, make_llm
 from clfx.analyze.keywords import keyword_stats
 from clfx.event import norm_ts
+from clfx.sources.claude import ClaudeSource
+from clfx.analyze.attribution import enrich
+from clfx.query.engine import QueryEngine
+# parse_roots(cli)·discover_sources(discover)는 함수-지역 import — cli↔web.api 순환 회피.
 
 
 def events_payload(engine):
@@ -53,3 +57,21 @@ def files_payload(engine):
 def keywords_payload(engine):
     """키워드 빈도 집계 — UI 도넛용(⑥). 결정적, 수사사전·패턴 포함."""
     return keyword_stats(engine.events)
+
+
+def scan_to_engine(roots):
+    """선택 루트들을 parse+analyze(인메모리) → QueryEngine. 디스크 analyzed.jsonl 불요.
+    per-root enrich: bypass 세션은 같은 소스 transcript에서만 매칭(멀티루트 정합)."""
+    from clfx.cli import parse_roots         # 지역 import — cli↔web.api 순환 회피
+    events = []
+    for root in roots:
+        evs = parse_roots([root])           # 태그된 단일 루트
+        enrich(evs, ClaudeSource(root))     # src=그 루트 → bypass 세션 정합
+        events.extend(evs)
+    return QueryEngine(events)
+
+
+def sources_payload():
+    """자동탐지 소스 목록(스캔 화면용)."""
+    from clfx.discover import discover_sources   # 지역 import — discover→cli→web.api 순환 회피
+    return {"sources": discover_sources()}
