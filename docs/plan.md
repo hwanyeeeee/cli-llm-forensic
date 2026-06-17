@@ -45,6 +45,13 @@ Task 1~7 — `analyze/keywords.py`(키워드 빈도+수사사전+패턴) → `en
 
 acceptance: pytest tests/test_keywords.py tests/test_engine_aggregates.py tests/test_web_aggregates.py tests/test_llm_ollama.py tests/test_web_server.py -q
 
+## 6단계: exe + 인앱 스캔 UX
+상세 플랜: `docs/superpowers/plans/2026-06-17-clfx-exe-스캔UX.md` (Task 1~5). 설계 근거: 피드백확장-design §아키텍처(exe).
+Task 1~5 — `discover.py`(소스 자동탐지 Windows+WSL) → `web/api.py` `scan_to_engine`/`sources_payload`(인메모리 parse+analyze, `parse_roots` 공유) → `web/server.py` 상태화(엔진 교체)+`/api/sources`·`/api/scan`+빈모드 起動 → 스캔 UI(데이터 없으면 소스 체크박스→스캔→대시보드) → `packaging/launcher.py`+PyInstaller `--onefile`(_MEIPASS 정적경로).
+원칙: 인자0 실행→브라우저 자동→소스 선택→대시보드. 스캔=기존 parse→analyze 재사용(I1~I3 보장). UI/launcher는 manual+serve 검증, 코어는 pytest.
+
+acceptance: pytest tests/test_discover.py tests/test_web_scan.py tests/test_web_server.py -q
+
 ## 불변식 체크리스트 (plan 작성·구현 공통)
 
 5단계 codex가 6건 BLOCK을 잡았는데 5건이 plan의 실코드 결함이었다(타입 혼재·비결정·마스크 누출·환경의존 테스트). 이미 배운 불변식을 새 코드에 안 옮긴 탓. **plan을 쓸 때와 각 Task 구현 시 아래 표를 self-check한다. 픽스처가 이걸 강제하면 codex 전에 acceptance가 먼저 잡는다.**
