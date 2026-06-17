@@ -90,13 +90,28 @@ const $=s=>document.querySelector(s);
 let SEL=null;
 const active={user:true,agent:true,"bypass-mode":true};
 const openDays={};
+let srcActive=null;   // 활성 소스(origin) 집합. null/미설정이면 전체 통과.
+
+/* ---------- source(origin) filter — 단일 PC의 WSL/Windows 출처 구분 ---------- */
+const SRC_LABEL={wsl:"WSL",windows:"Windows",other:"기타"};
+function originOf(e){const t=(e.tags||[]).find(x=>x.startsWith("origin:"));return t?t.slice(7):null;}
+function originLabels(){return [...new Set(EVENTS.map(originOf).filter(Boolean))].sort();}
+function inSrc(e){const o=originOf(e);if(o===null)return true;return !srcActive||srcActive.has(o);}  // origin 없는 이벤트(MOCK)는 항상 표시
+function showTags(tags){return (tags||[]).filter(t=>!t.startsWith("origin:"));}  // origin: 태그는 배지서 숨김(필터·상세에만 사용)
+function renderSrcFilters(){
+  const labels=originLabels(),box=$("#srcfilters");
+  if(labels.length<=1){box.innerHTML="";return;}   // 단일/무 origin → 토글 불필요
+  box.innerHTML='<span style="font-size:11px;color:var(--faint);margin-right:4px;align-self:center">소스</span>'+
+    labels.map(l=>`<span class="fchip src" data-src="${l}" aria-pressed="${srcActive.has(l)}">${SRC_LABEL[l]||l}</span>`).join("");
+}
 
 /* ---------- stats ---------- */
 function renderStats(){
-  $("#st-total").textContent=EVENTS.length;
-  $("#st-bypass").textContent=EVENTS.filter(e=>e.tags.includes("bypass-mode")).length;
-  $("#st-user").textContent=EVENTS.filter(e=>e.actor==="user").length;
-  $("#st-agent").textContent=EVENTS.filter(e=>e.actor==="agent").length;
+  const evs=EVENTS.filter(inSrc);   // 소스 토글 반영(EVENTS 기반 — 통계는 선택 소스 범위)
+  $("#st-total").textContent=evs.length;
+  $("#st-bypass").textContent=evs.filter(e=>e.tags.includes("bypass-mode")).length;
+  $("#st-user").textContent=evs.filter(e=>e.actor==="user").length;
+  $("#st-agent").textContent=evs.filter(e=>e.actor==="agent").length;
 }
 
 /* ---------- date helpers ---------- */
@@ -194,7 +209,7 @@ function renderDonut(){
 function renderFiles(){
   // 행 형태 통일: [path,{u,a,tags[],idx}]. u/a=actor별 접근수(④ 분리 — 둘 다 표시, 단일화 금지).
   // tags는 표시단계서 secret/pii 제거(엔진 데이터는 유지). idx=상세 연결용 표시 이벤트 인덱스.
-  const cleanTags=ts=>(ts||[]).filter(t=>t!=="secret"&&t!=="pii");
+  const cleanTags=ts=>(ts||[]).filter(t=>t!=="secret"&&t!=="pii"&&!t.startsWith("origin:"));
   let rows;
   if(LIVE){    // LIVE 집계는 엔진만 — 실패 시 JS 재집계 금지(단일진실), 실패 표시 후 return
     if(!(SRV_FILES&&Array.isArray(SRV_FILES.files))){
@@ -232,6 +247,7 @@ function renderFiles(){
 /* ---------- timeline grouped by date ---------- */
 function badge(t){return `<span class="badge ${t}">${t}</span>`;}
 function passFilter(e){
+  if(!inSrc(e))return false;               // 소스(origin) 필터
   if(!active[e.actor])return false;
   if(!active["bypass-mode"]&&e.tags.includes("bypass-mode"))return false;
   return true;
@@ -243,7 +259,7 @@ function evCard(e,i){
         <span class="ts">${timeStr(e.ts)}</span>
         <span class="who ${e.actor}">${e.actor==="user"?"A 사용자":"B 에이전트"}</span>
         <span class="act">/${e.action}</span>
-        ${e.tags.map(badge).join("")}
+        ${showTags(e.tags).map(badge).join("")}
       </div>
       <div class="ctarget">${esc(e.target)}</div>
       ${e.preview?`<div class="cprev">${esc(e.preview)}</div>`:""}
@@ -283,7 +299,8 @@ function renderDetail(i){
     <div class="row"><span class="k">주체</span><span class="v"><span class="who ${e.actor}">${e.actor==="user"?"A 사용자(직접 입력)":"B 에이전트(자율)"}</span></span></div>
     <div class="row"><span class="k">동작</span><span class="v">${e.action}</span></div>
     <div class="row"><span class="k">대상</span><span class="v">${esc(e.target)}</span></div>
-    <div class="row"><span class="k">태그</span><span class="v">${e.tags.length?e.tags.map(badge).join(" "):"-"}</span></div>
+    <div class="row"><span class="k">태그</span><span class="v">${showTags(e.tags).length?showTags(e.tags).map(badge).join(" "):"-"}</span></div>
+    <div class="row"><span class="k">소스</span><span class="v">${originOf(e)?(SRC_LABEL[originOf(e)]||originOf(e)):"-"}</span></div>
     <div class="row"><span class="k">세션</span><span class="v">${esc(e.session||"")}</span></div>
     <div class="row"><span class="k">출처</span><span class="v"><span class="src">${esc(e.src)}</span></span></div>
     <pre>${esc(e.preview||"(preview 없음)")}</pre>`;
@@ -294,6 +311,13 @@ function renderDetail(i){
 $("#filters").addEventListener("click",ev=>{
   const c=ev.target.closest(".fchip");if(!c)return;
   const f=c.dataset.f;active[f]=!active[f];c.setAttribute("aria-pressed",active[f]);renderTimeline();
+});
+$("#srcfilters").addEventListener("click",ev=>{
+  const c=ev.target.closest(".fchip.src");if(!c||!srcActive)return;
+  const l=c.dataset.src;
+  if(srcActive.has(l))srcActive.delete(l);else srcActive.add(l);
+  c.setAttribute("aria-pressed",srcActive.has(l));
+  renderAll();   // 소스 토글 → 타임라인·통계 갱신(EVENTS 기반). 서버집계(히트맵/도넛/파일)는 전체 범위 유지.
 });
 $("#tlscroll").addEventListener("click",ev=>{
   const hdr=ev.target.closest(".dayhdr");
@@ -469,6 +493,8 @@ async function boot(){
   LIVE=!!live;
   EVENTS=(live||MOCK).map(normalize);
   if(LIVE) await loadAggregates();   // 집계 패널 데이터 출처를 엔진으로(JS 재집계 금지)
+  srcActive=new Set(originLabels());  // 소스 토글 기본 전체 on
+  renderSrcFilters();
   renderAll();renderSuggest();
   const chip=$("#case-mode");
   if(LIVE){chip.className="chip ok";chip.innerHTML=`<span class="dot"></span>서버 연결됨`;}
