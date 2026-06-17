@@ -193,6 +193,38 @@ def test_answer_overview_empty_engine():
     assert out["mode"] == "empty"                    # 기록 0건 → empty
 
 
+def test_prompt_context_includes_preview_content():
+    # LLM 컨텍스트에 실제 내용(preview) 포함 — prompt/response는 target="" 이라 내용 없으면 빈 껍데기.
+    from clfx.query.llm import _prompt_context
+    from clfx.event import Event, Source
+    evs = [Event("2026-06-16T01:00:00Z", "claude", "s", "user", "prompt", "", "frida로 메모리 덤프 떠줘", Source("h", 1), [])]
+    ctx = _prompt_context(evs)
+    assert "frida로 메모리 덤프" in ctx              # 실제 내용이 LLM 컨텍스트에 들어감
+
+
+def test_answer_uses_preview_in_prompt():
+    from clfx.query.llm import answer
+    from clfx.event import Event, Source
+    seen = {}
+    class Stub:
+        def complete(self, p): seen["p"] = p; return "6/16에 사용자가 frida로 메모리 덤프를 요청했습니다 (h:1)."
+    evs = [Event("2026-06-16T01:00:00Z", "claude", "s", "user", "prompt", "", "frida 메모리 덤프 요청", Source("h", 1), [])]
+    out = answer("6/16 요약", evs, llm=Stub())
+    assert out["mode"] == "llm" and "frida" in out["text"]
+    assert "frida 메모리 덤프 요청" in seen["p"]       # preview 내용이 프롬프트에
+
+
+def test_answer_empty_llm_response_falls_back():
+    from clfx.query.llm import answer
+    from clfx.event import Event, Source
+    class Blank:
+        def complete(self, p): return "   "             # 빈/공백 응답
+    evs = [Event("2026-06-16T01:00:00Z", "claude", "s", "user", "prompt", "", "내용", Source("h", 1), [])]
+    out = answer("요약", evs, llm=Blank())
+    assert out["mode"] == "digest" and out["text"].strip()   # 빈 "결과 N건" 안 됨 — 내용 폴백
+    assert out.get("llm_error") == "빈 응답"
+
+
 def test_prompt_context_bounds_large_sets():
     # 대량 이벤트 → LLM 프롬프트는 [집계 헤더]+표본 N건으로 경계(전량 덤프=타임아웃/컨텍스트초과 차단).
     from clfx.query.llm import _prompt_context, _MAX_LLM_EVENTS

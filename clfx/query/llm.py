@@ -74,11 +74,18 @@ def route_intent(q):
     return {"op": "search", "kw": q.strip(), "actor": actor, "summarize": summarize}
 
 
-def _digest(events):
+def _digest(events, with_preview=False):
+    """이벤트 한 줄 요약. with_preview=True면 마스킹된 preview 내용 포함(LLM 입력용 — prompt/response는
+    target="" 이라 내용 없으면 빈 껍데기). ‹secret›/‹pii›는 엔진서 이미 마스킹돼 평문 미포함."""
     lines = []
     for e in events:
-        lines.append(f"- [{e.ts or '?'}] {e.actor}/{e.action} {e.target} "
-                     f"({e.source.file}:{e.source.line})")
+        base = f"- [{e.ts or '?'}] {e.actor}/{e.action} {e.target}".rstrip()
+        if with_preview and e.preview:
+            snip = " ".join((e.preview or "").split())[:120]   # 개행 정리 + 120자 경계(컨텍스트 bound)
+            if snip:
+                base += f": {snip}"
+        base += f" ({e.source.file}:{e.source.line})"
+        lines.append(base)
     return "\n".join(lines) if lines else "(결과 없음)"
 
 
@@ -90,7 +97,7 @@ def _prompt_context(events):
     증거(UI 반환 events)는 호출부에서 전량 유지 — 여기선 산문 입력만 경계(무손실)."""
     n = len(events)
     if n <= _MAX_LLM_EVENTS:
-        return _digest(events)
+        return _digest(events, with_preview=True)        # ← 실제 내용(마스킹 preview) 포함
     actors = {"user": 0, "agent": 0}
     actions = {}
     for e in events:
@@ -101,7 +108,7 @@ def _prompt_context(events):
     head = (f"[집계] 총 {n}건 (A 사용자 {actors['user']} / B 에이전트 {actors['agent']}). "
             "행위: " + ", ".join(f"{a}×{c}" for a, c in top) +
             f"\n[표본 앞 {_MAX_LLM_EVENTS}건]\n")
-    return head + _digest(events[:_MAX_LLM_EVENTS])
+    return head + _digest(events[:_MAX_LLM_EVENTS], with_preview=True)   # ← 내용 포함
 
 
 def summarize(events, llm=None):
@@ -111,10 +118,12 @@ def summarize(events, llm=None):
     if llm is None:
         return {"text": _prompt_context(events), "citations": citations, "mode": "digest"}
     try:
-        prompt = ("다음 포렌식 이벤트를 사실만으로 요약하라. 각 문장 끝에 (file:line) 인용.\n"
-                  + _prompt_context(events))   # 산문 입력만 경계(대량=집계+표본). citations는 전량.
+        ctx = _prompt_context(events)   # 내용 포함(마스킹 preview). 대량=집계+표본 경계. citations는 전량.
+        prompt = "다음 포렌식 이벤트를 사실만으로 요약하라. 각 문장 끝에 (file:line) 인용.\n" + ctx
         text = llm.complete(prompt)
-        return {"text": text, "citations": citations, "mode": "llm"}
+        if text and text.strip():
+            return {"text": text, "citations": citations, "mode": "llm"}
+        return {"text": ctx, "citations": citations, "mode": "digest", "llm_error": "빈 응답"}   # 빈 응답 폴백
     except Exception as e:
         return {"text": _prompt_context(events), "citations": citations,
                 "mode": "digest", "llm_error": str(e)[:200]}
@@ -131,14 +140,18 @@ def answer(question, events, llm=None):
     if llm is None:
         return {"text": _prompt_context(events), "citations": citations, "mode": "digest"}
     try:
-        ev = _prompt_context(events)   # 산문 입력만 경계(대량=집계+표본 → 타임아웃/컨텍스트초과 차단). 증거 citations는 전량.
+        ev = _prompt_context(events)   # 내용 포함(마스킹 preview). 대량은 집계+표본 경계. 증거 citations는 전량.
         prompt = (
-            "너는 Claude Code 기록 포렌식 분석가다. 아래 [이벤트]만 근거로 [질문]에 한국어로 답하라.\n"
-            "규칙: (1) 이벤트에 없는 사실 추측·날조 금지. (2) 핵심 문장 끝에 (file:line) 인용. "
-            "(3) 근거 없으면 '해당 기록을 찾지 못했습니다'. (4) 행위 주체는 A=사용자 / B=에이전트로 구분.\n\n"
+            "너는 Claude Code 기록 포렌식 분석가다. 아래 [이벤트]만 근거로 [질문]에 한국어 자연어로 답하라.\n"
+            "규칙: (1) '~했습니다' 식 서술형 문장으로 행위를 요약(목록 나열 금지). (2) 이벤트에 없는 사실 추측·날조 금지. "
+            "(3) 핵심 근거 끝에 (file:line) 인용. (4) 행위 주체는 A=사용자 / B=에이전트로 구분.\n\n"
             f"[질문]\n{question}\n\n[이벤트]\n{ev}\n"
         )
-        return {"text": llm.complete(prompt), "citations": citations, "mode": "llm"}
+        text = llm.complete(prompt)
+        if text and text.strip():
+            return {"text": text, "citations": citations, "mode": "llm"}
+        # 빈 응답 → 결정적 내용 폴백(자연어 아니어도 빈 "결과 N건"보다 정보 많음)
+        return {"text": ev, "citations": citations, "mode": "digest", "llm_error": "빈 응답"}
     except Exception as e:
         return {"text": (_prompt_context(events) if events else _none), "citations": citations,
                 "mode": "digest", "llm_error": str(e)[:200]}
