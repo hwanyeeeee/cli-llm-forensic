@@ -68,7 +68,8 @@ header{
 /* 좌/우 컬럼 패널: 우하단 드래그로 높이 조절(집중할 패널 키우기). 컬럼이 스크롤되니 다른 패널은 밀림.
    중앙 타임라인 패널(.col-mid .panel)은 flex:1+내부 스크롤이라 제외(아래 규칙이 덮음). */
 .col-left .panel, .col-right .panel{
-  resize:vertical; overflow:auto; min-height:120px;
+  resize:vertical; overflow:hidden;          /* 패널이 리사이즈 컨테이너; 내부 주콘텐츠가 flex로 채움 */
+  min-height:120px; display:flex; flex-direction:column;
 }
 .panel h2{
   font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);
@@ -86,7 +87,7 @@ header{
 .stat.user .n{color:var(--user)}
 
 /* ---------- calendar heatmap (활동 추이 · 달별 색 구분 — 대용량 대응) ---------- */
-.heat{display:flex;flex-direction:column;gap:8px}
+.heat{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow:auto}  /* 패널 높이 채움 */
 .hmonths{display:flex;font-size:9.5px;color:var(--faint);padding-left:2px;gap:0;align-items:center}
 .heatgrid{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,1fr);gap:3px;
   overflow-x:auto;padding-bottom:4px}
@@ -120,9 +121,9 @@ header{
 .kwaxis{display:flex;justify-content:space-between;font-size:9.5px;color:var(--faint);margin-top:5px;font-family:var(--mono)}
 
 /* ---------- donut ---------- */
-.donutwrap{display:flex;gap:14px;align-items:center}
+.donutwrap{display:flex;gap:14px;align-items:stretch;flex:1;min-height:0}  /* 패널 높이 채움 — legend가 늘어난 칸 스크롤 */
 .donut{flex:0 0 auto}
-.legend{display:flex;flex-direction:column;gap:7px;font-size:12px;min-width:0;flex:1}
+.legend{display:flex;flex-direction:column;gap:7px;font-size:12px;min-width:0;flex:1;min-height:0;overflow:auto}
 .legend .li{display:flex;align-items:center;gap:8px;cursor:pointer;border-radius:6px;padding:2px 3px;transition:.12s}
 .legend .li:hover{background:rgba(16,24,40,.05)}
 .legend .sw{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
@@ -130,7 +131,7 @@ header{
 .legend .ct{margin-left:auto;color:var(--muted);font-family:var(--mono);font-size:11px}
 
 /* ---------- file list ---------- */
-.files{display:flex;flex-direction:column;gap:7px;max-height:200px;overflow:auto}
+.files{display:flex;flex-direction:column;gap:7px;flex:1;min-height:0;overflow:auto}  /* 패널 높이 채움(max-height 제거 — 늘린 칸 채움) */
 .frow{display:flex;align-items:center;gap:9px;padding:8px 9px;border:1px solid var(--border);
   border-radius:9px;background:var(--panel2);cursor:pointer;transition:.15s}
 .frow:hover{border-color:#c2ccd8;transform:translateX(2px)}
@@ -205,6 +206,7 @@ header{
 .badge.bypass-mode{background:rgba(124,58,237,.12);color:#6d28d9;border:1px solid rgba(124,58,237,.35)}
 
 /* ---------- detail (right) ---------- */
+#detail{flex:1;min-height:0;overflow:auto}   /* 상세 패널 늘리면 내용/preview가 늘어난 높이 채우고 스크롤 */
 .detail .row{display:flex;gap:8px;font-size:12px;margin-bottom:6px}
 .detail .k{color:var(--muted);flex:0 0 70px}
 .detail .v{font-family:var(--mono);font-size:11.5px;word-break:break-all}

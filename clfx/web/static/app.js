@@ -482,8 +482,9 @@ function formatQueryResult(d){
     return `· <b>${who}</b> /${esc(e.action)} ${esc((e.target||"").split(/[\/\\]/).pop())}`;
   }).join("<br>");
   const cite=evs[0]?`<span class="cite">↳ ${esc(evs[0].src)}${n>1?` 외 ${n-1}건`:""}</span>`:"";
-  // 로컬 LLM(gemma4) 미연결 시 digest 폴백 — 결정적 요약임을 작게 안내(llm 모드면 안 붙임).
-  const hint=(d.summary&&d.summary.mode==="digest")?`<span class="cite">(로컬 LLM 미연결 — 결정적 요약)</span>`:"";
+  // 로컬 LLM(gemma4) 미연결 시 digest 폴백 — 결정적 요약임을 작게 안내(llm 모드면 안 붙임). 실패 사유 있으면 표시.
+  const sErr=(d.summary&&d.summary.llm_error)?(" "+esc(d.summary.llm_error)):"";
+  const hint=(d.summary&&d.summary.mode==="digest")?`<span class="cite">(로컬 LLM 미연결${sErr} — 결정적 요약)</span>`:"";
   return head+(top?`<br>${top}`:"")+cite+hint;
 }
 /* 샘플(서버 미연결) 모드 로컬 응답 — 데모/미리보기용 */
@@ -648,6 +649,9 @@ function setCaseChip(live){
 }
 
 async function boot(){
+  // 즉시 로딩 표시(await 전 — 빈 0화면 방지). 데이터 도착 시 각 패널이 차례로 덮어씀.
+  ["#st-total","#st-bypass","#st-user","#st-agent"].forEach(s=>{const el=$(s); if(el) el.textContent="…";});
+  ["#bars","#donut","#files","#tlscroll"].forEach(s=>{const el=$(s); if(el) el.innerHTML='<div class="empty">분석 데이터 불러오는 중…</div>';});
   // 점진부팅: 가벼운 /api/stats로 연결판정+타일 즉시(11.7만 events 직렬화 대기 안 함 → 20초 0 화면 제거).
   let reachable=false;
   try{ SRV_STATS=await jget("/api/stats"); reachable=true; }catch(_){ SRV_STATS=null; }
