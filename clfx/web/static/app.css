@@ -48,10 +48,14 @@ header{
 
 /* ---------- layout: 3 cols, only middle scrolls ---------- */
 .wrap{
+  --cl:300px; --cr:348px;
   flex:1 1 auto;min-height:0;
-  display:grid;grid-template-columns:300px minmax(0,1fr) 348px;gap:16px;
+  display:grid;grid-template-columns:var(--cl) 6px minmax(0,1fr) 6px var(--cr);gap:16px;
   padding:16px 20px;
 }
+/* 컬럼 사이 세로 거터 — 드래그로 좌/우 폭(--cl/--cr) 조절, 중앙(1fr) 자동. JS(initGutters)가 삽입. */
+.gutter{cursor:col-resize;background:transparent;border-radius:3px;align-self:stretch}
+.gutter:hover,.gutter.drag{background:var(--border)}
 .col{display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0}
 .col-left,.col-right{overflow-y:auto;overflow-x:hidden;padding-bottom:6px}
 .col-mid{min-height:0;display:flex}            /* middle holds one scrolling panel */
@@ -144,11 +148,15 @@ header{
 .tl-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;flex:0 0 auto}
 .tl-head h2{margin:0}
 .filters{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
-.fchip{font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);
-  background:var(--panel2);color:var(--muted);cursor:pointer;user-select:none;transition:.15s}
-.fchip[aria-pressed="true"]{color:var(--txt);border-color:#c2ccd8;background:#eef3f9}
-.fchip.u[aria-pressed="true"]{border-color:var(--user);box-shadow:inset 0 0 0 1px rgba(59,130,246,.4)}
-.fchip.a[aria-pressed="true"]{border-color:var(--agent);box-shadow:inset 0 0 0 1px rgba(239,68,68,.4)}
+.fchip{font-size:11px;padding:4px 10px;border-radius:999px;border:1.5px solid var(--border);
+  background:var(--panel2);color:var(--muted);cursor:pointer;user-select:none;transition:all .12s;opacity:.55}
+.fchip[aria-pressed="true"]{opacity:1;font-weight:700;color:var(--txt);border-color:#c2ccd8;background:#eef3f9}
+.fchip[aria-pressed="false"]{text-decoration:line-through}   /* 꺼짐 = 취소선+흐림(확실히 off) */
+/* 주체별 on 색(A=파랑·B=빨강·bypass=보라) — 무엇을 켰는지 한눈에 */
+#filters .fchip[data-f="user"][aria-pressed="true"]{border-color:var(--user);color:#fff;background:var(--user)}
+#filters .fchip[data-f="agent"][aria-pressed="true"]{border-color:var(--agent);color:#fff;background:var(--agent)}
+#filters .fchip[data-f="bypass-mode"][aria-pressed="true"]{border-color:var(--bypass);color:#fff;background:var(--bypass)}
+.fchip.src[aria-pressed="true"]{border-color:var(--accent);color:#fff;background:var(--accent)}
 
 .tl-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;padding-right:4px}
 

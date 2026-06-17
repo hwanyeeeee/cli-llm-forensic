@@ -51,6 +51,7 @@ let EVENTS=[];   // 정규화된 표시 이벤트(서버 또는 MOCK)
 let LIVE=false;  // 서버 연결 여부
 // LIVE 시 엔진 집계 payload(JS 재집계 금지 — 그리기만). 각 null이면 해당 패널만 파생 fallback.
 let SRV_ACTIVITY=null, SRV_FILES=null, SRV_KEYWORDS=null;
+let SRV_STATS=null;   // 경량 타일 집계(/api/stats) — 점진부팅서 EVENTS 로드 전 타일 즉시 표시.
 
 /* 키워드 파생(서버가 kw 미제공 시) — UI측 placeholder, /api/keywords 로 대체 예정 */
 const KW_DICT=["AWS","Stripe","GitHub","OpenAI","npm","SSH","id_rsa",".env",".npmrc","config",
@@ -112,6 +113,12 @@ function renderSrcFilters(){
 
 /* ---------- stats ---------- */
 function renderStats(){
+  // 점진부팅: EVENTS 로드 전엔 경량 /api/stats로 타일 즉시(무손실 — 로드 후 EVENTS 1패스와 같은 값).
+  if(LIVE && SRV_STATS && EVENTS.length===0){
+    $("#st-total").textContent=SRV_STATS.total; $("#st-bypass").textContent=SRV_STATS.bypass;
+    $("#st-user").textContent=SRV_STATS.user;   $("#st-agent").textContent=SRV_STATS.agent;
+    return;
+  }
   // 소스 토글 반영(EVENTS 기반). 11.7만 전량 1패스 집계(4중 filter 스캔 제거 — 멈춤 완화).
   let total=0,byp=0,u=0,a=0;
   for(const e of EVENTS){
@@ -179,10 +186,17 @@ function jumpToDay(d){
   const sel=$("#datejump");if(sel)sel.value=d;
 }
 function renderDateJump(){
-  const cnt={};EVENTS.forEach(e=>{const d=dayOf(e.ts);cnt[d]=(cnt[d]||0)+1;});
-  const dates=Object.keys(cnt).sort();
+  // LIVE: 엔진 활동집계(SRV_ACTIVITY)로 날짜목록 — EVENTS 로드 전에도 채움(점진부팅). 아니면 EVENTS 파생.
+  let pairs;   // [[date, count], ...]
+  if(LIVE && SRV_ACTIVITY && Array.isArray(SRV_ACTIVITY.rows)){
+    pairs=SRV_ACTIVITY.rows.filter(r=>r.bucket!=="unknown").map(r=>[r.bucket, r.total]);
+  }else{
+    const cnt={};EVENTS.forEach(e=>{const d=dayOf(e.ts);cnt[d]=(cnt[d]||0)+1;});
+    pairs=Object.entries(cnt);
+  }
+  pairs.sort((a,b)=>a[0]<b[0]?1:-1);   // 최신순(내림차순) — 타임라인과 동일 정렬
   $("#datejump").innerHTML=`<option value="">📅 날짜 이동…</option>`+
-    dates.map(d=>`<option value="${d}">${d} (${weekday(d)}) · ${cnt[d]}건</option>`).join("");
+    pairs.map(([d,c])=>`<option value="${d}">${d} (${weekday(d)}) · ${c}건</option>`).join("");
 }
 
 /* ---------- donut ---------- */
@@ -298,11 +312,11 @@ function renderTimeline(){
   const groups={};
   EVENTS.forEach((e,i)=>{if(passFilter(e)){const d=dayOf(e.ts);(groups[d]=groups[d]||[]).push(i);}});
   TL_GROUPS=groups;
-  const dates=Object.keys(groups).sort();
+  const dates=Object.keys(groups).sort((a,b)=>a<b?1:-1);   // 최신순(내림차순) — 최근 날 위로
   if(!dates.length){$("#tlscroll").innerHTML=`<div class="empty">필터에 맞는 이벤트 없음</div>`;return;}
   if(!TL_AUTOOPENED){                       // 데이터 로드당 1회: 가장 최근 날만 펼침(초기 DOM 최소)
-    const last=dates[dates.length-1];
-    openDays[last]=true; dayShown[last]=TL_PAGE; TL_AUTOOPENED=true;
+    const recent=dates[0];
+    openDays[recent]=true; dayShown[recent]=TL_PAGE; TL_AUTOOPENED=true;
   }
   // 모든 날 헤더+건수는 전체 데이터 기준 항상 렌더(무손실). 카드는 펼친 날만 생성(가상화).
   $("#tlscroll").innerHTML=dates.map(d=>{
@@ -601,31 +615,81 @@ async function loadAggregates(){
   try{SRV_FILES=await jget("/api/files");}catch(_){SRV_FILES=null;}
   try{SRV_KEYWORDS=await jget("/api/keywords");}catch(_){SRV_KEYWORDS=null;}
 }
-async function boot(){
-  let live=null, reachable=false;
-  try{
-    const r=await fetch("/api/events");
-    if(r.ok){reachable=true;const d=await r.json();if(d&&Array.isArray(d.events))live=d.events;}
-  }catch(_){}
-  // 서버 연결 + 데이터 0건 → 스캔 화면(아직 스캔 전). 미연결(reachable=false)은 MOCK 대시보드.
-  if(reachable && live && live.length===0){ showScan(); return; }
-  $("#scan-screen").hidden=true; $(".wrap").style.display="";   // 대시보드 복귀(재스캔 후)
-  LIVE=!!live;
-  EVENTS=(live||MOCK).map(normalize);
-  TARGET_IDX=new Map();               // target→첫 등장 인덱스(renderFiles 상세연결 O(1))
-  EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
-  TL_AUTOOPENED=false;                // 새 데이터 → 최근 날 자동 펼침 1회 재무장
-  if(LIVE) await loadAggregates();   // 집계 패널 데이터 출처를 엔진으로(JS 재집계 금지)
-  srcActive=new Set(originLabels());  // 소스 토글 기본 전체 on
-  renderSrcFilters();
-  renderAll();renderSuggest();
-  $("#rescan").hidden=!LIVE;   // LIVE일 때만 다시스캔 노출
-  const chip=$("#case-mode");
-  if(LIVE){chip.className="chip ok";chip.innerHTML=`<span class="dot"></span>서버 연결됨`;}
-  else{chip.className="chip warn";chip.innerHTML=`<span class="dot"></span>샘플 데이터(서버 미연결)`;}
-  const byp=EVENTS.filter(e=>e.tags.includes("bypass-mode")).length;
-  addMsg("ai",LIVE
-    ?`기록 로드 완료. 총 <b>${EVENTS.length}</b>건 · bypass 모드 자율 행위 <b>${byp}</b>건. 무엇을 조사할까요?`
-    :`샘플 데이터 표시 중(서버 미연결). 총 <b>${EVENTS.length}</b>건. <code>clfx serve</code> 또는 exe 실행 시 실데이터가 로드됩니다.`);
+/* ---------- 컬럼 폭 드래그 리사이즈(좌|중, 중|우 경계 거터) ---------- */
+function initGutters(){
+  const wrap=$(".wrap"); if(!wrap||wrap.querySelector(".gutter"))return;   // 1회만(중복 가드)
+  const cols=wrap.querySelectorAll(".col"); if(cols.length<3)return;       // [left, mid, right]
+  const L=document.createElement("div");L.className="gutter";L.dataset.edge="left";
+  const R=document.createElement("div");R.className="gutter";R.dataset.edge="right";
+  wrap.insertBefore(L, cols[1]); wrap.insertBefore(R, cols[2]);            // DOM: left,L,mid,R,right (5트랙 일치)
+  let drag=null;
+  wrap.addEventListener("pointerdown",e=>{
+    const g=e.target.closest(".gutter"); if(!g)return;
+    const cs=getComputedStyle(wrap);
+    drag={edge:g.dataset.edge, x:e.clientX,
+      cl:parseFloat(cs.getPropertyValue("--cl")), cr:parseFloat(cs.getPropertyValue("--cr"))};
+    g.classList.add("drag");
+    try{ g.setPointerCapture(e.pointerId); }catch(_){}   // 캡처 실패해도 드래그는 wrap 리스너로 동작
+  });
+  wrap.addEventListener("pointermove",e=>{
+    if(!drag)return;
+    const dx=e.clientX-drag.x;
+    if(drag.edge==="left") wrap.style.setProperty("--cl", Math.max(180,Math.min(560,drag.cl+dx))+"px");
+    else                   wrap.style.setProperty("--cr", Math.max(180,Math.min(560,drag.cr-dx))+"px");
+  });
+  const end=()=>{drag=null; wrap.querySelectorAll(".gutter.drag").forEach(g=>g.classList.remove("drag"));};
+  wrap.addEventListener("pointerup",end); wrap.addEventListener("pointercancel",end);
 }
+
+function setCaseChip(live){
+  const c=$("#case-mode");
+  if(live){c.className="chip ok";c.innerHTML='<span class="dot"></span>서버 연결됨';}
+  else{c.className="chip warn";c.innerHTML='<span class="dot"></span>샘플 데이터(서버 미연결)';}
+}
+
+async function boot(){
+  // 점진부팅: 가벼운 /api/stats로 연결판정+타일 즉시(11.7만 events 직렬화 대기 안 함 → 20초 0 화면 제거).
+  let reachable=false;
+  try{ SRV_STATS=await jget("/api/stats"); reachable=true; }catch(_){ SRV_STATS=null; }
+  // 연결 + 데이터 0건 → 스캔 화면(아직 스캔 전). 미연결 → MOCK 대시보드.
+  if(reachable && SRV_STATS && SRV_STATS.total===0){ showScan(); return; }
+  $("#scan-screen").hidden=true; $(".wrap").style.display="";   // 대시보드 복귀
+  LIVE=reachable;
+  if(LIVE){
+    // 1단계(즉시): 타일 + 집계패널(히트맵/도넛/파일/날짜점프) — EVENTS 불요. 타임라인만 로딩표시.
+    await loadAggregates();                  // activity/files/keywords(작은 출력)
+    EVENTS=[]; TARGET_IDX=new Map();          // 아직 이벤트 없음(타임라인 백그라운드 로드)
+    srcActive=null;                           // 집계는 전체 기준(소스필터는 EVENTS 로드 후 활성)
+    renderStats();renderHeatmap();renderDonut();renderDateJump();renderFiles();
+    $("#tlscroll").innerHTML='<div class="empty">타임라인 불러오는 중… (전체 이벤트 로드)</div>';
+    setCaseChip(true);
+    addMsg("ai",`기록 로드 완료. 총 <b>${SRV_STATS.total}</b>건 · bypass 모드 자율 행위 <b>${SRV_STATS.bypass}</b>건. 무엇을 조사할까요?`);
+    renderSuggest(); $("#rescan").hidden=false;
+    // 2단계(백그라운드): 전체 이벤트(무거움) → 타임라인/소스필터/상세연결. await 안 함(대시보드 이미 떠 있음).
+    loadEventsInBackground();
+  }else{
+    // 오프라인 MOCK(기존 경로)
+    EVENTS=MOCK.map(normalize);
+    TARGET_IDX=new Map(); EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
+    TL_AUTOOPENED=false; srcActive=new Set(originLabels()); renderSrcFilters(); renderAll(); renderSuggest();
+    $("#rescan").hidden=true; setCaseChip(false);
+    addMsg("ai",`샘플 데이터 표시 중(서버 미연결). 총 <b>${EVENTS.length}</b>건. <code>clfx serve</code> 또는 exe 실행 시 실데이터가 로드됩니다.`);
+  }
+}
+
+async function loadEventsInBackground(){
+  let live=[];
+  try{ const d=await jget("/api/events"); if(d&&Array.isArray(d.events)) live=d.events; }
+  catch(_){ $("#tlscroll").innerHTML='<div class="empty">이벤트 로드 실패 (/api/events)</div>'; return; }
+  EVENTS=live.map(normalize);
+  TARGET_IDX=new Map(); EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
+  TL_AUTOOPENED=false;
+  srcActive=new Set(originLabels()); renderSrcFilters();
+  renderStats();        // EVENTS 기반 재계산 — 값은 SRV_STATS.total과 동일해야(무손실 확인점)
+  renderDateJump();     // EVENTS 로드 후에도 LIVE면 SRV_ACTIVITY 유지(동일)
+  renderFiles();        // TARGET_IDX 채워진 뒤 재렌더 → 파일행 상세연결(idx) 활성
+  renderTimeline();     // 카드 채움(가상화: 최신 날만 자동 펼침)
+}
+
+initGutters();
 boot();
