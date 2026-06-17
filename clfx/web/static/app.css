@@ -61,6 +61,11 @@ header{
   border:1px solid var(--border);border-radius:14px;padding:14px 15px;
   box-shadow:0 1px 3px rgba(16,24,40,.05);
 }
+/* 좌/우 컬럼 패널: 우하단 드래그로 높이 조절(집중할 패널 키우기). 컬럼이 스크롤되니 다른 패널은 밀림.
+   중앙 타임라인 패널(.col-mid .panel)은 flex:1+내부 스크롤이라 제외(아래 규칙이 덮음). */
+.col-left .panel, .col-right .panel{
+  resize:vertical; overflow:auto; min-height:120px;
+}
 .panel h2{
   font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);
   margin:0 0 12px;display:flex;align-items:center;gap:8px;font-weight:700;

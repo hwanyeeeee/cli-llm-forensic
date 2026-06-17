@@ -44,7 +44,14 @@ def main(argv=None):
     # 우선 네이티브 GUI 창. 백엔드 없으면(import/런타임 실패) 브라우저로 폴백.
     try:
         import webview                                  # pywebview
-        webview.create_window("clfx — Claude 포렌식", url, width=1280, height=860)
+        # maximized로 화면 꽉 채워 起動(좌상단 절반만 차지 문제 해소) + resizable.
+        # 구버전 pywebview는 maximized 미지원(TypeError) → 인자 없이 재생성(폴백 아님, 창은 뜸).
+        try:
+            webview.create_window("clfx — Claude 포렌식", url,
+                                  width=1280, height=860, resizable=True, maximized=True)
+        except TypeError:
+            webview.create_window("clfx — Claude 포렌식", url,
+                                  width=1280, height=860, resizable=True)
         webview.start()                                 # 메인스레드 블로킹 GUI 루프(창 닫으면 반환)
     except Exception as e:
         print(f"[clfx] GUI 백엔드 사용 불가({e}) → 브라우저로 엽니다.", file=sys.stderr)
