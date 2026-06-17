@@ -178,3 +178,28 @@ def test_answer_overview_empty_engine():
     from clfx.query.llm import answer_overview
     out = answer_overview("뭐해?", QueryEngine([]), llm=None)
     assert out["mode"] == "empty"                    # 기록 0건 → empty
+
+
+def test_prompt_context_bounds_large_sets():
+    # 대량 이벤트 → LLM 프롬프트는 [집계 헤더]+표본 N건으로 경계(전량 덤프=타임아웃/컨텍스트초과 차단).
+    from clfx.query.llm import _prompt_context, _MAX_LLM_EVENTS
+    from clfx.event import Event, Source
+    evs = [Event(f"2026-06-11T00:00:{i%60:02d}Z", "claude", "s", "user", "prompt", "",
+                 f"질문{i}", Source("h.jsonl", i), []) for i in range(300)]
+    ctx = _prompt_context(evs)
+    assert "[집계] 총 300건" in ctx                      # 대량=집계 헤더
+    assert ctx.count("\n- ") <= _MAX_LLM_EVENTS + 1       # 표본만(전량 덤프 아님)
+
+
+def test_answer_large_set_calls_llm_with_bounded_prompt():
+    # 타임라인 등 대량 결과도 LLM은 경계 프롬프트 받음(요약 정상). 증거 citations는 전량(무손실).
+    from clfx.query.llm import answer
+    from clfx.event import Event, Source
+    seen = {}
+    class Stub:
+        def complete(self, p): seen["len"] = len(p); seen["p"] = p; return "요약 산문 (h.jsonl:1)."
+    evs = [Event(f"2026-06-11T00:00:{i%60:02d}Z", "claude", "s", "agent", "response", "",
+                 f"응답{i}" * 20, Source("h.jsonl", i), []) for i in range(500)]
+    out = answer("타임라인 요약해줘", evs, llm=Stub())
+    assert out["mode"] == "llm" and "[집계] 총 500건" in seen["p"]
+    assert len(out["citations"]) == 500                   # 증거는 전량(무손실)

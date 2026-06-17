@@ -2,8 +2,9 @@ from clfx.event import Event, Source
 from clfx.analyze.keywords import keyword_stats
 
 
-def _ev(actor, target, preview, ts):
-    return Event(ts=ts, agent="claude", session="s", actor=actor, action="read",
+def _ev(actor, target, preview, ts, action="prompt"):
+    # 키워드는 대화 텍스트(prompt/response)에서만 추출 — 기본 action=prompt(파일/명령 노이즈 제외 의도 반영).
+    return Event(ts=ts, agent="claude", session="s", actor=actor, action=action,
                  target=target, preview=preview, source=Source("h.jsonl", 1), tags=[])
 
 
@@ -13,7 +14,7 @@ def test_frequency_and_actor_split():
         _ev("agent", "b.py", "비밀번호 점검", "2026-06-11T02:00:00.000Z"),
         _ev("user", "c.py", "일반 코드 리뷰", "2026-06-11T03:00:00.000Z"),
     ]
-    st = keyword_stats(evs)
+    st = keyword_stats(evs, min_count=1)
     kws = {k["term"]: k for k in st["keywords"]}
     # "비밀번호" 3회 등장 안 됨 — 2건(user1/agent1). actor 분리.
     assert kws["비밀번호"]["count"] == 2
@@ -26,26 +27,27 @@ def test_frequency_and_actor_split():
 def test_concentration_pattern():
     # 같은 키워드가 하루 몰림 → 집중형, 여러 날 분산 → 지속형
     same_day = [_ev("user", "x", "해킹 시도", f"2026-06-11T0{i}:00:00.000Z") for i in range(1, 5)]
-    st = keyword_stats(same_day)
+    st = keyword_stats(same_day, min_count=1)
     hk = {k["term"]: k for k in st["keywords"]}["해킹"]
     assert hk["pattern"] == "집중형"
 
     spread = [_ev("user", "x", "해킹 시도", f"2026-06-1{i}T01:00:00.000Z") for i in range(1, 5)]
-    st2 = keyword_stats(spread)
+    st2 = keyword_stats(spread, min_count=1)
     hk2 = {k["term"]: k for k in st2["keywords"]}["해킹"]
     assert hk2["pattern"] == "지속형"
 
 
 def test_stopword_and_short_filtered():
     evs = [_ev("user", "x", "그 the 이 a 비밀번호", "2026-06-11T01:00:00.000Z")]
-    terms = {k["term"] for k in keyword_stats(evs)["keywords"]}
+    terms = {k["term"] for k in keyword_stats(evs, min_count=1)["keywords"]}
     assert "the" not in terms and "그" not in terms and "a" not in terms
     assert "비밀번호" in terms
 
 
-def test_keyword_stats_mixed_ts_fixture(mixed_ts_events):
-    # 공용 mixed-ts 픽스처 → keyword_stats crash 없음 + epoch-ms 이벤트 by_day가 ISO 키.
-    kws = {k["term"]: k for k in keyword_stats(mixed_ts_events)["keywords"]}
+def test_keywords_conversation_epoch_ms_by_day():
+    # 대화(prompt/response) 이벤트에 epoch-ms int ts 섞여도 by_day가 ISO 키(I1) + crash 없음.
+    evs = [_ev("user", "", "비밀번호 점검", 1770555950996)]   # epoch-ms int → 2026-02-08
+    kws = {k["term"]: k for k in keyword_stats(evs, min_count=1)["keywords"]}
     assert "비밀번호" in kws
     assert "2026-02-08" in kws["비밀번호"]["by_day"]   # epoch-ms int ts → ISO 일자 키
 
@@ -53,21 +55,21 @@ def test_keyword_stats_mixed_ts_fixture(mixed_ts_events):
 def test_epoch_ms_ts_no_crash():
     # history발 epoch-ms int ts 섞임 → norm_ts 통일, (e.ts or "")[:10] 슬라이스 TypeError 안 남.
     evs = [_ev("user", "x", "비밀번호 점검", 1770555950996)]
-    st = keyword_stats(evs)
+    st = keyword_stats(evs, min_count=1)
     assert any(k["term"] == "비밀번호" for k in st["keywords"])
 
 
 def test_mask_span_not_tokenized():
     # ‹secret›·‹pii› 마스크 마커 스팬 통째 제거 → 내부 단어가 키워드로 새지 않음(secret 강조 금지).
     evs = [_ev("user", ".env", "API_KEY=‹secret› 그리고 ‹pii› 포함", "2026-06-11T01:00:00.000Z")]
-    terms = {k["term"] for k in keyword_stats(evs)["keywords"]}
+    terms = {k["term"] for k in keyword_stats(evs, min_count=1)["keywords"]}
     assert "secret" not in terms and "pii" not in terms
 
 
 def test_deterministic_tiebreak_order():
     # 동일 count(각 1회) 키워드들 → term 사전순 tie-break으로 결정적. set 순회 비결정성 무관.
     evs = [_ev("user", "x", "delta charlie bravo alpha", "2026-06-11T01:00:00.000Z")]
-    terms = [k["term"] for k in keyword_stats(evs)["keywords"]]
+    terms = [k["term"] for k in keyword_stats(evs, min_count=1)["keywords"]]
     assert terms == ["alpha", "bravo", "charlie", "delta"]   # 전부 count 1 → 사전순
 
 
@@ -78,28 +80,28 @@ def test_by_day_distribution():
         _ev("user", "x", "비밀번호 재확인", "2026-06-11T05:00:00.000Z"),
         _ev("agent", "x", "비밀번호 또", "2026-06-13T01:00:00.000Z"),
     ]
-    bd = {k["term"]: k for k in keyword_stats(evs)["keywords"]}["비밀번호"]["by_day"]
+    bd = {k["term"]: k for k in keyword_stats(evs, min_count=1)["keywords"]}["비밀번호"]["by_day"]
     assert bd == {"2026-06-11": 2, "2026-06-13": 1}
 
 
 def test_token_boundary_no_substring_match():
     # "api"는 토큰 경계 — "capistrano"엔 안 잡힘(substring 재매칭 아님). JS 팝업 오매칭 원인 차단.
     evs = [_ev("user", "x", "capistrano 배포", "2026-06-11T01:00:00.000Z")]
-    terms = {k["term"] for k in keyword_stats(evs)["keywords"]}
+    terms = {k["term"] for k in keyword_stats(evs, min_count=1)["keywords"]}
     assert "capistrano" in terms and "api" not in terms
 
 
 def test_particle_strip_investigative_match():
     # "비밀번호를" → 조사 분리 → term "비밀번호"(investigative). 조사 붙은 term은 없어야.
     evs = [_ev("user", "x", "비밀번호를 확인했다", "2026-06-11T01:00:00.000Z")]
-    kws = {k["term"]: k for k in keyword_stats(evs)["keywords"]}
+    kws = {k["term"]: k for k in keyword_stats(evs, min_count=1)["keywords"]}
     assert "비밀번호" in kws and kws["비밀번호"]["investigative"] is True
     assert "비밀번호를" not in kws
 
 
 def test_particle_strip_token():
     evs = [_ev("user", "x", "토큰을 유출", "2026-06-11T01:00:00.000Z")]
-    kws = {k["term"]: k for k in keyword_stats(evs)["keywords"]}
+    kws = {k["term"]: k for k in keyword_stats(evs, min_count=1)["keywords"]}
     assert "토큰" in kws and kws["토큰"]["investigative"] is True
 
 
@@ -109,12 +111,42 @@ def test_particle_merge_same_term():
         _ev("user", "x", "비밀번호 점검", "2026-06-11T01:00:00.000Z"),
         _ev("agent", "x", "비밀번호를 또 봄", "2026-06-12T01:00:00.000Z"),
     ]
-    kws = {k["term"]: k for k in keyword_stats(evs)["keywords"]}
+    kws = {k["term"]: k for k in keyword_stats(evs, min_count=1)["keywords"]}
     assert kws["비밀번호"]["count"] == 2
 
 
 def test_no_over_strip_short_stem():
     # "회의" — 어간 "회"(1자)라 조사 "의" 분리 안 함(과분리 방지). term "회의" 유지.
     evs = [_ev("user", "x", "회의 일정 잡자", "2026-06-11T01:00:00.000Z")]
-    terms = {k["term"] for k in keyword_stats(evs)["keywords"]}
+    terms = {k["term"] for k in keyword_stats(evs, min_count=1)["keywords"]}
     assert "회의" in terms and "회" not in terms
+
+
+# ---------------- 키워드 추출 개선(요구문서: for/user/mnt 노이즈 제거) ----------------
+def test_keywords_only_from_conversation():
+    # 키워드는 대화(prompt/response)에서만 — read/bash(파일내용·명령·경로)는 제외(노이즈 원천 차단).
+    s = Source("h.jsonl", 1)
+    evs = [
+        Event("2026-06-11T01:00:00Z", "claude", "x", "agent", "read",
+              "/mnt/c/users/best/.env", "for i in range(10): import os", s, []),   # 코드/경로 — 제외
+        Event("2026-06-11T01:01:00Z", "claude", "x", "agent", "bash",
+              "grep for /mnt/home", "", s, []),                                     # 명령 — 제외
+        Event("2026-06-11T02:00:00Z", "claude", "x", "user", "prompt",
+              "", "AWS S3 배포 에러 좀 봐줘 AWS", s, []),                            # 대화 — 포함
+        Event("2026-06-11T03:00:00Z", "claude", "x", "agent", "response",
+              "", "S3 버킷 권한 문제입니다 S3", s, []),                              # 대화 — 포함
+    ]
+    terms = {k["term"].lower() for k in keyword_stats(evs, min_count=1)["keywords"]}
+    assert "for" not in terms and "mnt" not in terms and "user" not in terms and "home" not in terms
+    assert any(t in terms for t in ("aws", "s3"))
+
+
+def test_keywords_min_count_cuts_singletons():
+    # 1회성 토큰 컷(min_count>=2), 2회 이상은 유지. (이벤트당 dedup이므로 2개 이벤트 = count 2)
+    s = Source("h.jsonl", 1)
+    evs = [
+        Event("2026-06-11T02:00:00Z", "claude", "x", "user", "prompt", "", "토큰 점검", s, []),
+        Event("2026-06-11T03:00:00Z", "claude", "x", "user", "prompt", "", "토큰 일회성단어", s, []),
+    ]
+    terms = {k["term"] for k in keyword_stats(evs, min_count=2)["keywords"]}
+    assert "토큰" in terms and "일회성단어" not in terms          # 2회=유지, 1회=컷

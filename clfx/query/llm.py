@@ -76,19 +76,41 @@ def _digest(events):
     return "\n".join(lines) if lines else "(결과 없음)"
 
 
+_MAX_LLM_EVENTS = 60
+
+
+def _prompt_context(events):
+    """LLM 프롬프트용 컨텍스트(경계). 대량이면 [집계 헤더]+표본 N건 → 전량 덤프(타임아웃/컨텍스트초과) 차단.
+    증거(UI 반환 events)는 호출부에서 전량 유지 — 여기선 산문 입력만 경계(무손실)."""
+    n = len(events)
+    if n <= _MAX_LLM_EVENTS:
+        return _digest(events)
+    actors = {"user": 0, "agent": 0}
+    actions = {}
+    for e in events:
+        a = e.actor if e.actor in ("user", "agent") else "user"
+        actors[a] += 1
+        actions[e.action] = actions.get(e.action, 0) + 1
+    top = sorted(actions.items(), key=lambda x: (-x[1], x[0]))[:6]
+    head = (f"[집계] 총 {n}건 (A 사용자 {actors['user']} / B 에이전트 {actors['agent']}). "
+            "행위: " + ", ".join(f"{a}×{c}" for a, c in top) +
+            f"\n[표본 앞 {_MAX_LLM_EVENTS}건]\n")
+    return head + _digest(events[:_MAX_LLM_EVENTS])
+
+
 def summarize(events, llm=None):
     """결정적으로 검색된 집합만 요약. citations = 실재 source(file:line). LLM 죽으면 digest.
     요약 채점 = 인용 source 실재 + 근거 집합 일치(산문 일치 아님)."""
-    citations = [f"{e.source.file}:{e.source.line}" for e in events]
+    citations = [f"{e.source.file}:{e.source.line}" for e in events]   # 증거=전량(무손실)
     if llm is None:
-        return {"text": _digest(events), "citations": citations, "mode": "digest"}
+        return {"text": _prompt_context(events), "citations": citations, "mode": "digest"}
     try:
         prompt = ("다음 포렌식 이벤트를 사실만으로 요약하라. 각 문장 끝에 (file:line) 인용.\n"
-                  + _digest(events))
+                  + _prompt_context(events))   # 산문 입력만 경계(대량=집계+표본). citations는 전량.
         text = llm.complete(prompt)
         return {"text": text, "citations": citations, "mode": "llm"}
     except Exception:
-        return {"text": _digest(events), "citations": citations, "mode": "digest"}
+        return {"text": _prompt_context(events), "citations": citations, "mode": "digest"}
 
 
 def answer(question, events, llm=None):
@@ -100,9 +122,9 @@ def answer(question, events, llm=None):
         # mode="empty"(="digest"와 구분): 빈 결과지 LLM 미연결 아님 → UI가 "LLM 미연결"로 오표기 방지.
         return {"text": _none, "citations": [], "mode": "empty"}
     if llm is None:
-        return {"text": _digest(events), "citations": citations, "mode": "digest"}
+        return {"text": _prompt_context(events), "citations": citations, "mode": "digest"}
     try:
-        ev = _digest(events)
+        ev = _prompt_context(events)   # 산문 입력만 경계(대량=집계+표본 → 타임아웃/컨텍스트초과 차단). 증거 citations는 전량.
         prompt = (
             "너는 Claude Code 기록 포렌식 분석가다. 아래 [이벤트]만 근거로 [질문]에 한국어로 답하라.\n"
             "규칙: (1) 이벤트에 없는 사실 추측·날조 금지. (2) 핵심 문장 끝에 (file:line) 인용. "
@@ -111,7 +133,7 @@ def answer(question, events, llm=None):
         )
         return {"text": llm.complete(prompt), "citations": citations, "mode": "llm"}
     except Exception:
-        return {"text": (_digest(events) if events else _none), "citations": citations, "mode": "digest"}
+        return {"text": (_prompt_context(events) if events else _none), "citations": citations, "mode": "digest"}
 
 
 def _overview_context(engine):
@@ -165,7 +187,7 @@ class OllamaLLM:
     """로컬 ollama 요약 클라이언트. 증거 외부전송 0(localhost).
     complete()가 실패하면 summarize가 digest로 폴백한다."""
 
-    def __init__(self, model="gemma4:12b", host="http://localhost:11434", timeout=60):
+    def __init__(self, model="gemma4:12b", host="http://localhost:11434", timeout=120):
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout
