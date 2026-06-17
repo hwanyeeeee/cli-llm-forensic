@@ -16,8 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
-- 위치: GUI 전환 완료 → 사용자 GUI 재빌드 + WSL탐지 보강 대기
-- 수행 중: **6단계 + GUI 전환 완료**(codex CLEAN, 154, final-verify OK 이력). exe=네이티브 pywebview 창(브라우저 폴백). 사용자가 갱신된 build-exe.bat로 **재빌드 필요**(pip pywebview 새로 받음) → dist\clfx.exe 더블클릭 시 GUI 창. **후속 보강 대기: Windows exe서 WSL 소스 미탐지(\\wsl.localhost 열거 비어 windows만 뜸) → \\wsl$ 폴백 등.** 그 후 B plan(복구·해시·④JOIN)→C(MCP). 미push(24 ahead).
+- 위치: GUI 완료 → WSL탐지 수정 진행 중
+- 수행 중: 6단계+GUI 완료. **WSL 미탐지 진단됨**: Path(\\wsl.localhost).exists()=False(UNC 서버 루트는 stat/iterdir 불가). 전체경로(\\wsl.localhost\Ubuntu\home\best1pjh\.claude)는 접근 가능. **panel1에 수정 위임**: wsl.exe -l -q로 distro 목록→각 home/<user>/.claude 전체경로 후보(_parse_wsl_list 순수함수+테스트). 끝나면 사용자 재빌드 1회로 GUI+WSL탐지 둘다. 그 후 B plan→C. 미push(26 ahead).
 - 후속(승인됨): (a)불변식 체크리스트[완료, plan.md] +(b)mixed-ts 픽스처 → 그 위에 B(복구·해시·④조인귀속)·C(MCP ⑧·Windows C:\tmp) plan. ④귀속=transcript↔아티팩트 JOIN, owner 신뢰X.
 - 재시도: 0
 - 리뷰라운드: 0 (6단계 Task별 codex 리뷰 → 최종 CLEAN)
