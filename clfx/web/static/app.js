@@ -1,9 +1,8 @@
 /* =========================================================================
    clfx 대시보드 프론트 (표시 전용).
    - 엔진이 단일 진실원천: /api/events·/api/query 호출, JS로 분석 재구현 금지.
-   - 서버 연결 시 실데이터, 미연결(file:// 미리보기) 시 내장 샘플(MOCK)로 동작.
+   - 서버 연결(LIVE) 시 집계 패널(히트맵·파일·키워드)은 엔진 /api/activity·/api/files·/api/keywords 사용(JS 재집계 금지·증거 분기 방지). 미연결 시 내장 샘플(MOCK)+UI 파생 fallback.
    - 시크릿(자격증명 패턴) 탐지 표시는 제거(회사별 기밀 판단 불가·오탐). 주체/권한(bypass)·키워드 중심.
-   - 키워드 집계는 현재 UI측 파생(placeholder). 코어가 /api/keywords 제공 시 교체.
    ========================================================================= */
 
 /* ---------- 내장 샘플(서버 미연결 미리보기용) ---------- */
@@ -50,6 +49,8 @@ const MOCK = [
 /* ---------- live state ---------- */
 let EVENTS=[];   // 정규화된 표시 이벤트(서버 또는 MOCK)
 let LIVE=false;  // 서버 연결 여부
+// LIVE 시 엔진 집계 payload(JS 재집계 금지 — 그리기만). 각 null이면 해당 패널만 파생 fallback.
+let SRV_ACTIVITY=null, SRV_FILES=null, SRV_KEYWORDS=null;
 
 /* 키워드 파생(서버가 kw 미제공 시) — UI측 placeholder, /api/keywords 로 대체 예정 */
 const KW_DICT=["AWS","Stripe","GitHub","OpenAI","npm","SSH","id_rsa",".env",".npmrc","config",
@@ -76,8 +77,8 @@ function normalize(e){
 const WEEK=["일","월","화","수","목","금","토"];
 function weekday(d){const D=new Date(d+"T00:00:00");return WEEK[D.getDay()];}
 function dayOf(ts){return (ts||"").slice(0,10);}
-function timeStr(ts){const t=ts.includes("T")?ts.split("T")[1]:ts.slice(11);return (t||"").replace("Z","").slice(0,8);}
-function tsFull(ts){return ts.replace("T"," ").replace("Z","");}
+function timeStr(ts){ts=ts||"";const t=ts.includes("T")?ts.split("T")[1]:ts.slice(11);return (t||"").replace("Z","").slice(0,8);}
+function tsFull(ts){return (ts||"").replace("T"," ").replace("Z","");}
 
 /* ---------- keyword agg ---------- */
 const KWCOLORS=["#ef4444","#f59e0b","#38bdf8","#a855f7","#22c55e","#ec4899","#14b8a6","#eab308","#6366f1"];
@@ -107,7 +108,14 @@ function monthFill(m,lvl){const h=MONTH_HUE[(m-1)%12],L=[80,66,52,38][lvl-1];ret
 function monthTint(m){const h=MONTH_HUE[(m-1)%12];return `hsl(${h} 34% 94%)`;}
 function renderHeatmap(){
   const cnt={};
-  EVENTS.forEach(e=>{const d=dayOf(e.ts);cnt[d]=cnt[d]||{u:0,a:0};cnt[d][e.actor==="user"?"u":"a"]++;});
+  if(LIVE){    // LIVE 집계는 엔진만 — 실패 시 JS 재집계 금지(단일진실), 실패 표시 후 return
+    if(!(SRV_ACTIVITY&&Array.isArray(SRV_ACTIVITY.rows))){
+      $("#bars").innerHTML='<div class="empty">활동량 집계 불러오기 실패 (/api/activity)</div>';return;
+    }
+    SRV_ACTIVITY.rows.forEach(r=>{if(r.bucket!=="unknown")cnt[r.bucket]={u:r.user,a:r.agent};});
+  }else{       // !LIVE(MOCK/offline) 전용 JS 파생
+    EVENTS.forEach(e=>{const d=dayOf(e.ts);cnt[d]=cnt[d]||{u:0,a:0};cnt[d][e.actor==="user"?"u":"a"]++;});
+  }
   const dates=Object.keys(cnt).sort();
   if(!dates.length){$("#bars").innerHTML='<div class="empty">데이터 없음</div>';return;}
   const maxD=new Date(dates[dates.length-1]+"T00:00:00");
@@ -152,7 +160,15 @@ function renderDateJump(){
 
 /* ---------- donut ---------- */
 function renderDonut(){
-  const data=kwCounts(),total=data.reduce((s,[,c])=>s+c,0);
+  // LIVE 집계는 엔진만 — 실패 시 JS 재집계 금지(단일진실). 미연결만 UI 파생 kwCounts().
+  let data;
+  if(LIVE){
+    if(!(SRV_KEYWORDS&&Array.isArray(SRV_KEYWORDS.keywords))){
+      $("#donut").innerHTML="";$("#legend").innerHTML='<div class="empty" style="padding:8px">키워드 집계 실패 (/api/keywords)</div>';return;
+    }
+    data=SRV_KEYWORDS.keywords.slice(0,9).map(k=>[k.term,k.count,k.by_actor||{}]);  // by_actor 보존(④)
+  }else{ data=kwCounts(); }   // MOCK은 [term,count]만 — by_actor 없음(legend서 생략)
+  const total=data.reduce((s,[,c])=>s+c,0);
   if(!total){$("#donut").innerHTML="";$("#legend").innerHTML='<div class="empty" style="padding:8px">키워드 없음</div>';return;}
   const cx=60,cy=60,r=44,sw=18,C=2*Math.PI*r;let off=0,segs="";
   data.forEach(([k,c],i)=>{const len=c/total*C,col=KWCOLORS[i%KWCOLORS.length];
@@ -163,31 +179,53 @@ function renderDonut(){
   $("#donut").innerHTML=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#eceff3" stroke-width="${sw}"/>${segs}
     <text x="60" y="56" text-anchor="middle" fill="#1b2433" font-size="20" font-weight="800" font-family="ui-monospace">${total}</text>
     <text x="60" y="72" text-anchor="middle" fill="#5c6675" font-size="9">키워드 언급</text>`;
-  $("#legend").innerHTML=data.map(([k,c],i)=>
-    `<div class="li" data-kw="${esc(k)}" data-col="${KWCOLORS[i%KWCOLORS.length]}">
-     <span class="sw" style="background:${KWCOLORS[i%KWCOLORS.length]}"></span>
-     <span class="kw">${esc(k)}</span><span class="ct">${c}</span></div>`).join("");
+  $("#legend").innerHTML=data.map(([k,c,ba],i)=>{
+    const col=KWCOLORS[i%KWCOLORS.length];
+    // actor 분리(④): by_actor 있으면 사용자/에이전트 둘 다. MOCK(ba undefined)이면 생략.
+    const split=(ba&&(ba.user!=null||ba.agent!=null))
+      ?`<span class="ksplit" style="color:var(--faint);font-size:10px;margin-left:6px">사용자 ${ba.user||0} · 에이전트 ${ba.agent||0}</span>`:"";
+    return `<div class="li" data-kw="${esc(k)}" data-col="${col}">
+     <span class="sw" style="background:${col}"></span>
+     <span class="kw">${esc(k)}</span><span class="ct">${c}</span>${split}</div>`;
+  }).join("");
 }
 
 /* ---------- file list ---------- */
 function renderFiles(){
-  const m={};
-  EVENTS.forEach((e,i)=>{
-    if(!["read","write","paste"].includes(e.action))return;
-    const f=m[e.target]=m[e.target]||{actor:e.actor,tags:new Set(),n:0,idx:i};
-    e.tags.forEach(t=>f.tags.add(t));f.n++;
-  });
-  const rows=Object.entries(m);
+  // 행 형태 통일: [path,{u,a,tags[],idx}]. u/a=actor별 접근수(④ 분리 — 둘 다 표시, 단일화 금지).
+  // tags는 표시단계서 secret/pii 제거(엔진 데이터는 유지). idx=상세 연결용 표시 이벤트 인덱스.
+  const cleanTags=ts=>(ts||[]).filter(t=>t!=="secret"&&t!=="pii");
+  let rows;
+  if(LIVE){    // LIVE 집계는 엔진만 — 실패 시 JS 재집계 금지(단일진실), 실패 표시 후 return
+    if(!(SRV_FILES&&Array.isArray(SRV_FILES.files))){
+      $("#fcount").textContent="0건";$("#files").innerHTML='<div class="empty">접근파일 집계 실패 (/api/files)</div>';return;
+    }
+    // 엔진 접근파일 집계(actor 분리·횟수·태그 서버값) 그대로 — JS 재집계 아님.
+    rows=SRV_FILES.files.map(f=>{
+      const ba=f.by_actor||{};
+      const idx=EVENTS.findIndex(e=>e.target===f.target);   // 상세 패널 연결(표시 이벤트 매핑; 없으면 -1)
+      return [f.target,{u:ba.user||0,a:ba.agent||0,tags:cleanTags(f.tags),idx}];
+    });
+  }else{       // !LIVE(MOCK/offline) 전용 JS 파생
+    const m={};
+    EVENTS.forEach((e,i)=>{
+      if(!["read","write","paste"].includes(e.action))return;
+      const f=m[e.target]=m[e.target]||{u:0,a:0,tags:[],idx:i};
+      f[e.actor==="user"?"u":"a"]++;
+      cleanTags(e.tags).forEach(t=>{if(!f.tags.includes(t))f.tags.push(t);});
+    });
+    rows=Object.entries(m);
+  }
   $("#fcount").textContent=rows.length+"건";
   if(!rows.length){$("#files").innerHTML='<div class="empty">접근 파일 없음</div>';return;}
   $("#files").innerHTML=rows.map(([path,f])=>{
-    const isU=f.actor==="user",tg=[...f.tags][0];
+    const primaryU=f.u>=f.a,tg=f.tags[0];   // 아이콘은 다수 주체(장식). 카운트는 user/agent 둘 다 노출.
     const bcol=tg==="pii"?"var(--pii)":"var(--bypass)";
     const bg=tg?`<span class="fbadge" style="background:rgba(16,24,40,.04);color:${bcol};border:1px solid ${bcol}">${tg}</span>`:"";
     return `<div class="frow ${SEL===f.idx?'sel':''}" data-i="${f.idx}">
-      <div class="fic ${isU?'u':'a'}">${isU?'👤':'🤖'}</div>
+      <div class="fic ${primaryU?'u':'a'}">${primaryU?'👤':'🤖'}</div>
       <div class="fmeta"><div class="fpath">${esc(path)}</div>
-        <div class="fsub">${isU?'사용자 직접':'에이전트 자율'} · ${f.n}회</div></div>${bg}</div>`;
+        <div class="fsub">사용자 ${f.u} · 에이전트 ${f.a} · 총 ${f.u+f.a}회</div></div>${bg}</div>`;
   }).join("");
 }
 
@@ -267,34 +305,72 @@ $("#bars").addEventListener("click",ev=>{const c=ev.target.closest(".hcell.has")
 $("#datejump").addEventListener("change",e=>jumpToDay(e.target.value));
 
 /* ---------- keyword distribution popup ---------- */
-function showKwPop(kw,col,x,y){
-  const evs=EVENTS.filter(e=>(e.kw||[]).includes(kw)).sort((a,b)=>a.ts<b.ts?-1:1);
-  if(!evs.length)return;
-  const all=EVENTS.map(e=>dayOf(e.ts)).sort();
-  const t0=new Date(all[0]+"T00:00:00"),t1=new Date(all[all.length-1]+"T00:00:00");
-  const span=Math.max(t1-t0,86400000);
-  const perday={};evs.forEach(e=>{const d=dayOf(e.ts);perday[d]=(perday[d]||0)+1;});
-  const mxc=Math.max(...Object.values(perday));
-  const ticks=Object.entries(perday).map(([d,c])=>{
-    const left=((new Date(d+"T00:00:00")-t0)/span)*100;
-    return `<div class="kwtick" style="left:calc(${left}% - 2px);height:${10+c/mxc*32}px" title="${d}: ${c}회"></div>`;
-  }).join("");
-  const days=Object.keys(perday).length;
-  const winDays=Math.round((new Date(dayOf(evs[evs.length-1].ts))-new Date(dayOf(evs[0].ts)))/86400000)+1;
-  const focus=days<=2||winDays<=3;
-  const verdict=focus
-    ?`<span class="verdict focus">⚡ 집중형 — ${winDays}일 내 ${evs.length}회 몰림</span>`
-    :`<span class="verdict sustain">↔ 지속형 — ${winDays}일에 걸쳐 ${evs.length}회 반복</span>`;
-  const pop=$("#kwpop");
-  pop.innerHTML=`<div class="kt"><span class="sw" style="background:${col}"></span>${esc(kw)}</div>
-    <div class="ksub">총 ${evs.length}회 언급 · ${days}일 · ${all[0]}~${all[all.length-1]}</div>
-    ${verdict}
-    <div class="kwspark">${ticks}</div>
-    <div class="kwaxis"><span>${all[0]}</span><span>${all[all.length-1]}</span></div>`;
+function placePop(pop,x,y){
   pop.classList.add("open");
   const w=268,h=pop.offsetHeight||180;
   pop.style.left=Math.max(8,Math.min(x,window.innerWidth-w-8))+"px";
   pop.style.top=Math.max(8,Math.min(y,window.innerHeight-h-8))+"px";
+}
+function showKwPop(kw,col,x,y){
+  // 분포·판정은 엔진 단일진실. LIVE → SRV_KEYWORDS의 by_day/pattern 그대로(JS 재매칭 금지).
+  // 미연결(offline) → UI 파생(e.kw 매칭) fallback.
+  const srvK=(LIVE&&SRV_KEYWORDS)?(SRV_KEYWORDS.keywords||[]).find(k=>k.term===kw):null;
+  let perday,total,days,evs=null;
+  if(srvK){
+    perday=srvK.by_day||{};total=srvK.count;days=srvK.days;
+  }else{
+    evs=EVENTS.filter(e=>(e.kw||[]).includes(kw)).sort((a,b)=>a.ts<b.ts?-1:1);
+    if(!evs.length)return;
+    perday={};evs.forEach(e=>{const d=dayOf(e.ts)||"unknown";perday[d]=(perday[d]||0)+1;});  // 빈날짜 → unknown
+    total=evs.length;days=Object.keys(perday).length;
+  }
+  if(!Object.keys(perday).length)return;
+  // 날짜연산은 YYYY-MM-DD 키만 — unknown/빈날짜는 new Date Invalid → NaN 위치. 누락은 "날짜미상 N회" 정직 표기.
+  const DOK=d=>/^\d{4}-\d{2}-\d{2}$/.test(d);
+  const unknownN=perday["unknown"]||0;
+  const uknote=unknownN>0?` · 날짜미상 ${unknownN}회`:"";
+  const validEntries=Object.entries(perday).filter(([d])=>DOK(d));
+  const all=EVENTS.map(e=>dayOf(e.ts)).filter(DOK).sort();
+  const pop=$("#kwpop");
+  let verdict;
+  if(srvK){    // 엔진 판정 pattern 그대로(JS 재판정 안 함)
+    verdict=srvK.pattern==="집중형"
+      ?`<span class="verdict focus">⚡ 집중형 — ${days}일에 ${total}회 (엔진 판정)</span>`
+      :`<span class="verdict sustain">↔ 지속형 — ${days}일에 걸쳐 ${total}회 (엔진 판정)</span>`;
+  }else{
+    const vd=validEntries.map(([d])=>d).sort();
+    const winDays=vd.length?Math.round((new Date(vd[vd.length-1]+"T00:00:00")-new Date(vd[0]+"T00:00:00"))/86400000)+1:0;
+    const focus=days<=2||winDays<=3;
+    verdict=focus
+      ?`<span class="verdict focus">⚡ 집중형 — ${winDays}일 내 ${total}회 몰림</span>`
+      :`<span class="verdict sustain">↔ 지속형 — ${winDays}일에 걸쳐 ${total}회 반복</span>`;
+  }
+  const ba=srvK?srvK.by_actor:null;   // 키워드 actor 분리(④) — LIVE만(MOCK은 생략)
+  const actorLine=(ba&&(ba.user!=null||ba.agent!=null))
+    ?`<div class="ksub">주체 — 사용자 ${ba.user||0} · 에이전트 ${ba.agent||0}</div>`:"";
+  if(!validEntries.length){    // 전부 날짜미상 → 스파크 없이 라벨만(NaN 위치 회피)
+    pop.innerHTML=`<div class="kt"><span class="sw" style="background:${col}"></span>${esc(kw)}</div>
+      <div class="ksub">총 ${total}회${uknote}</div>
+      ${actorLine}
+      ${verdict}`;
+    placePop(pop,x,y);return;
+  }
+  const vd=validEntries.map(([d])=>d).sort();
+  const axis=all.length?all:vd;          // 전체 타임라인 축 의도 보존; EVENTS 유효일 없으면 키워드 범위로 폴백(undefined 차단)
+  const t0=new Date(axis[0]+"T00:00:00"),t1=new Date(axis[axis.length-1]+"T00:00:00");
+  const span=Math.max(t1-t0,86400000);
+  const mxc=Math.max(...validEntries.map(([,c])=>c),1);
+  const ticks=validEntries.map(([d,c])=>{
+    const left=((new Date(d+"T00:00:00")-t0)/span)*100;
+    return `<div class="kwtick" style="left:calc(${left}% - 2px);height:${10+c/mxc*32}px" title="${d}: ${c}회"></div>`;
+  }).join("");
+  pop.innerHTML=`<div class="kt"><span class="sw" style="background:${col}"></span>${esc(kw)}</div>
+    <div class="ksub">총 ${total}회 언급 · ${days}일${uknote} · ${axis[0]}~${axis[axis.length-1]}</div>
+    ${actorLine}
+    ${verdict}
+    <div class="kwspark">${ticks}</div>
+    <div class="kwaxis"><span>${axis[0]}</span><span>${axis[axis.length-1]}</span></div>`;
+  placePop(pop,x,y);
 }
 function kwClick(ev){
   const t=ev.target.closest("[data-kw]");if(!t)return;
@@ -376,6 +452,14 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;","
 
 /* ---------- boot: 서버 연결 시도 → 실데이터, 실패 시 샘플 ---------- */
 function renderAll(){renderStats();renderHeatmap();renderDateJump();renderDonut();renderFiles();renderTimeline();}
+/* 엔진 집계 엔드포인트 — 패널별 독립 try/catch(하나 실패해도 대시보드 유지, 그 패널만 파생 fallback) */
+async function jget(url){const r=await fetch(url);if(!r.ok)throw new Error(url+" "+r.status);
+  const d=await r.json();if(d&&d.error)throw new Error(d.error);return d;}
+async function loadAggregates(){
+  try{SRV_ACTIVITY=await jget("/api/activity?by=day");}catch(_){SRV_ACTIVITY=null;}
+  try{SRV_FILES=await jget("/api/files");}catch(_){SRV_FILES=null;}
+  try{SRV_KEYWORDS=await jget("/api/keywords");}catch(_){SRV_KEYWORDS=null;}
+}
 async function boot(){
   let live=null;
   try{
@@ -384,6 +468,7 @@ async function boot(){
   }catch(_){}
   LIVE=!!live;
   EVENTS=(live||MOCK).map(normalize);
+  if(LIVE) await loadAggregates();   // 집계 패널 데이터 출처를 엔진으로(JS 재집계 금지)
   renderAll();renderSuggest();
   const chip=$("#case-mode");
   if(LIVE){chip.className="chip ok";chip.innerHTML=`<span class="dot"></span>서버 연결됨`;}

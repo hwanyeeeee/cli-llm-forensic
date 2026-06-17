@@ -42,7 +42,10 @@ def test_query_payload_secrets():
     assert all("secret" in e["tags"] or "pii" in e["tags"] for e in p["events"])
 
 
-def test_query_payload_timeline_and_summary():
+def test_query_payload_timeline_and_summary(monkeypatch):
+    # make_llm을 None으로 패치 → summarize digest 강제. ollama 떠있는 머신서도 결정적(mode 고정).
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)
     p = query_payload(_engine(), "타임라인 요약해줘")
     assert p["op"] == "timeline"
     assert p["count"] == 3
@@ -54,3 +57,21 @@ def test_query_payload_no_summary_when_not_requested():
     p = query_payload(_engine(), "누가 id_rsa 읽었어?")
     assert p["op"] == "who_did" and p["summary"] is None
     assert p["intent"]["target"] == "id_rsa"
+
+
+def test_query_payload_actor_filter(monkeypatch):
+    # §3: "사용자" 질의 → on_date actor=user → 결과 전부 user. ollama 무관 결정적.
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)
+    p = query_payload(_engine(), "2026-06-11 사용자 요약")
+    assert p["actor"] == "user"
+    assert p["count"] >= 1 and all(e["actor"] == "user" for e in p["events"])
+
+
+def test_query_payload_secrets_actor_filter(monkeypatch):
+    # secrets op도 actor 필터(파일/사용자 secret만). _engine: user paste .env(secret) + agent read id_rsa(secret).
+    import clfx.web.api as api
+    monkeypatch.setattr(api, "make_llm", lambda *a, **k: None)
+    p = query_payload(_engine(), "사용자 secret 요약")
+    assert p["op"] == "secrets" and p["actor"] == "user"
+    assert p["count"] >= 1 and all(e["actor"] == "user" for e in p["events"])

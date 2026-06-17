@@ -8,7 +8,8 @@ from urllib.parse import urlparse, parse_qs
 
 from clfx.event import Event
 from clfx.query.engine import QueryEngine
-from clfx.web.api import events_payload, query_payload
+from clfx.web.api import (events_payload, query_payload,
+                          activity_payload, files_payload, keywords_payload)
 
 _STATIC = os.path.join(os.path.dirname(__file__), "static")
 _ROUTES = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css"}
@@ -59,6 +60,25 @@ def make_handler(engine):
                     return
                 try:
                     self._json(query_payload(engine, q))
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
+            if u.path == "/api/activity":
+                by = (parse_qs(u.query).get("by") or ["day"])[0]
+                try:
+                    self._json(activity_payload(engine, by=by))
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
+            if u.path == "/api/files":
+                try:
+                    self._json(files_payload(engine))
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
+            if u.path == "/api/keywords":
+                try:
+                    self._json(keywords_payload(engine))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return

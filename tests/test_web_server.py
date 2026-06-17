@@ -106,3 +106,37 @@ def test_serve_broken_jsonl_exits_1(tmp_path, capsys):
 def test_serve_missing_file_exits_1(tmp_path, capsys):
     assert main(["serve", str(tmp_path / "nope.jsonl")]) == 1
     assert "clfx serve" in capsys.readouterr().err
+
+
+def test_activity_endpoint():
+    httpd = _server()
+    try:
+        code, body = _get(httpd, "/api/activity?by=month")
+        assert code == 200
+        import json as _j
+        d = _j.loads(body)
+        assert d["by"] == "month" and isinstance(d["rows"], list)
+    finally:
+        httpd.shutdown()
+
+
+def test_files_endpoint():
+    httpd = _server()
+    try:
+        code, body = _get(httpd, "/api/files")
+        assert code == 200
+        import json as _j
+        assert "files" in _j.loads(body)
+    finally:
+        httpd.shutdown()
+
+
+def test_keywords_endpoint():
+    httpd = _server()
+    try:
+        code, body = _get(httpd, "/api/keywords")
+        assert code == 200
+        import json as _j
+        assert "keywords" in _j.loads(body)
+    finally:
+        httpd.shutdown()

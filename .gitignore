@@ -27,3 +27,4 @@ clfx-out/
 # 에디터 (로컬 전용)
 .obsidian/
 .gstack/
+.playwright-mcp/
