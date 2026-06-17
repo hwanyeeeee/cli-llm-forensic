@@ -12,7 +12,15 @@ from clfx.web.api import (events_payload, query_payload,
                           activity_payload, files_payload, keywords_payload,
                           sources_payload, scan_to_engine)
 
-_STATIC = os.path.join(os.path.dirname(__file__), "static")
+def _static_dir():
+    """정적 파일 디렉터리. PyInstaller onefile은 sys._MEIPASS에 추출되므로 그 경로 우선."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return os.path.join(base, "clfx", "web", "static")
+    return os.path.join(os.path.dirname(__file__), "static")
+
+
+_STATIC = _static_dir()
 _ROUTES = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css"}
 _CT = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
 

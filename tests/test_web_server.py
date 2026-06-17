@@ -201,3 +201,18 @@ def test_scan_empty_roots_ok_zero():
         assert d["ok"] is True and d["count"] == 0
     finally:
         httpd.shutdown()
+
+
+def test_static_dir_non_frozen():
+    import os
+    from clfx.web.server import _static_dir
+    d = _static_dir()
+    assert d.endswith(os.path.join("web", "static"))
+    assert os.path.isdir(d)            # 개발 환경 실제 정적 폴더
+
+
+def test_static_dir_frozen(monkeypatch):
+    import os, sys
+    import clfx.web.server as srv
+    monkeypatch.setattr(sys, "_MEIPASS", os.path.join("/tmp", "meipass"), raising=False)
+    assert srv._static_dir() == os.path.join("/tmp", "meipass", "clfx", "web", "static")
