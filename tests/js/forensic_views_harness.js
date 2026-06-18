@@ -161,9 +161,10 @@ ok(typeof FV.renderAttestation === "function", "renderAttestation must be EXPORT
     used_unconfigured: ["pyghidra"],
   });
   const h = el.innerHTML;
-  has(h, "설정된 외부 서버 2종 (인스턴스 4)", "configs deduped: N kinds (M instances)");
+  has(h, "설정된 MCP", "config section toggle labelled 설정된 MCP");
   has(h, "mcpcfgwrap", "config section header is itself a collapsible <details> toggle");
-  has(h, "mcpcfg", "each config server is a <details> group");
+  has(h, "mcpcfg", "each config server is a <details> group (dedupe by server)");
+  has(h, "×3", "playwright group collapses its 3 instances (dedupe proven)");
   has(h, "cfgscope", "scope badges rendered per server group");
   has(h, "×3", "playwright group shows its 3 instances (×3)");
   has(h, "설정 출처 미확인: pyghidra", "used_unconfigured neutral line preserved");
