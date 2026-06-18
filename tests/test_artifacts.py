@@ -777,3 +777,184 @@ def test_hash_clusters_on_hash_progress(tmp_path, monkeypatch):
     assert seen                                  # 콜백 호출됨
     assert all(t == 2 for _d, t in seen)         # total = 해시 대상 수(dup 2개)
     assert seen[-1][0] == 2                       # 마지막 done == total
+
+
+# ── Round8: tmp_retention origin/policy/attribution JOIN ───────────────
+def test_path_origin_rules(monkeypatch):
+    monkeypatch.setattr(os, "name", "posix")
+    # 드라이브문자 → windows
+    assert A._path_origin(r"C:\Users\u\AppData\Local\Temp\x") == "windows"
+    assert A._path_origin("C:/Users/u/Temp/x") == "windows"
+    # /mnt/<drive>/ → windows
+    assert A._path_origin("/mnt/c/Users/u/Temp/x") == "windows"
+    # //wsl.localhost, //wsl$ → wsl (systemd-cleaned ext4 /tmp via UNC)
+    assert A._path_origin(r"\\wsl.localhost\Ubuntu\tmp\x") == "wsl"
+    assert A._path_origin(r"\\wsl$\Ubuntu\tmp\x") == "wsl"
+    assert A._path_origin("//wsl.localhost/Ubuntu/tmp/x") == "wsl"
+    # posix /tmp, /var/tmp, 기타 posix 절대경로 → wsl
+    assert A._path_origin("/tmp/x") == "wsl"
+    assert A._path_origin("/var/tmp/x") == "wsl"
+    assert A._path_origin("/home/u/x") == "wsl"
+
+
+def test_norm_path_posix_case_sensitive(monkeypatch):
+    monkeypatch.setattr(os, "name", "posix")
+    # 백슬래시→슬래시, 중복슬래시 축약, trailing slash 제거
+    assert A._norm_path(r"\\wsl.localhost\Ubuntu\tmp\Foo") == "//wsl.localhost/Ubuntu/tmp/Foo"
+    assert A._norm_path("/tmp//a///b/") == "/tmp/a/b"
+    # posix는 대소문자 유지(다른 파일)
+    assert A._norm_path("/tmp/Foo") != A._norm_path("/tmp/foo")
+
+
+def test_norm_path_nt_case_insensitive(monkeypatch):
+    monkeypatch.setattr(os, "name", "nt")
+    # nt는 소문자화(대소문자 무시 FS)
+    assert A._norm_path(r"C:\Users\Foo") == A._norm_path("c:/users/foo")
+
+
+def _ret_inv(rows):
+    return {"files": rows, "errors": []}
+
+
+def test_tmp_retention_origin_policy_windows_vs_wsl(monkeypatch):
+    monkeypatch.setattr(os, "name", "posix")
+    # 인벤토리 주입: windows 경로 1 + wsl 경로 1.
+    win_mtime = A._iso(1_000_000.0)
+    wsl_mtime = A._iso(1_000_000.0)
+    inv = _ret_inv([
+        {"path": "/mnt/c/Users/u/Temp/win.txt", "size": 5, "mtime": win_mtime, "atime": win_mtime, "mode": 0o100644},
+        {"path": "/tmp/wsl.txt", "size": 5, "mtime": wsl_mtime, "atime": wsl_mtime, "mode": 0o100644},
+    ])
+    now = 1_000_000.0 + 10 * 86400
+    out = A.tmp_retention([], now_epoch=now, inventory=inv)
+    rows = {r["path"]: r for r in out["retention"]}
+    win = rows["/mnt/c/Users/u/Temp/win.txt"]
+    wsl = rows["/tmp/wsl.txt"]
+    assert win["origin"] == "windows"
+    assert win["retention_policy"] == "windows-none"
+    assert win["expires_in_days"] is None          # windows = no expiry
+    assert win["age_days"] is not None             # 나이/size/mtime/atime은 모든 origin 보존(완전성)
+    assert win["size"] == 5
+    assert wsl["origin"] == "wsl"
+    assert wsl["retention_policy"] == "wsl-systemd-30d"
+    assert abs(wsl["expires_in_days"] - 20.0) < 0.01   # 30-10
+    # attribution 미주입 → 모두 attributed False
+    for r in (win, wsl):
+        assert r["attributed"] is False
+        assert r["actor"] is None and r["transcript_action"] is None and r["source"] is None
+
+
+def test_tmp_retention_unc_wsl_origin_is_wsl(monkeypatch):
+    # //wsl.localhost\Ubuntu\tmp = WSL ext4 /tmp via UNC → wsl(만료 표시).
+    monkeypatch.setattr(os, "name", "nt")
+    mtime = A._iso(1_000_000.0)
+    inv = _ret_inv([
+        {"path": r"\\wsl.localhost\Ubuntu\tmp\f.txt", "size": 3, "mtime": mtime, "atime": mtime, "mode": 0o100644},
+    ])
+    out = A.tmp_retention([], now_epoch=1_000_000.0 + 5 * 86400, inventory=inv)
+    r = out["retention"][0]
+    assert r["origin"] == "wsl"
+    assert r["retention_policy"] == "wsl-systemd-30d"
+    assert r["expires_in_days"] is not None
+
+
+def test_tmp_retention_attribution_join_matches_norm_path(monkeypatch):
+    monkeypatch.setattr(os, "name", "nt")
+    # 인벤토리 tmp 경로(역슬래시/대문자) vs referenced real_path(슬래시/소문자) — _norm_path로 매칭.
+    mtime = A._iso(1_000_000.0)
+    tmp_path_str = r"\\wsl.localhost\Ubuntu\tmp\Leaked.env"
+    inv = _ret_inv([
+        {"path": tmp_path_str, "size": 9, "mtime": mtime, "atime": mtime, "mode": 0o100644},
+        {"path": r"\\wsl.localhost\Ubuntu\tmp\other.txt", "size": 4, "mtime": mtime, "atime": mtime, "mode": 0o100644},
+    ])
+    # referenced map: real_path는 슬래시·소문자(다른 표기) — nt에서 동일 파일로 정규화돼야 한다.
+    ref_real = "//wsl.localhost/ubuntu/tmp/leaked.env"
+    referenced = {
+        ref_real: {
+            "path": ref_real, "in_tmp": True, "origin": "wsl", "referenced": True,
+            "action": "write", "actor": "agent", "ts": "2026-06-16T01:00:00Z",
+            "tags": [], "source": {"file": "h.jsonl", "line": 7},
+        }
+    }
+    out = A.tmp_retention([], now_epoch=1_000_000.0 + 1 * 86400, inventory=inv, referenced=referenced)
+    rows = {r["path"]: r for r in out["retention"]}
+    hit = rows[tmp_path_str]
+    miss = rows[r"\\wsl.localhost\Ubuntu\tmp\other.txt"]
+    assert hit["attributed"] is True
+    assert hit["actor"] == "agent"
+    assert hit["transcript_action"] == "write"
+    assert hit["source"] == {"file": "h.jsonl", "line": 7}
+    # 표시는 원본 경로 그대로(무손실).
+    assert hit["path"] == tmp_path_str
+    assert miss["attributed"] is False
+    assert miss["actor"] is None and miss["source"] is None
+
+
+def test_tmp_retention_posix_join_case_sensitive(monkeypatch):
+    monkeypatch.setattr(os, "name", "posix")
+    # posix: /tmp/Foo != /tmp/foo — 대소문자 다르면 매칭 안 됨.
+    mtime = A._iso(1_000_000.0)
+    inv = _ret_inv([
+        {"path": "/tmp/Foo", "size": 3, "mtime": mtime, "atime": mtime, "mode": 0o100644},
+    ])
+    referenced = {
+        "/tmp/foo": {
+            "path": "/tmp/foo", "in_tmp": True, "origin": "wsl", "referenced": True,
+            "action": "read", "actor": "user", "ts": "2026-06-16T01:00:00Z",
+            "tags": [], "source": {"file": "h.jsonl", "line": 1},
+        }
+    }
+    out = A.tmp_retention([], now_epoch=1_000_000.0, inventory=inv, referenced=referenced)
+    assert out["retention"][0]["attributed"] is False   # 대소문자 달라 매칭 X
+
+
+def test_tmp_retention_deterministic_and_sorted(monkeypatch):
+    monkeypatch.setattr(os, "name", "posix")
+    mtime = A._iso(1_000_000.0)
+    inv = _ret_inv([
+        {"path": "/tmp/zzz", "size": 1, "mtime": mtime, "atime": mtime, "mode": 0o100644},
+        {"path": "/tmp/aaa", "size": 1, "mtime": mtime, "atime": mtime, "mode": 0o100644},
+        {"path": "/tmp/mmm", "size": 1, "mtime": mtime, "atime": mtime, "mode": 0o100644},
+    ])
+    o1 = A.tmp_retention([], now_epoch=1_000_000.0, inventory=inv)
+    o2 = A.tmp_retention([], now_epoch=1_000_000.0, inventory=inv)
+    assert o1 == o2
+    paths = [r["path"] for r in o1["retention"]]
+    assert paths == sorted(paths) == ["/tmp/aaa", "/tmp/mmm", "/tmp/zzz"]
+
+
+def test_tmp_retention_referenced_none_regression(tmp_path, monkeypatch):
+    # referenced=None(또는 미주입): 기존 키 전부 보존 + attributed=False 추가, 누락 없음.
+    monkeypatch.setattr(os, "name", "posix")
+    f = tmp_path / "leak.txt"
+    f.write_text("secret payload", encoding="utf-8")
+    now = f.stat().st_mtime + 10 * 86400
+    out = A.tmp_retention([str(tmp_path)], now_epoch=now)
+    r = out["retention"][0]
+    # 기존 lossless 키 유지
+    for k in ("path", "size", "mtime", "atime", "age_days", "expires_in_days"):
+        assert k in r
+    assert abs(r["expires_in_days"] - 20.0) < 0.01      # posix tmp → wsl → 숫자
+    # 신규 additive
+    assert r["origin"] == "wsl" and r["retention_policy"] == "wsl-systemd-30d"
+    assert r["attributed"] is False
+    assert r["actor"] is None and r["transcript_action"] is None and r["source"] is None
+
+
+def test_hash_clusters_exposes_referenced_map(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "name", "posix")
+    proj = tmp_path / "proj"; tdir = tmp_path / "tmp"
+    proj.mkdir(); tdir.mkdir()
+    (proj / "orig.env").write_bytes(b"SECRET=1\n")
+    (tdir / "leaked.env").write_bytes(b"SECRET=1\n")
+    root = str(tmp_path)
+    evs = [(_mk_ev("2026-06-16T01:00:00Z", "paste", str(proj / "orig.env"), tmp_path,
+                   actor="agent", tags=["secret"]), root)]
+    out = A.hash_clusters(evs, roots=[root], tmp_dirs=[str(tdir)])
+    assert "referenced" in out
+    ref = out["referenced"]
+    real = str(proj / "orig.env")
+    assert real in ref
+    rec = ref[real]
+    assert rec["action"] == "paste" and rec["actor"] == "agent"
+    assert rec["source"] == {"file": "h", "line": 1}

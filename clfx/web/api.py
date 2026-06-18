@@ -287,12 +287,17 @@ def forensic_scan(events_with_root, roots=None, tmp_dirs=None, on_progress=None)
     out["attribution"] = artifacts.attribution_join(events_with_root, resolved=resolved)
     _emit("attribution", 1, 1)
 
-    # 5) retention(공유 inventory — 재-stat 금지).
+    # 5) retention(공유 inventory — 재-stat 금지; referenced map으로 transcript 귀속 JOIN).
+    #    referenced는 hash_clusters가 이미 만든 rec — 재집계/재해시 없이 재사용.
     _emit("retention", 0, 1)
-    ret = artifacts.tmp_retention(tmp_dirs, inventory=inventory)
+    ret = artifacts.tmp_retention(tmp_dirs, inventory=inventory,
+                                  referenced=out.get("referenced"))
     out["retention"] = ret["retention"]
     out["errors"] = sorted(out["errors"] + ret["errors"], key=lambda e: e["path"])  # 보존 스캔 실패도 병합
     _emit("retention", 1, 1)
+
+    # referenced는 JOIN에만 쓰고 반환 KEY SET서 제거(/api/artifacts 비대화 방지·contract 불변).
+    out.pop("referenced", None)
 
     # server lazy 전수 reverse-index 빌드용(unique-size 포함). /api/artifacts엔 server가 pop해 비노출.
     out["tmp_inventory"] = inventory["files"]

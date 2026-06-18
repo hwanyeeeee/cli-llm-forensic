@@ -302,17 +302,30 @@
     el.innerHTML = html;
   }
 
-  /* 파일 1행. "만료까지 N일 남음"(N=round(expires_in_days); ≤0이면 "만료 경과").
-     "수정 후 X일" 표기(age_days 값 그대로, 라벨만). 임박(≤7d) warn 강조.
-     증거 관련(leakSet 포함) 행은 evtag 표식 + warn 우선 표시. 값은 엔진 그대로(표시용 round만). */
+  /* 파일 1행(귀속 행 전용 재설계).
+     origin별 보존 텍스트: wsl → expires_in_days>0 면 "만료까지 N일 남음" 아니면 "만료 경과";
+       windows → "자동삭제 없음"(expires_in_days는 null). 임박(wsl·0<ed≤7) warn 강조.
+     actor 뱃지: user→A, agent→B. source 있으면 file:line 표기(.rsource). leakSet 포함 행은 evtag.
+     값은 엔진 그대로(표시용 round만) — JS 재판정 없음. 모든 동적 문자열 esc(). */
   function retentionRowHTML(r, leakSet) {
+    var isWsl = r.origin === "wsl";
     var ed = r.expires_in_days;
-    var soon = ed > 0 && ed <= 7;
-    var exp = ed > 0 ? '만료까지 ' + Math.round(ed) + '일 남음' : '만료 경과';
+    var soon = isWsl && ed != null && ed > 0 && ed <= 7;
+    var exp = isWsl
+      ? (ed != null && ed > 0 ? '만료까지 ' + Math.round(ed) + '일 남음' : '만료 경과')
+      : '자동삭제 없음';
     var isEv = !!(leakSet && leakSet.has(r.path));
     var ev = isEv ? '<span class="evtag">증거 관련</span>' : '';
     var cls = 'row' + (isEv ? ' ev' : '') + (soon ? ' warn' : '');
-    return '<div class="' + cls + '">' + ev + esc(r.path) + ' ' +
+    // actor 뱃지(귀속 행). user→A, agent→B.
+    var badge = '';
+    if (r.actor === "user") badge = '<span class="actorbadge a" title="사용자">A</span>';
+    else if (r.actor === "agent") badge = '<span class="actorbadge b" title="에이전트">B</span>';
+    // 출처(transcript file:line) — 있을 때만.
+    var src = (r.source && r.source.file != null)
+      ? '<span class="rsource">' + esc(r.source.file) + ':' + esc(r.source.line) + '</span> '
+      : '';
+    return '<div class="' + cls + '">' + ev + badge + src + esc(r.path) + ' ' +
       '<span class="muted">수정 후 ' + esc(r.age_days) + '일 · ' + exp + '</span></div>';
   }
 
@@ -336,74 +349,73 @@
     return String(path).split(/[\/\\]+/).filter(Boolean).slice(0, 3).join("/");
   }
 
-  /* [#4] tmp 보존기간: 상위 롤업 그룹 + 요약 + 증거 우선.
-     leakSet optional(없으면 증거표식 생략). 전수 보존(모든 행 그룹 안 — 분류·표시만 변경).
-     정렬: 그룹 = (증거포함 desc, 임박 desc, 최소잔여 asc, dir asc);
-           그룹내 행 = (증거 desc, expires_in_days asc). 결정성 보장. */
+  /* [#4][R9] tmp 보존기간: transcript 귀속 우선 재설계.
+     완전성 불변식: 헤더가 전체 tmp 개수를 항상 공개(잔여 은닉 금지). 접근실패는 errors[](여기 미표시).
+     - PRIMARY 목록 = attributed(transcript 기록 작업 파일)만 — 환경 잔존물은 접이식으로 분리.
+     - origin-aware 만료: wsl=systemd ~30d(만료 표기), windows=무기한(자동삭제 없음).
+     leakSet optional(없으면 증거표식 생략). 값은 엔진 단일진실 — JS 재판정/재집계 없음. 모든 동적 esc(). */
   function renderRetention(el, rows, leakSet) {
     if (!el) return;
     if (!rows || !rows.length) { el.innerHTML = '<span class="muted">tmp 잔존 없음</span>'; return; }
     var hasLeak = !!(leakSet && leakSet.size);
-
-    var soonCount = rows.filter(function (r) {
-      return r.expires_in_days > 0 && r.expires_in_days <= 7;
-    }).length;
-
     function isEv(r) { return hasLeak && leakSet.has(r.path); }
 
-    // 상위 롤업별 그룹.
-    var groups = {};
-    rows.forEach(function (r) {
-      var dir = rollupKey(r.path);
-      if (!groups[dir]) groups[dir] = [];
-      groups[dir].push(r);
-    });
+    var attributed = rows.filter(function (r) { return r.attributed === true; });
+    var nonAttributed = rows.filter(function (r) { return r.attributed !== true; });
 
-    var html = '<div class="rnote">tmp 파일은 마지막 수정 후 약 30일이면 자동 삭제됩니다. ' +
-      '‘만료까지 N일’=해당 파일이 사라지기까지 남은 기간(증거 보존 시한).</div>';
-    html += '<div class="sub">총 tmp ' + rows.length + '개 · 만료임박(≤7d) ' + soonCount + '개' +
-      (soonCount === 0 ? ' · 현재 소실 위험 없음' : '') + '</div>';
+    // 만료임박: 귀속 wsl 행 중 0<expires_in_days≤7.
+    var soon = attributed.filter(function (r) {
+      return r.origin === "wsl" && r.expires_in_days != null &&
+        r.expires_in_days > 0 && r.expires_in_days <= 7;
+    }).length;
 
-    // 그룹 메타 계산.
-    var metas = Object.keys(groups).map(function (dir) {
-      var items = groups[dir];
-      var minExp = null, hasSoon = false, hasEv = false;
-      items.forEach(function (r) {
-        if (isEv(r)) hasEv = true;
-        if (r.expires_in_days > 0) {
-          if (minExp === null || r.expires_in_days < minExp) minExp = r.expires_in_days;
-          if (r.expires_in_days <= 7) hasSoon = true;
-        }
-      });
-      // 그룹내 행 정렬: 증거 desc, expires_in_days asc.
-      var sorted = items.slice().sort(function (a, b) {
-        var ea = isEv(a) ? 1 : 0, eb = isEv(b) ? 1 : 0;
-        if (eb !== ea) return eb - ea;
-        return a.expires_in_days - b.expires_in_days;
-      });
-      return { dir: dir, items: sorted, minExp: minExp, hasSoon: hasSoon, hasEv: hasEv };
-    });
+    // 헤더(완전성 — 전체·귀속·임박 모두 공개).
+    var html = '<div class="rnote">WSL /tmp는 ~30일(systemd) 후 정리될 수 있음 · ' +
+      'Windows tmp는 자동삭제 없음(무기한 잔존). 목록은 transcript에 기록된 작업 파일만.</div>';
+    html += '<div class="sub">전체 tmp ' + rows.length + '개 중 transcript 귀속 ' +
+      attributed.length + '개 · 만료임박(WSL ≤7d) ' + soon + '개</div>';
 
-    // 그룹 정렬: 증거포함 desc, 임박 desc, 최소잔여 asc(null=경과는 맨 뒤), dir asc.
-    metas.sort(function (a, b) {
-      var ev = (b.hasEv ? 1 : 0) - (a.hasEv ? 1 : 0);
+    // 귀속 행 정렬: 증거 desc, 임박(wsl) desc, expires_in_days asc(windows null은 맨 뒤), path asc.
+    function isSoon(r) {
+      return r.origin === "wsl" && r.expires_in_days != null &&
+        r.expires_in_days > 0 && r.expires_in_days <= 7;
+    }
+    var attSorted = attributed.slice().sort(function (a, b) {
+      var ev = (isEv(b) ? 1 : 0) - (isEv(a) ? 1 : 0);
       if (ev) return ev;
-      var sn = (b.hasSoon ? 1 : 0) - (a.hasSoon ? 1 : 0);
+      var sn = (isSoon(b) ? 1 : 0) - (isSoon(a) ? 1 : 0);
       if (sn) return sn;
-      var am = a.minExp === null ? Infinity : a.minExp;
-      var bm = b.minExp === null ? Infinity : b.minExp;
-      if (am !== bm) return am - bm;
-      return a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0;
+      var ae = (a.expires_in_days == null) ? Infinity : a.expires_in_days;
+      var be = (b.expires_in_days == null) ? Infinity : b.expires_in_days;
+      if (ae !== be) return ae - be;
+      return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
     });
 
-    html += metas.map(function (g) {
-      var minTxt = g.minExp === null ? "모두 만료 경과" : "만료까지 " + Math.round(g.minExp) + "일 남음";
-      var sumCls = (g.hasEv ? " ev" : "") + (g.hasSoon ? " warn" : "");
-      var evtag = g.hasEv ? '<span class="evtag">증거 관련</span>' : '';
-      var body = g.items.map(function (r) { return retentionRowHTML(r, leakSet); }).join("");
-      return '<details class="rgrp"><summary class="rsum' + sumCls + '">' + evtag + esc(g.dir) +
-        ' (' + g.items.length + '개 · ' + minTxt + ')</summary>' + body + '</details>';
-    }).join("");
+    if (attSorted.length) {
+      html += attSorted.map(function (r) { return retentionRowHTML(r, leakSet); }).join("");
+    } else {
+      html += '<div class="empty">transcript에 귀속된 tmp 작업 파일 없음</div>';
+    }
+
+    // 환경 잔존물(귀속 안 됨) — 완전성 위해 보존하되 접이식 + 롤업 그룹(평면 덤프 회피).
+    // tmp 존재 != Claude 귀속(/tmp는 모든 프로세스 공유) — 중립 표기.
+    if (nonAttributed.length) {
+      var groups = {};
+      nonAttributed.forEach(function (r) {
+        var dir = rollupKey(r.path);
+        (groups[dir] || (groups[dir] = [])).push(r);
+      });
+      var grpHTML = Object.keys(groups).sort().map(function (dir) {
+        var items = groups[dir].slice().sort(function (a, b) {
+          return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+        });
+        var body = items.map(function (r) { return retentionRowHTML(r, leakSet); }).join("");
+        return '<details class="rgrp"><summary class="rsum">' + esc(dir) +
+          ' (' + items.length + '개)</summary>' + body + '</details>';
+      }).join("");
+      html += '<details class="rresidue"><summary>환경 잔존물(귀속 안 됨) ' +
+        nonAttributed.length + '개</summary>' + grpHTML + '</details>';
+    }
 
     el.innerHTML = html;
   }

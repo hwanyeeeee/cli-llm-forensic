@@ -362,6 +362,23 @@ header{
 .rnote{font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:6px;
   padding:6px 8px;border:1px dashed var(--border);border-radius:8px;background:var(--panel2)}
 
+/* [R9] 귀속 행: actor 뱃지(A=사용자, B=에이전트) + transcript 출처(file:line). */
+.actorbadge{display:inline-block;min-width:14px;text-align:center;font-size:10px;
+  font-weight:700;line-height:14px;padding:0 3px;margin-right:5px;border-radius:4px;
+  font-family:var(--mono);color:#fff;vertical-align:middle}
+.actorbadge.a{background:var(--accent,#0284c7)}     /* 사용자 */
+.actorbadge.b{background:#7c3aed}                    /* 에이전트 */
+.retention .row .rsource{font-family:var(--mono);font-size:10px;color:var(--faint);
+  margin-right:5px;word-break:break-all}
+
+/* [R9] 환경 잔존물(귀속 안 됨) 접이식 — 중립 톤, 본문과 시각 분리. */
+details.rresidue{margin-top:12px;border-top:1px solid var(--border);padding-top:8px}
+details.rresidue>summary{cursor:pointer;font-size:11px;color:var(--muted);
+  padding:2px 0;list-style:none;user-select:none}
+details.rresidue>summary::-webkit-details-marker{display:none}
+details.rresidue>summary::before{content:"▸";margin-right:6px;color:var(--faint);font-size:10px}
+details[open].rresidue>summary::before{content:"▾"}
+
 /* ---------- 포렌식 공용: 접이식 details/summary ---------- */
 details.leak-noise,details.mcpgrp,details.rgrp,details.leakrow{margin-top:6px}
 details.leak-noise>summary,details.mcpgrp>summary,details.rgrp>summary{
