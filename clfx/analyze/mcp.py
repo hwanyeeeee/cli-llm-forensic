@@ -250,25 +250,41 @@ def mcp_usage_from_events(events):
     return rows
 
 
+def _norm(s):
+    """서버명 매칭용 정규화: 소문자 → 영숫자 외 '_' → 연속 '_' 축약 → 양끝 '_' strip.
+    'claude.ai Notion'/'claude_ai_Notion' → 'claude_ai_notion' (표기차 흡수). 표시는 원본 유지."""
+    s = re.sub(r"[^a-z0-9]+", "_", (s or "").lower())
+    s = re.sub(r"_+", "_", s)
+    return s.strip("_")
+
+
 def mcp_summary(roots, events):
     """설정 스캔 + 실사용 집계 + 대조. /api/mcp 단일 진입점.
-    plugin prefix(plugin_<plugin>_*) 매칭으로 플러그인 서버를 설정됨으로 인식."""
+    plugin prefix(plugin_<plugin>_*) 매칭으로 플러그인 서버를 설정됨으로 인식.
+    이름 정규화(_norm)로 표기차(공백/구두점/대소문자)를 흡수해 매칭(표시는 원본명 유지)."""
     cfg = find_mcp_configs(roots)
     configs, errors = cfg["configs"], cfg["errors"]
     prefixes = cfg["plugin_prefixes"]
     usage = mcp_usage_from_events(events)
     configured = {c["server"] for c in configs}
+    used = {u["server"] for u in usage}
+    configured_norm = {_norm(c) for c in configured}
+    used_norm = {_norm(u) for u in used}
 
     def _is_configured(s):
-        if s in configured:
+        if _norm(s) in configured_norm:
             return True
-        return any(s == p or s.startswith(p + "_") or s.startswith(p) for p in prefixes)
+        ns = _norm(s)
+        return any(
+            s == p or s.startswith(p + "_") or s.startswith(p)
+            or ns == _norm(p) or ns.startswith(_norm(p) + "_") or ns.startswith(_norm(p))
+            for p in prefixes
+        )
 
-    used = {u["server"] for u in usage}
     return {
         "configs": configs,
         "usage": usage,
-        "configured_unused": sorted(c for c in configured if c not in used),
+        "configured_unused": sorted(c for c in configured if _norm(c) not in used_norm),
         "used_unconfigured": sorted(s for s in used if not _is_configured(s)),
         "errors": errors,
         "plugin_prefixes": prefixes,

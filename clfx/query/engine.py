@@ -51,6 +51,11 @@ class QueryEngine:
                 if ("secret" in e.tags or "pii" in e.tags)
                 and (actor is None or e.actor == actor)]
 
+    def bypass(self, actor=None):
+        return [e for e in self.events
+                if "bypass-mode" in e.tags
+                and (actor is None or e.actor == actor)]
+
     def timeline(self, start=None, end=None, actor=None):
         # range 필터도 ts_key로 비교 — raw e.ts가 epoch-ms int면 str start/end와 비교 시
         # TypeError("'>=' not supported between int and str"). ts_key가 양쪽을 datetime으로 통일.
