@@ -200,6 +200,48 @@ def test_tmp_only_true_when_no_referenced(tmp_path, monkeypatch):
     assert [m["path"] for m in idx[sha]] == [str(tdir / "a.dll"), str(tdir / "b.dll")]
 
 
+# ── [R4] 0B 빈 파일 유출 오탐 차단 ─────────────────────────────────
+def test_empty_file_cluster_not_leak_suspect(tmp_path, monkeypatch):
+    # 빈 파일(0B) 2개 동일내용(b"") — 하나는 referenced 이벤트로 참조.
+    # 빈 파일은 유출할 내용이 없음 → leak_suspect False · tmp_only True · reason "빈 파일".
+    monkeypatch.setattr(os, "name", "posix")
+    from clfx.event import Event, Source
+    proj = tmp_path / "proj"; tdir = tmp_path / "tmp"
+    proj.mkdir(); tdir.mkdir()
+    (proj / "empty.env").write_bytes(b"")       # referenced, 0B
+    (tdir / "empty.tmp").write_bytes(b"")        # tmp 사본, 0B
+    ev = (Event("2026-06-16T01:00:00Z", "claude", "s", "user", "paste",
+                str(proj / "empty.env"), "", Source("h", 1), ["secret"]), str(tmp_path))
+    out = A.hash_clusters([ev], tmp_dirs=[str(tdir)])
+    cl = [c for c in out["hashes"] if c["count"] >= 2]
+    assert len(cl) == 1
+    assert cl[0]["size"] == 0
+    assert cl[0]["leak_suspect"] is False        # 오탐 차단
+    assert cl[0]["tmp_only"] is True             # 노이즈 섹션으로
+    assert "빈 파일" in cl[0]["reason"]
+    # 전수 스캔·그룹핑 유지(완전성): 클러스터는 여전히 잡힌다.
+    assert cl[0]["count"] == 2
+
+
+def test_nonempty_referenced_tmp_cluster_still_leak_suspect(tmp_path, monkeypatch):
+    # 비교군(회귀 방지): 비어있지 않은 referenced↔tmp 유출 클러스터는 leak_suspect True 유지.
+    monkeypatch.setattr(os, "name", "posix")
+    from clfx.event import Event, Source
+    proj = tmp_path / "proj"; tdir = tmp_path / "tmp"
+    proj.mkdir(); tdir.mkdir()
+    (proj / "orig.env").write_bytes(b"SECRET=1\n")
+    (tdir / "leaked.env").write_bytes(b"SECRET=1\n")
+    ev = (Event("2026-06-16T01:00:00Z", "claude", "s", "user", "paste",
+                str(proj / "orig.env"), "‹secret›", Source("h", 1), ["secret"]), str(tmp_path))
+    out = A.hash_clusters([ev], tmp_dirs=[str(tdir)])
+    cl = [c for c in out["hashes"] if c["count"] >= 2]
+    assert len(cl) == 1
+    assert cl[0]["size"] > 0
+    assert cl[0]["leak_suspect"] is True
+    assert cl[0]["tmp_only"] is False
+    assert "빈 파일" not in cl[0]["reason"]
+
+
 # ── Task 4: 주체왜곡 보정 JOIN ─────────────────────────────────────
 def test_attribution_flags_agent_write(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "name", "posix")

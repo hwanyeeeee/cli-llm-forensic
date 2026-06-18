@@ -30,35 +30,10 @@
       return;
     }
     var FV = window.ForensicViews;
-    if (key === "leaks") {
-      FV.renderLeaks(vbody, d);
-      mountHashSearch(FV);                  // #2b: leaks 뷰에만 해시검색 박스 부착
-    }
+    if (key === "leaks") FV.renderLeaks(vbody, d); // 해시검색 박스+wiring은 renderLeaks가 최상단에 자체 소유(DRY)
     else if (key === "attrib") FV.renderAttrib(vbody, d);
     else if (key === "mcp") FV.renderMcp(vbody, d);
     else if (key === "retention") FV.renderRetention(vbody, d.retention);
-  }
-
-  /* #2b 해시검색: 마크업/해시 로직은 ForensicViews 위임(DRY). 파일내용 전송 0 — hex만 조회. */
-  function mountHashSearch(FV) {
-    var box = document.createElement("div");
-    box.innerHTML = FV.hashSearchBoxHTML();
-    vbody.appendChild(box);
-    var btn = box.querySelector("#hsbtn");
-    var fileInput = box.querySelector("#hsfile");
-    var result = box.querySelector("#hsresult");
-    if (!btn || !fileInput || !result) return;
-    btn.addEventListener("click", function () {
-      var file = fileInput.files && fileInput.files[0];
-      if (!file) { result.innerHTML = '<div class="empty">파일을 선택하세요</div>'; return; }
-      FV.sha256Hex(file)                                 // 브라우저 로컬 SHA-256 hex
-        .then(function (hex) {
-          return fetch("/api/hash-search?sha=" + encodeURIComponent(hex)); // hex만 전송
-        })
-        .then(function (res) { return res.json(); })
-        .then(function (j) { FV.renderHashMatches(result, j.matches); })
-        .catch(function () { result.innerHTML = '<div class="empty">검색 실패</div>'; });
-    });
   }
 
   load();
