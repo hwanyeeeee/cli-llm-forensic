@@ -65,6 +65,28 @@ def test_tmp_roots_posix(monkeypatch):
     assert "/tmp" in A.tmp_roots(["/home/u/.claude"])
 
 
+def test_tmp_roots_wsl_only_excludes_windows_temp(monkeypatch):
+    # WSL만 선택 → 호스트 Windows tmp(C:\tmp·%TEMP%·AppData)는 스캔 대상서 제외(스코프 일치).
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setenv("TEMP", r"C:\Users\best1\AppData\Local\Temp")
+    monkeypatch.setenv("TMP", r"C:\Users\best1\AppData\Local\Temp")
+    rts = A.tmp_roots([r"\\wsl.localhost\Ubuntu\home\u\.claude"])
+    assert r"\\wsl.localhost\Ubuntu\tmp" in rts
+    assert r"\\wsl.localhost\Ubuntu\var\tmp" in rts
+    assert r"C:\tmp" not in rts                                   # ← 호스트 Windows tmp 미포함
+    assert all(not d.lower().startswith("c:") for d in rts)       # 어떤 C:\ 도 없음
+
+
+def test_tmp_roots_windows_only_excludes_wsl(monkeypatch):
+    # Windows만 선택 → WSL distro tmp 미포함.
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.delenv("TEMP", raising=False)
+    monkeypatch.delenv("TMP", raising=False)
+    rts = A.tmp_roots([r"C:\Users\best1\.claude"])
+    assert r"C:\tmp" in rts and r"C:\Users\best1\AppData\Local\Temp" in rts
+    assert not any("wsl.localhost" in d for d in rts)             # WSL tmp 없음
+
+
 def test_hash_cluster_detects_tmp_copy(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "name", "posix")
     from clfx.event import Event, Source

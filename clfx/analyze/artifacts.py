@@ -132,24 +132,30 @@ def build_reference_resolution(events_with_root):
 
 
 def tmp_roots(roots):
-    r"""각 root서 tmp 디렉터리 도출. 존재하는 것만, 중복제거·정렬."""
+    r"""각 root서 tmp 디렉터리 도출 — **선택 root의 origin에 스코프**. 존재하는 것만, 중복제거·정렬.
+    Windows 호스트에서 root별 origin에 맞는 tmp만 추가한다:
+      - WSL-origin root(\\wsl.localhost\<distro>\…) → 그 distro의 \tmp·\var\tmp만.
+      - Windows-origin root(드라이브문자 절대경로) → C:\tmp·%TEMP%·%TMP%·해당 사용자 AppData\Local\Temp만.
+    이전엔 C:\tmp·%TEMP%를 root와 무관하게 항상 추가해, WSL만 선택해도 호스트 Windows tmp를
+    스캔(취득 원장에 C:\…\Temp\$$$.tmp 혼입)하던 스코핑 결함을 수정. 'WSL만 파싱' 의도와 일치."""
     out = set()
     on_nt = (os.name == "nt")
     for root in roots or []:
         s = str(root)
         if on_nt:
             base = _wsl_base_of(s)
-            if base:
+            if base:                                  # WSL-origin → 그 distro tmp만(호스트 Windows tmp 미포함)
                 out.add(base + r"\tmp")
                 out.add(base + r"\var\tmp")
-            mu = re.match(r"^([a-zA-Z]:\\Users\\[^\\]+)", s)
-            if mu:
-                out.add(mu.group(1) + r"\AppData\Local\Temp")
-            out.add(r"C:\tmp")
-            for k in ("TEMP", "TMP"):
-                v = os.environ.get(k)
-                if v:
-                    out.add(v)
+            elif re.match(r"^[a-zA-Z]:[\\/]", s):     # Windows-origin → Windows tmp만
+                mu = re.match(r"^([a-zA-Z]:\\Users\\[^\\]+)", s)
+                if mu:
+                    out.add(mu.group(1) + r"\AppData\Local\Temp")
+                out.add(r"C:\tmp")
+                for k in ("TEMP", "TMP"):
+                    v = os.environ.get(k)
+                    if v:
+                        out.add(v)
         else:
             out.add("/tmp")
             out.add("/var/tmp")
