@@ -405,6 +405,13 @@ details.leakrow>summary>.lreason{font-size:10px;color:var(--faint);font-style:it
 .flc{color:var(--muted);margin-left:auto;font-family:var(--mono);font-size:10.5px}
 
 /* ---------- [R8-A] MCP 설정 서버 그룹(서버명 dedupe, 접이식) ---------- */
+/* 설정 섹션 전체 토글: usage 아코디언과 간격(margin-top) + 헤더 클릭 시 N종 펼침. */
+details.mcpcfgwrap{margin-top:16px;border-top:1px solid var(--border);padding-top:8px}
+details.mcpcfgwrap>summary{cursor:pointer;font-weight:700;font-size:11.5px;color:var(--txt);
+  padding:2px 0;list-style:none;user-select:none}
+details.mcpcfgwrap>summary::-webkit-details-marker{display:none}
+details.mcpcfgwrap>summary::before{content:"▸";margin-right:6px;color:var(--faint);font-size:10px}
+details[open].mcpcfgwrap>summary::before{content:"▾"}
 details.mcpcfg{margin-top:6px}
 details.mcpcfg>summary{cursor:pointer;font-size:11.5px;color:var(--muted);padding:4px 2px;
   list-style:none;border-bottom:1px solid var(--border);user-select:none}

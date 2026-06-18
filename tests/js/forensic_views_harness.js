@@ -162,6 +162,7 @@ ok(typeof FV.renderAttestation === "function", "renderAttestation must be EXPORT
   });
   const h = el.innerHTML;
   has(h, "설정된 외부 서버 2종 (인스턴스 4)", "configs deduped: N kinds (M instances)");
+  has(h, "mcpcfgwrap", "config section header is itself a collapsible <details> toggle");
   has(h, "mcpcfg", "each config server is a <details> group");
   has(h, "cfgscope", "scope badges rendered per server group");
   has(h, "×3", "playwright group shows its 3 instances (×3)");
