@@ -724,6 +724,26 @@ function initGutters(){
   wrap.addEventListener("pointerup",end); wrap.addEventListener("pointercancel",end);
 }
 
+/* ---------- 패널 높이 드래그 리사이즈(좌/우 컬럼 패널 하단 가장자리 .vgrip) ---------- */
+function initPanelResizers(){
+  document.querySelectorAll(".col-left .panel, .col-right .panel").forEach(p=>{
+    if(p.querySelector(":scope > .vgrip"))return;            // 1회만(중복 가드)
+    const g=document.createElement("div"); g.className="vgrip"; p.appendChild(g);
+    let drag=null;
+    g.addEventListener("pointerdown",e=>{
+      drag={y:e.clientY, h:p.offsetHeight}; g.classList.add("drag");
+      try{ g.setPointerCapture(e.pointerId); }catch(_){}
+      e.preventDefault();
+    });
+    g.addEventListener("pointermove",e=>{
+      if(!drag)return;
+      p.style.height=Math.max(120, drag.h+(e.clientY-drag.y))+"px";   // 최소 120px, 상한 없음(컬럼이 스크롤)
+    });
+    const end=()=>{drag=null; g.classList.remove("drag");};
+    g.addEventListener("pointerup",end); g.addEventListener("pointercancel",end);
+  });
+}
+
 function setCaseChip(live){
   const c=$("#case-mode");
   if(live){c.className="chip ok";c.innerHTML='<span class="dot"></span>서버 연결됨';}
@@ -780,6 +800,7 @@ async function loadEventsInBackground(){
 }
 
 initGutters();
+initPanelResizers();
 boot();
 
 /* ---------- 코파일럿 크기 조절 (좌상단 핸들 드래그) ---------- */

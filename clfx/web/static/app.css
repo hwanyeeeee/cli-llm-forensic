@@ -49,7 +49,7 @@ header{
 
 /* ---------- layout: 3 cols, only middle scrolls ---------- */
 .wrap{
-  --cl:300px; --cr:348px;
+  --cl:400px; --cr:348px;
   flex:1 1 auto;min-height:0;
   display:grid;grid-template-columns:var(--cl) 6px minmax(0,1fr) 6px var(--cr);gap:16px;
   padding:16px 20px;
@@ -66,12 +66,15 @@ header{
   border:1px solid var(--border);border-radius:14px;padding:14px 15px;
   box-shadow:0 1px 3px rgba(16,24,40,.05);
 }
-/* 좌/우 컬럼 패널: 우하단 드래그로 높이 조절(집중할 패널 키우기). 컬럼이 스크롤되니 다른 패널은 밀림.
+/* 좌/우 컬럼 패널: 하단 가장자리(.vgrip) 드래그로 높이 조절. 코너그립(resize:vertical) 대신 가장자리 hover.
    중앙 타임라인 패널(.col-mid .panel)은 flex:1+내부 스크롤이라 제외(아래 규칙이 덮음). */
 .col-left .panel, .col-right .panel{
-  resize:vertical; overflow:hidden;          /* 패널이 리사이즈 컨테이너; 내부 주콘텐츠가 flex로 채움 */
+  position:relative; overflow:hidden;        /* .vgrip 절대배치 컨테이너; 내부 주콘텐츠가 flex로 채움 */
   min-height:120px; display:flex; flex-direction:column;
 }
+/* 패널 하단 가장자리 리사이즈 핸들 — hover 시 row-resize 커서, 드래그로 높이 조절(JS initPanelResizers). */
+.vgrip{position:absolute;left:0;right:0;bottom:0;height:8px;cursor:row-resize;z-index:4}
+.vgrip:hover,.vgrip.drag{background:var(--border)}
 .panel h2{
   font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);
   margin:0 0 12px;display:flex;align-items:center;gap:8px;font-weight:700;
