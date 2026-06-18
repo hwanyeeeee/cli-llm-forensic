@@ -626,14 +626,15 @@ async function loadArtifacts(){
 }
 /* 뱃지 계산은 app.js, HTML 빌드는 ForensicViews(forensic-views.js) 단일 진실원천에 위임 — 중복 markup 금지. */
 function renderLeaks(d){
-  const cl=(d&&d.hashes)||[];
-  setFbadge("leaks", cl.length, cl.some(c=>c.leak_suspect||c.secret));   // 복제 클러스터 수, 유출/시크릿이면 경고
+  // 뱃지=유출 의심 클러스터 수만(tmp_only 내부중복 노이즈 제외 — #2a). 그 수>0이면 경고.
+  const leak=((d&&d.hashes)||[]).filter(c=>c.leak_suspect).length;
+  setFbadge("leaks", leak, leak>0);
   ForensicViews.renderLeaks($("#leaks"), d);
 }
 function renderAttrib(d){
-  const at=((d&&d.attribution)||[]);
-  const dist=at.filter(r=>r.distortion).length;
-  setFbadge("attrib", dist, dist>0);                       // 주체 왜곡(에이전트 작성→사람 소유) 건수
+  // 뱃지=에이전트(B) 작성 파일 수. 중립(#3) — 경보색 없음.
+  const writes=((d&&d.attribution)||[]).filter(r=>r.transcript_actor==="agent"&&r.transcript_action==="write").length;
+  setFbadge("attrib", writes, false);
   ForensicViews.renderAttrib($("#attrib"), d);
 }
 
@@ -643,8 +644,8 @@ async function loadMcp(){
   const box=$("#mcp"); if(!box)return;
   try{
     const d=await jget("/api/mcp");
-    const uu=(d.used_unconfigured||[]).length;
-    setFbadge("mcp", uu>0?uu:(d.configs||[]).length, uu>0);   // 설정없이 사용=경고(빨강), 아니면 설정 서버수
+    // 뱃지=설정된 서버수. 중립(#5) — used_unconfigured는 더 이상 경보색 아님.
+    setFbadge("mcp", (d.configs||[]).length, false);
     ForensicViews.renderMcp(box, d);
   }catch(_){ box.innerHTML='<span class="muted">불러오기 실패</span>'; }
 }
@@ -719,9 +720,30 @@ function initForensicModals(){
   const TITLES={leaks:"유출·복사 의심 · 해시 대조", attrib:"주체 왜곡 보정 · FS↔transcript JOIN",
                 mcp:"MCP 연결 흔적 · 설정 vs 실사용", retention:"tmp 보존기간 · 만료 잔여"};
   const panes=modal.querySelectorAll(".fm-pane");
+  let hsWired=false;   // #2b 해시검색 박스/핸들러 1회 바인딩 가드(중복 방지)
+  function wireHashSearch(){
+    const pane=document.getElementById("leaks"); if(!pane||hsWired)return;
+    // 렌더 본문 하단에 해시검색 박스 삽입(마크업은 ForensicViews 위임 — DRY). 1회만.
+    pane.insertAdjacentHTML("beforeend", ForensicViews.hashSearchBoxHTML());
+    hsWired=true;
+    const btn=document.getElementById("hsbtn");
+    if(btn) btn.addEventListener("click", async()=>{
+      const fin=document.getElementById("hsfile");
+      const res=document.getElementById("hsresult");
+      const file=fin&&fin.files&&fin.files[0];
+      if(!file){ if(res)res.innerHTML='<div class="empty">파일을 선택하세요</div>'; return; }
+      if(res)res.innerHTML='<div class="empty">해시 계산 중…</div>';
+      try{
+        const hex=await ForensicViews.sha256Hex(file);      // 브라우저 로컬 SHA-256(파일내용 전송 0 — hex만)
+        const d=await jget("/api/hash-search?sha="+encodeURIComponent(hex));
+        ForensicViews.renderHashMatches(res, (d&&d.matches)||[]);
+      }catch(err){ if(res)res.innerHTML='<div class="empty">검색 실패: '+esc(err.message)+'</div>'; }
+    });
+  }
   openFmodal=function(key){
     title.textContent=TITLES[key]||key;
     panes.forEach(p=>{p.hidden=(p.id!==key);});
+    if(key==="leaks") wireHashSearch();   // leaks 열 때 1회 해시검색 와이어
     modal.hidden=false;
   };
   const close=()=>{ modal.hidden=true; };

@@ -185,7 +185,8 @@ def forensic_scan(events_with_root, roots=None, tmp_dirs=None):
     + tmp_retention(C: 보존기간) 합본. events_with_root=[(Event, root_str)].
     roots None이면 events_with_root서 distinct root를 sorted로 도출.
     tmp_dirs None이면 artifacts.tmp_roots(roots)로 도출. read-only FS만(artifacts 계층 위임).
-    반환 키: scanned,missing,tmp_scanned,tmp_roots,errors,hashes,attribution,retention."""
+    반환 키: scanned,missing,tmp_scanned,tmp_roots,errors,hashes,attribution,retention,tmp_hash_index.
+    (tmp_hash_index는 server가 pop해 /api/hash-search로만 노출 — /api/artifacts엔 안 실림.)"""
     from clfx.analyze import artifacts
     if roots is None:
         roots = sorted({root for _e, root in (events_with_root or [])})

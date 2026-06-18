@@ -160,3 +160,11 @@ def test_forensic_scan_includes_retention():
     out = forensic_scan([], roots=[], tmp_dirs=[])   # tmp_dirs=[] → 실제 머신 tmp 스캔 안 함(결정성)
     assert "retention" in out
     assert out["retention"] == []
+
+
+def test_forensic_scan_includes_tmp_hash_index():
+    # [#2b] forensic_scan 결과에 tmp_hash_index 키 보존(빈 입력 tmp_dirs=[]서 {}).
+    from clfx.web.api import forensic_scan
+    out = forensic_scan([], roots=[], tmp_dirs=[])
+    assert "tmp_hash_index" in out
+    assert out["tmp_hash_index"] == {}

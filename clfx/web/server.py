@@ -37,6 +37,9 @@ class ServerState:
         # FS 분석 실패해도 빈 계약 유지(스캔 응답은 성공).
         self.artifacts = {"scanned": 0, "missing": 0, "tmp_scanned": 0, "tmp_roots": [],
                           "errors": [], "hashes": [], "attribution": []}
+        # 원본→동일해시 tmp 검색 인덱스(POST /api/scan서 forensic_scan 결과를 pop, GET /api/hash-search가 읽음).
+        # /api/artifacts엔 싣지 않음(대용량/read-only 조회 분리). 빈 계약 유지.
+        self.tmp_hash_index = {}
         # MCP 통합 결과(POST /api/scan서 mcp_payload로 갱신, GET /api/mcp가 읽음).
         # MCP 분석 실패해도 빈 계약 유지(스캔 응답은 성공).
         self.mcp = {"configs": [], "usage": [], "configured_unused": [],
@@ -139,6 +142,13 @@ def make_handler(state):
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
+            if u.path == "/api/hash-search":         # 원본 sha → 동일해시 tmp 사본 조회(read-only, 해시 hex만)
+                try:
+                    sha = (parse_qs(u.query).get("sha") or [""])[0].strip().lower()
+                    self._json({"sha": sha, "matches": state.tmp_hash_index.get(sha, [])})
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
             self._json({"error": "not found"}, 404)
 
         def do_POST(self):
@@ -158,8 +168,11 @@ def make_handler(state):
                     eng, ev_root = scan_to_engine(roots, on_progress=_prog, collect_artifacts=True)
                     state.engine = eng                       # 엔진 교체
                     try:                                     # FS 실패해도 스캔 응답은 성공(빈 계약 유지)
-                        state.artifacts = forensic_scan(ev_root, roots=roots)
+                        full = forensic_scan(ev_root, roots=roots)
+                        state.tmp_hash_index = full.pop("tmp_hash_index", {})   # /api/artifacts엔 안 실림(분리)
+                        state.artifacts = full
                     except Exception:
+                        state.tmp_hash_index = {}
                         state.artifacts = {"scanned": 0, "missing": 0, "tmp_scanned": 0,
                                            "tmp_roots": [], "errors": [], "hashes": [], "attribution": []}
                     try:                                     # MCP 실패해도 스캔 응답은 성공(빈 계약 유지)

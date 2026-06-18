@@ -123,6 +123,34 @@ def test_serverstate_mcp_empty_contract():
     assert s.mcp == _MCP_EMPTY
 
 
+def test_serverstate_tmp_hash_index_empty_contract():
+    # [#2b] ServerState 초기 tmp_hash_index는 빈 dict(스캔 전 GET /api/hash-search 안전).
+    from clfx.web.server import ServerState
+    from clfx.query.engine import QueryEngine
+    s = ServerState(QueryEngine([]))
+    assert s.tmp_hash_index == {}
+
+
+def test_api_hash_search_route_returns_contract():
+    # [#2b] GET /api/hash-search?sha=deadbeef → 200 + {"sha","matches":[]}(인덱스 비었을 때). server 라우트 배선.
+    import json, threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    from clfx.web.server import make_handler, ServerState
+    from clfx.query.engine import QueryEngine
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ServerState(QueryEngine([]))))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        port = httpd.server_address[1]
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/hash-search?sha=deadbeef")
+        with urllib.request.urlopen(req) as r:
+            code, body = r.status, r.read().decode("utf-8")
+        assert code == 200
+        assert json.loads(body) == {"sha": "deadbeef", "matches": []}
+    finally:
+        httpd.shutdown()
+
+
 def test_api_mcp_route_returns_contract():
     # GET /api/mcp 는 200 + 빈 계약(스캔 전). server.py 라우트 배선 증명.
     import json, threading
