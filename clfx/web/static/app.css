@@ -358,3 +358,38 @@ header{
 .mcp .sub, .retention .sub{margin-top:6px;font-weight:600;font-size:11px;opacity:.8;}
 .warn{color:var(--secret,#b00020);font-weight:600;}
 .retention .row.warn{color:var(--secret,#b00020);}
+
+/* ---------- 포렌식 공용: 접이식 details/summary ---------- */
+details.leak-noise,details.mcpgrp,details.rgrp{margin-top:6px}
+details.leak-noise>summary,details.mcpgrp>summary,details.rgrp>summary{
+  cursor:pointer;font-size:11.5px;color:var(--muted);padding:4px 2px;list-style:none;
+  border-bottom:1px solid var(--border);user-select:none}
+details.leak-noise>summary::-webkit-details-marker,
+details.mcpgrp>summary::-webkit-details-marker,
+details.rgrp>summary::-webkit-details-marker{display:none}
+details.leak-noise>summary::before,details.mcpgrp>summary::before,details.rgrp>summary::before{
+  content:"▸";margin-right:6px;color:var(--faint);font-size:10px}
+details[open].leak-noise>summary::before,details[open].mcpgrp>summary::before,
+details[open].rgrp>summary::before{content:"▾"}
+details.mcpgrp>summary>b,details.rgrp>summary{font-family:var(--mono)}
+details.rgrp>summary.warn,details.mcpgrp>summary.warn{color:var(--secret)}
+details.leak-noise{border:1px dashed var(--border);border-radius:8px;padding:6px 8px;background:var(--panel2)}
+details.leak-noise>summary{border-bottom:0}
+
+/* ---------- 해시검색 박스 (#2b — 브라우저 로컬 해시, 파일 업로드 없음) ---------- */
+.hsbox{margin-top:8px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel2)}
+.hsbox input[type=file]{font-size:11px;max-width:100%}
+.hsbox button{margin-top:6px;font-size:11.5px;padding:5px 10px;border:1px solid var(--border);
+  border-radius:7px;background:var(--panel);color:var(--txt);cursor:pointer}
+.hsbox button:hover{border-color:var(--accent);color:var(--accent)}
+.hsresult{margin-top:6px}
+.hsresult .row{padding:2px 0;font-size:11.5px;border-bottom:1px solid var(--border)}
+
+/* ---------- 포렌식 도넛 (#1) ---------- */
+.fdonutwrap{display:flex;align-items:center;gap:14px;margin:8px 0;flex-wrap:wrap}
+.fdonut{width:100px;height:100px;flex:0 0 auto}
+.fdleg{display:flex;flex-direction:column;gap:3px;font-size:11px;min-width:0}
+.fleg{display:flex;align-items:center;gap:6px}
+.fsw{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.fln{font-family:var(--mono);word-break:break-all}
+.flc{color:var(--muted);margin-left:auto;font-family:var(--mono);font-size:10.5px}

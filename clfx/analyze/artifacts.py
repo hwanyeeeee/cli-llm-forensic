@@ -288,11 +288,16 @@ def hash_clusters(events_with_root, roots=None, tmp_dirs=None):
                     "tags": [],
                     "source": None,
                 })
-        leak_suspect = len(paths) > 1
-        if secret and in_tmp:
-            reason = "시크릿 내용이 원본과 tmp 사본에 동일 존재 — 강한 유출 의심"
-        elif in_tmp:
-            reason = "동일 내용이 원본과 tmp 사본(2경로)에 존재"
+        has_ref = any(r.get("referenced") for r in path_recs)
+        has_tmp = in_tmp
+        leak_suspect = has_ref and has_tmp   # 참조 파일 내용이 tmp 사본에도 = 진짜 유출 신호
+        tmp_only = not has_ref               # referenced 0 = tmp 내부 중복(설치/캐시 노이즈)
+        if has_ref and has_tmp and secret:
+            reason = "시크릿 참조 파일이 tmp 사본과 동일 해시 — 강한 유출 의심"
+        elif has_ref and has_tmp:
+            reason = "참조 파일이 tmp 사본과 동일 해시(유출 의심)"
+        elif tmp_only:
+            reason = "tmp 내부 중복(설치/캐시 등 — 유출 아님)"
         else:
             reason = f"동일 내용이 {len(paths)}개 경로에 존재"
         hashes.append({
@@ -302,12 +307,28 @@ def hash_clusters(events_with_root, roots=None, tmp_dirs=None):
             "secret": secret,
             "in_tmp": in_tmp,
             "leak_suspect": leak_suspect,
+            "tmp_only": tmp_only,
             "reason": reason,
             "paths": path_recs,
         })
 
     hashes.sort(key=lambda c: (-c["count"], c["sha256"]))
     errors.sort(key=lambda e: e["path"])
+
+    # 5. 원본→동일해시 tmp 검색용 인덱스: tmp 파일만(전수 hashes_by_path 재사용).
+    #    sha256 → [{path,size,mtime}...] (path 정렬, 결정적). stat 실패는 walk/hash 단계서 이미 errors 처리됨 → skip.
+    tmp_hash_index = {}
+    for p in sorted(tmp_set):
+        digest = hashes_by_path.get(p)
+        if digest is None:
+            continue
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        tmp_hash_index.setdefault(digest, []).append(
+            {"path": p, "size": st.st_size, "mtime": _iso(st.st_mtime)})
+
     return {
         "scanned": scanned,
         "missing": missing,
@@ -315,6 +336,7 @@ def hash_clusters(events_with_root, roots=None, tmp_dirs=None):
         "tmp_roots": sorted([d for d in (tmp_dirs or []) if os.path.isdir(d)]),
         "errors": errors,
         "hashes": hashes,
+        "tmp_hash_index": tmp_hash_index,
     }
 
 

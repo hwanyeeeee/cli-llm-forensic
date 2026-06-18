@@ -157,6 +157,49 @@ def test_walk_tmp_skips_symlink_without_error(tmp_path, monkeypatch):
     assert all(e["path"] != str(link) for e in walk_errors)
 
 
+# ── [#2a] 유출 의심 분류 정합 + [#2b] tmp 해시 인덱스 ───────────────
+def test_leak_suspect_true_for_referenced_plus_tmp_copy(tmp_path, monkeypatch):
+    # referenced 이벤트 1개 + 동일내용 tmp 파일 1개 = leak_suspect True · tmp_only False.
+    monkeypatch.setattr(os, "name", "posix")
+    from clfx.event import Event, Source
+    proj = tmp_path / "proj"; tdir = tmp_path / "tmp"
+    proj.mkdir(); tdir.mkdir()
+    (proj / "orig.env").write_bytes(b"SECRET=1\n")
+    (tdir / "leaked.env").write_bytes(b"SECRET=1\n")
+    ev = (Event("2026-06-16T01:00:00Z", "claude", "s", "user", "paste",
+                str(proj / "orig.env"), "‹secret›", Source("h", 1), ["secret"]), str(tmp_path))
+    out = A.hash_clusters([ev], tmp_dirs=[str(tdir)])
+    cl = [c for c in out["hashes"] if c["count"] >= 2]
+    assert len(cl) == 1
+    assert cl[0]["leak_suspect"] is True and cl[0]["tmp_only"] is False
+    assert cl[0]["secret"] is True
+    assert cl[0]["reason"] == "시크릿 참조 파일이 tmp 사본과 동일 해시 — 강한 유출 의심"
+    # [#2b] tmp 파일 sha → meta 인덱스 존재.
+    idx = out["tmp_hash_index"]
+    sha = cl[0]["sha256"]
+    assert sha in idx
+    metas = idx[sha]
+    assert [m["path"] for m in metas] == [str(tdir / "leaked.env")]
+    assert metas[0]["size"] == len(b"SECRET=1\n") and metas[0]["mtime"].endswith("Z")
+
+
+def test_tmp_only_true_when_no_referenced(tmp_path, monkeypatch):
+    # tmp끼리만 2개(referenced 0) = leak_suspect False · tmp_only True.
+    monkeypatch.setattr(os, "name", "posix")
+    tdir = tmp_path / "tmp"; tdir.mkdir()
+    (tdir / "a.dll").write_bytes(b"DUP-INSTALL\n")
+    (tdir / "b.dll").write_bytes(b"DUP-INSTALL\n")
+    out = A.hash_clusters([], tmp_dirs=[str(tdir)])
+    cl = [c for c in out["hashes"] if c["count"] >= 2]
+    assert len(cl) == 1
+    assert cl[0]["leak_suspect"] is False and cl[0]["tmp_only"] is True
+    assert cl[0]["reason"] == "tmp 내부 중복(설치/캐시 등 — 유출 아님)"
+    # 두 tmp 사본 모두 인덱스에 (path 정렬).
+    idx = out["tmp_hash_index"]
+    sha = cl[0]["sha256"]
+    assert [m["path"] for m in idx[sha]] == [str(tdir / "a.dll"), str(tdir / "b.dll")]
+
+
 # ── Task 4: 주체왜곡 보정 JOIN ─────────────────────────────────────
 def test_attribution_flags_agent_write(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "name", "posix")
@@ -177,9 +220,9 @@ def test_forensic_scan_contract():
     # (event, root) 리스트는 scan이 조립. 빈 입력서 키/정렬만 확인(tmp_dirs=[] 주입해 머신 tmp 비스캔=테스트 결정성).
     out = forensic_scan([], tmp_dirs=[])
     assert set(out) == {"scanned", "missing", "tmp_scanned", "tmp_roots",
-                        "errors", "hashes", "attribution", "retention"}
+                        "errors", "hashes", "attribution", "retention", "tmp_hash_index"}
     assert out["hashes"] == [] and out["attribution"] == [] and out["errors"] == []
-    assert out["retention"] == []
+    assert out["retention"] == [] and out["tmp_hash_index"] == {}
 
 
 def test_scan_to_engine_default_unchanged():

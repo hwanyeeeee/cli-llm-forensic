@@ -121,3 +121,51 @@ def test_mcp_summary_reconciles_configured_vs_used(tmp_path):
     out = mcp_summary([str(root)], evs)
     assert out["configured_unused"] == ["unused-srv"]   # 설정O 사용X
     assert out["used_unconfigured"] == ["rogue"]        # 사용O 설정X (외부연결 신호)
+
+
+# --- #5: 설정탐지 확장 (커넥터·플러그인·enabledMcpjsonServers) -----------------
+
+def test_find_mcp_configs_reads_extra_sources(tmp_path):
+    root = tmp_path / ".claude"
+    root.mkdir()
+    proj = tmp_path / "proj-x"
+    proj.mkdir()
+    (tmp_path / ".claude.json").write_text(_json.dumps({
+        "claudeAiMcpEverConnected": ["claude_ai_Notion"],
+        "pluginUsage": {"claude-mem@mp": 1},
+        "projects": {str(proj): {"enabledMcpjsonServers": ["pyghidra"]}},
+    }), encoding="utf-8")
+
+    out = find_mcp_configs([str(root)])
+    by_server = {c["server"]: c for c in out["configs"]}
+    # claude.ai 커넥터 → scope="connector"
+    assert "claude_ai_Notion" in by_server
+    assert by_server["claude_ai_Notion"]["scope"] == "connector"
+    # enabledMcpjsonServers → scope="project"
+    assert "pyghidra" in by_server
+    assert by_server["pyghidra"]["scope"] == "project"
+    assert by_server["pyghidra"]["project"] == str(proj)
+    # 플러그인 prefix 수집 (정렬)
+    assert out["plugin_prefixes"] == ["plugin_claude-mem"]
+
+
+def test_mcp_summary_recognizes_extra_config_sources(tmp_path):
+    root = tmp_path / ".claude"
+    root.mkdir()
+    proj = tmp_path / "proj-x"
+    proj.mkdir()
+    (tmp_path / ".claude.json").write_text(_json.dumps({
+        "claudeAiMcpEverConnected": ["claude_ai_Notion"],
+        "pluginUsage": {"claude-mem@mp": 1},
+        "projects": {str(proj): {"enabledMcpjsonServers": ["pyghidra"]}},
+    }), encoding="utf-8")
+    evs = [
+        _ev("mcp__claude_ai_Notion__fetch", "2026-06-18T01:00:00Z"),
+        _ev("mcp__plugin_claude-mem_mcp-search__q", "2026-06-18T01:00:01Z"),
+        _ev("mcp__pyghidra__decompile", "2026-06-18T01:00:02Z"),
+        _ev("mcp__rogue__x", "2026-06-18T01:00:03Z"),
+    ]
+    out = mcp_summary([str(root)], evs)
+    # 셋 다 설정출처 인식 → 진짜 미설정만 남음
+    assert out["used_unconfigured"] == ["rogue"]
+    assert out["plugin_prefixes"] == ["plugin_claude-mem"]

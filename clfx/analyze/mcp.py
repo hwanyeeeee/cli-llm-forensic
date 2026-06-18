@@ -99,13 +99,32 @@ def _config_rows(servers, scope, project, source_file):
     return rows
 
 
+def _synthetic_row(name, scope, project, source_file):
+    """설정 본문이 없는 출처(커넥터·플러그인·enabledMcpjsonServers)용 빈 행.
+    server/scope/project 외 필드는 비움(명령·env 등 알 수 없음)."""
+    return {
+        "server": name,
+        "scope": scope,                 # "connector" | "plugin" | "project"
+        "project": project,
+        "command": None,
+        "args": [],
+        "type": None,
+        "url": None,
+        "env_keys": [],
+        "source_file": source_file,
+    }
+
+
 def find_mcp_configs(roots):
     """각 .claude 루트의 형제 ~/.claude.json + 그 projects의 .mcp.json 전수 read-only 스캔.
-    반환 {"configs":[...정렬...], "errors":[...정렬...]}. 완전성: 모든 설정 읽기, 실패→errors."""
+    추가 출처(claude.ai 커넥터·플러그인·enabledMcpjsonServers)도 설정으로 인식.
+    반환 {"configs":[...정렬...], "errors":[...정렬...], "plugin_prefixes":[...정렬...]}.
+    완전성: 모든 설정 읽기, 실패→errors(조용히 누락 금지)."""
     from clfx.analyze.artifacts import resolve_candidates
 
     configs = []
     errors = []
+    plugin_prefixes = set()                 # plugin_<plugin> prefix 집합(서버명 매칭용)
     seen = set()                            # (source_file, scope, project, server) 중복제거(결정성)
 
     def _add(servers, scope, project, source_file):
@@ -115,6 +134,13 @@ def find_mcp_configs(roots):
                 continue
             seen.add(key)
             configs.append(row)
+
+    def _add_row(row):
+        key = (row["source_file"], row["scope"], row["project"], row["server"])
+        if key in seen:
+            return
+        seen.add(key)
+        configs.append(row)
 
     for root in roots or []:
         claude_json = os.path.join(os.path.dirname(str(root)), ".claude.json")
@@ -130,6 +156,34 @@ def find_mcp_configs(roots):
         gserv = data.get("mcpServers") or {}
         _add({k: _mask_config(v) for k, v in gserv.items() if isinstance(v, dict)},
              "global", None, claude_json)
+        # claude.ai 커넥터 (claudeAiMcpEverConnected: 서버명 list)
+        for name in data.get("claudeAiMcpEverConnected") or []:
+            if isinstance(name, str):
+                _add_row(_synthetic_row(name, "connector", None, claude_json))
+        # 플러그인 사용 (pluginUsage: {"<plugin>@<marketplace>": n}) → plugin_<plugin> prefix
+        for key in (data.get("pluginUsage") or {}):
+            if isinstance(key, str):
+                plugin = key.split("@", 1)[0]
+                if plugin:
+                    plugin_prefixes.add("plugin_" + plugin)
+        # best-effort: 플러그인 매니페스트(plugin.json)의 mcpServers를 서버명(scope="plugin")으로 추가.
+        # 경로 불확실 → 실패해도 errors[]에 기록하고 계속(조용히 누락 금지).
+        plugins_dir = os.path.join(os.path.dirname(claude_json), ".claude", "plugins")
+        if os.path.isdir(plugins_dir):
+            for dirpath, _dirs, files in os.walk(plugins_dir, followlinks=False):
+                for fname in files:
+                    if fname != "plugin.json":
+                        continue
+                    mpath = os.path.join(dirpath, fname)
+                    try:
+                        with open(mpath, "r", encoding="utf-8") as f:
+                            mdata = json.load(f)
+                        mserv = mdata.get("mcpServers") or {}
+                        for sname in mserv:
+                            if isinstance(sname, str):
+                                _add_row(_synthetic_row(sname, "plugin", None, mpath))
+                    except Exception as e:                      # noqa: BLE001 - best-effort: 실패도 기록
+                        errors.append({"path": mpath, "reason": type(e).__name__})
         # 프로젝트별
         for proj, pdata in (data.get("projects") or {}).items():
             # 인라인 projects[proj].mcpServers
@@ -137,6 +191,10 @@ def find_mcp_configs(roots):
                 pserv = pdata.get("mcpServers") or {}
                 _add({k: _mask_config(v) for k, v in pserv.items() if isinstance(v, dict)},
                      "project", proj, claude_json)
+                # 활성화된 .mcp.json 서버 (enabledMcpjsonServers: 서버명 list)
+                for name in pdata.get("enabledMcpjsonServers") or []:
+                    if isinstance(name, str):
+                        _add_row(_synthetic_row(name, "project", proj, claude_json))
             # <proj>/.mcp.json (경로변환 후 존재하는 첫 후보)
             for cand_dir in resolve_candidates(proj, root):
                 mcp_path = os.path.join(cand_dir, ".mcp.json")
@@ -152,7 +210,11 @@ def find_mcp_configs(roots):
 
     configs.sort(key=lambda c: (c["scope"], c["project"] or "", c["server"]))
     errors.sort(key=lambda e: e["path"])
-    return {"configs": configs, "errors": errors}
+    return {
+        "configs": configs,
+        "errors": errors,
+        "plugin_prefixes": sorted(plugin_prefixes),
+    }
 
 
 def _split_target(target):
@@ -189,16 +251,25 @@ def mcp_usage_from_events(events):
 
 
 def mcp_summary(roots, events):
-    """설정 스캔 + 실사용 집계 + 대조. /api/mcp 단일 진입점."""
+    """설정 스캔 + 실사용 집계 + 대조. /api/mcp 단일 진입점.
+    plugin prefix(plugin_<plugin>_*) 매칭으로 플러그인 서버를 설정됨으로 인식."""
     cfg = find_mcp_configs(roots)
     configs, errors = cfg["configs"], cfg["errors"]
+    prefixes = cfg["plugin_prefixes"]
     usage = mcp_usage_from_events(events)
     configured = {c["server"] for c in configs}
+
+    def _is_configured(s):
+        if s in configured:
+            return True
+        return any(s == p or s.startswith(p + "_") or s.startswith(p) for p in prefixes)
+
     used = {u["server"] for u in usage}
     return {
         "configs": configs,
         "usage": usage,
-        "configured_unused": sorted(configured - used),
-        "used_unconfigured": sorted(used - configured),
+        "configured_unused": sorted(c for c in configured if c not in used),
+        "used_unconfigured": sorted(s for s in used if not _is_configured(s)),
         "errors": errors,
+        "plugin_prefixes": prefixes,
     }
