@@ -233,7 +233,7 @@
       return (b.total - a.total) || (a.server < b.server ? -1 : a.server > b.server ? 1 : 0);
     }).map(function (g) { return { label: g.server, count: g.total }; });
 
-    var html = '<div class="sub">MCP 외부연결 사용현황 (정보)</div>';
+    var html = '<div class="sub">MCP 사용 현황</div>';
 
     if (servers.length) {
       var legend = donutItems.map(function (it, i) {
@@ -298,8 +298,7 @@
     if (d.used_unconfigured && d.used_unconfigured.length) {
       cfgBody += '<div class="sub muted">설정 출처 미확인: ' + d.used_unconfigured.map(esc).join(", ") + '</div>';
     }
-    html += '<details class="mcpcfgwrap"><summary>설정된 외부 서버 ' + cfgServers.length +
-      '종 (인스턴스 ' + cfgs.length + ')</summary>' + cfgBody + '</details>';
+    html += '<details class="mcpcfgwrap"><summary>설정된 MCP</summary>' + cfgBody + '</details>';
     el.innerHTML = html;
   }
 
