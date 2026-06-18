@@ -22,7 +22,8 @@ def _static_dir():
 
 
 _STATIC = _static_dir()
-_ROUTES = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css", "/logo.png": "logo.png"}
+_ROUTES = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css", "/logo.png": "logo.png",
+           "/view.html": "view.html", "/view.js": "view.js", "/forensic-views.js": "forensic-views.js"}
 _CT = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png"}
 
 

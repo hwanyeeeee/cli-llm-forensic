@@ -624,86 +624,35 @@ async function loadArtifacts(){
   try{ const d=await jget("/api/artifacts"); renderLeaks(d); renderAttrib(d); renderRetention(d.retention); }
   catch(_){ $("#leaks").innerHTML='<div class="empty">아티팩트 분석 불러오기 실패</div>'; }
 }
+/* 뱃지 계산은 app.js, HTML 빌드는 ForensicViews(forensic-views.js) 단일 진실원천에 위임 — 중복 markup 금지. */
 function renderLeaks(d){
   const cl=(d&&d.hashes)||[];
   setFbadge("leaks", cl.length, cl.some(c=>c.leak_suspect||c.secret));   // 복제 클러스터 수, 유출/시크릿이면 경고
-  if(!cl.length){ $("#leaks").innerHTML='<div class="empty">동일 내용 복제 없음</div>'; return; }
-  $("#leaks").innerHTML=cl.map(c=>{
-    const sha=esc(String(c.sha256||"").slice(0,12));
-    // 강조: secret=빨강, leak_suspect=보라(in_tmp 동반 시 강한 유출 의심). 엔진 플래그 그대로 표시.
-    const flags=[];
-    if(c.secret)        flags.push('<span class="lflag secret">secret</span>');
-    if(c.in_tmp)        flags.push('<span class="lflag tmp">tmp 사본</span>');
-    if(c.leak_suspect)  flags.push('<span class="lflag leak">유출 의심</span>');
-    const cls=c.secret?'leakrow secret':(c.leak_suspect?'leakrow leak':'leakrow');
-    const paths=(c.paths||[]).map(p=>{
-      const tag=p.in_tmp?'<span class="lpt tmp">tmp</span>':(p.referenced?'<span class="lpt ref">참조됨</span>':'<span class="lpt">미참조</span>');
-      const src=(p.source&&p.source.file!=null)?`<span class="src">${esc(p.source.file)}:${esc(p.source.line)}</span>`:'';
-      return `<div class="lpath">${tag}<span class="lpp">${esc(p.path)}</span>${src}</div>`;
-    }).join("");
-    const reason=c.reason?`<div class="lreason">${esc(c.reason)}</div>`:'';
-    return `<div class="${cls}">
-      <div class="lhead"><span class="lsha">${sha}…</span>
-        <span class="lct">${esc(c.count)}곳 · ${esc(c.size)}B</span>${flags.join("")}</div>
-      ${reason}${paths}</div>`;
-  }).join("");
+  ForensicViews.renderLeaks($("#leaks"), d);
 }
 function renderAttrib(d){
-  const at=((d&&d.attribution)||[]).slice()
-    .sort((a,b)=>(b.distortion?1:0)-(a.distortion?1:0));   // distortion=true 우선(엔진 값 기준 정렬만)
+  const at=((d&&d.attribution)||[]);
   const dist=at.filter(r=>r.distortion).length;
   setFbadge("attrib", dist, dist>0);                       // 주체 왜곡(에이전트 작성→사람 소유) 건수
-  if(!at.length){ $("#attrib").innerHTML='<div class="empty">주체 왜곡 정황 없음</div>'; return; }
-  $("#attrib").innerHTML=at.map(r=>{
-    const actor=r.transcript_actor;
-    const who=actor==="agent"?'<span class="who agent">B 에이전트</span>':'<span class="who user">A 사용자</span>';
-    const src=(r.source&&r.source.file!=null)?`<span class="src">${esc(r.source.file)}:${esc(r.source.line)}</span>`:'';
-    const cls=r.distortion?'attribrow distort':'attribrow';
-    const note=r.note?`<div class="anote">${esc(r.note)}</div>`:'';
-    return `<div class="${cls}">
-      <div class="apath">${esc(r.path)}</div>
-      ${note}
-      <div class="ameta">${who} <span class="ats">FS ${esc(r.fs_mtime||"-")} ↔ transcript ${esc(r.transcript_ts||"-")}</span></div>
-      ${src}</div>`;
-  }).join("");
+  ForensicViews.renderAttrib($("#attrib"), d);
 }
 
 /* ---------- MCP 연결 흔적(설정 vs 실사용) + tmp 보존기간 ----------
-   엔진/API가 단일 진실원천 — JS 재집계 금지(값 그대로 렌더). XSS: 모든 동적 문자열 esc(). */
+   엔진/API가 단일 진실원천 — JS 재집계 금지(값 그대로 렌더). HTML 빌드는 ForensicViews에 위임. */
 async function loadMcp(){
   const box=$("#mcp"); if(!box)return;
   try{
     const d=await jget("/api/mcp");
     const uu=(d.used_unconfigured||[]).length;
     setFbadge("mcp", uu>0?uu:(d.configs||[]).length, uu>0);   // 설정없이 사용=경고(빨강), 아니면 설정 서버수
-    let html="";
-    if(d.used_unconfigured&&d.used_unconfigured.length){
-      html+=`<div class="warn">⚠ 설정 없이 사용된 서버: ${d.used_unconfigured.map(esc).join(", ")}</div>`;
-    }
-    html+=`<div class="sub">설정된 서버 ${(d.configs?d.configs.length:0)}개</div>`;
-    html+=(d.configs||[]).map(c=>
-      `<div class="row"><b>${esc(c.server)}</b> <span class="muted">(${esc(c.scope)})</span> ${esc(c.command||"")}`+
-      (c.env_keys&&c.env_keys.length?` <span class="muted">env: ${c.env_keys.map(esc).join(",")}</span>`:"")+
-      `</div>`).join("");
-    html+=`<div class="sub">실호출 ${(d.usage?d.usage.length:0)}종</div>`;
-    html+=(d.usage||[]).map(u=>
-      `<div class="row">${esc(u.server)}__${esc(u.tool)} <span class="muted">×${esc(u.count)}</span></div>`).join("");
-    if(d.configured_unused&&d.configured_unused.length){
-      html+=`<div class="sub muted">설정O 미사용: ${d.configured_unused.map(esc).join(", ")}</div>`;
-    }
-    box.innerHTML=html||'<span class="muted">MCP 흔적 없음</span>';
+    ForensicViews.renderMcp(box, d);
   }catch(_){ box.innerHTML='<span class="muted">불러오기 실패</span>'; }
 }
 function renderRetention(rows){
   const box=$("#retention"); if(!box)return;
   const soon=(rows||[]).filter(r=>r.expires_in_days>0&&r.expires_in_days<=7).length;
   setFbadge("retention", (rows||[]).length, soon>0);        // tmp 잔존 수, 만료임박(≤7d) 있으면 경고
-  if(!rows||!rows.length){ box.innerHTML='<span class="muted">tmp 잔존 없음</span>'; return; }
-  box.innerHTML=rows.map(r=>{
-    const soon=r.expires_in_days>0&&r.expires_in_days<=7;   // 만료 임박(≤7일) 경고 강조
-    return `<div class="row${soon?" warn":""}">${esc(r.path)} `+
-      `<span class="muted">나이 ${esc(r.age_days)}d · 만료 ${r.expires_in_days>0?esc(r.expires_in_days)+"d 후":"경과"}</span></div>`;
-  }).join("");
+  ForensicViews.renderRetention(box, rows);
 }
 /* ---------- 컬럼 폭 드래그 리사이즈(좌|중, 중|우 경계 거터) ---------- */
 function initGutters(){
@@ -755,20 +704,28 @@ function initPanelResizers(){
   });
 }
 
-/* ---------- 포렌식 상세 모달(좌측 버튼 → 열림) + 버튼 뱃지 ---------- */
+/* ---------- 포렌식 상세: 별도 창(우선) → 팝업 차단 시 인앱 #fmodal 폴백 + 버튼 뱃지 ---------- */
+// 별도 OS 창으로 띄움. pywebview 네이티브 창 우선, 없으면 window.open, 차단되면 인앱 모달 폴백.
+function openForensicWindow(key){
+  if(window.pywebview && window.pywebview.api && window.pywebview.api.open_view){ window.pywebview.api.open_view(key); return; }
+  const w=window.open('/view.html?view='+encodeURIComponent(key),'fview_'+key,'width=1000,height=760,resizable=yes,scrollbars=yes');
+  if(!w){ openFmodal(key); }   // 팝업 차단 → 인앱 #fmodal 폴백
+}
+// 인앱 모달 폴백 전용(외부 창 불가 시). open(key) 기존 로직 유지.
+let openFmodal=function(){};
 function initForensicModals(){
   const modal=document.getElementById("fmodal"); if(!modal)return;
   const title=document.getElementById("fmodal-title");
   const TITLES={leaks:"유출·복사 의심 · 해시 대조", attrib:"주체 왜곡 보정 · FS↔transcript JOIN",
                 mcp:"MCP 연결 흔적 · 설정 vs 실사용", retention:"tmp 보존기간 · 만료 잔여"};
   const panes=modal.querySelectorAll(".fm-pane");
-  function open(key){
+  openFmodal=function(key){
     title.textContent=TITLES[key]||key;
     panes.forEach(p=>{p.hidden=(p.id!==key);});
     modal.hidden=false;
-  }
+  };
   const close=()=>{ modal.hidden=true; };
-  document.querySelectorAll(".fbtn").forEach(b=>b.addEventListener("click",()=>open(b.dataset.modal)));
+  document.querySelectorAll(".fbtn").forEach(b=>b.addEventListener("click",()=>openForensicWindow(b.dataset.modal)));
   const x=document.getElementById("fmodal-x"); if(x) x.addEventListener("click",close);
   modal.addEventListener("click",e=>{ if(e.target===modal) close(); });           // 배경 클릭 닫기
   document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!modal.hidden) close(); });
