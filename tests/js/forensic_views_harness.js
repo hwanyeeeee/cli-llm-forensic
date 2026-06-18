@@ -51,6 +51,7 @@ global.document = {
 };
 global.window = {};
 global.crypto = { subtle: { digest() { return Promise.resolve(new ArrayBuffer(32)); } } };
+global.alert = function () {};      // CSV 저장 알림창 stub(테스트가 덮어써 캡처)
 
 const fvPath = path.resolve(__dirname, "..", "..", "clfx", "web", "static", "forensic-views.js");
 require(fvPath);
@@ -144,6 +145,26 @@ ok(typeof FV.renderAttestation === "function", "renderAttestation must be EXPORT
   has(h, 'href="/api/attestation.csv"', "CSV export links to /api/attestation.csv");
   has(h, "CSV로 내보내기", "CSV export button labelled 'CSV로 내보내기'");
   has(h, 'download="acquisition-hash-manifest.csv"', "download attribute hints standard filename");
+}
+
+// ---- 10) CSV export pywebview path: native save + 저장위치 알림창 ----
+{
+  const el = makeEl();
+  let saveArgs = null, alertMsg = null;
+  global.window.pywebview = { api: { save_url: function (ep, fn) {
+    saveArgs = [ep, fn];
+    return { then: function (cb) { cb({ ok: true, path: "/picked/acquisition-hash-manifest.csv" }); return this; } };
+  } } };
+  const prevAlert = global.alert;
+  global.alert = function (m) { alertMsg = m; };
+  FV.renderAttestation(el, { acquired: [], acquired_count: 0, stat_only_count: 0,
+    all_read_only: true, modes_seen: [], write_delete_rename_ops: 0, note: "" });
+  el.querySelector(".att-csv")._fire("click");            // exe(pywebview): <a download> 대신 네이티브 저장
+  ok(saveArgs && saveArgs[0] === "/api/attestation.csv", "pywebview present → click calls api.save_url(/api/attestation.csv)");
+  ok(saveArgs && saveArgs[1] === "acquisition-hash-manifest.csv", "save_url given suggested filename");
+  has(String(alertMsg), "/picked/acquisition-hash-manifest.csv", "저장 후 알림창에 저장 경로 표시");
+  delete global.window.pywebview;                          // 다른 테스트 오염 방지(browser=api 없음)
+  global.alert = prevAlert;
 }
 
 // ---- 9) [R8-A] renderMcp config section: deduped/grouped by server ----

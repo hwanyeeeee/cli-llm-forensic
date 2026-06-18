@@ -131,7 +131,8 @@
     html += '<div class="attest-export">' +
       '<a class="att-csv" href="/api/attestation.csv" download="acquisition-hash-manifest.csv">' +
       'CSV로 내보내기</a>' +
-      '<span class="muted">취득 해시 원장 ' + esc(ac) + '개 · path · sha256 (UTF-8)</span></div>';
+      '<span class="muted">취득 해시 원장 ' + esc(ac) + '개 · path · sha256 (UTF-8)</span>' +
+      '<span class="att-csv-status muted"></span></div>';
 
     // (5) 기술 상세(접이식, 기본 접힘) — 개발자 용어(_ro_open 등)는 이 안에서만.
     var modesTxt = modes.length ? modes.map(esc).join(", ") : "(없음)";
@@ -164,6 +165,28 @@
         });
         list.innerHTML = hits.length ? attRowsHTML(hits)
           : '<div class="empty">일치하는 경로 없음</div>';
+      });
+    }
+
+    // CSV 저장 wiring(el-scoped). pywebview(exe)는 <a download> 미지원 → 네이티브 SAVE 다이얼로그(api.save_url).
+    //   브라우저면 api 없음 → preventDefault 안 함 → <a download> 기본 동작(다운로드 폴더).
+    var csv = el.querySelector(".att-csv");
+    var cstat = el.querySelector(".att-csv-status");
+    if (csv) {
+      csv.addEventListener("click", function (ev) {
+        var api = window.pywebview && window.pywebview.api;
+        if (!(api && api.save_url)) return;                 // 브라우저: 기본 다운로드 진행
+        if (ev && ev.preventDefault) ev.preventDefault();   // exe: 네이티브 저장으로 대체
+        if (cstat) cstat.textContent = "저장 위치 선택…";
+        api.save_url("/api/attestation.csv", "acquisition-hash-manifest.csv")
+          .then(function (r) {
+            var msg = null;
+            if (r && r.ok) msg = "CSV 저장 완료\n\n" + r.path;
+            else if (!(r && r.cancelled)) msg = "CSV 저장 실패" + (r && r.error ? "\n\n" + r.error : "");
+            if (cstat) cstat.textContent = (r && r.ok) ? ("저장됨: " + r.path)
+              : (r && r.cancelled) ? "" : "저장 실패";
+            if (msg != null && typeof alert === "function") alert(msg);   // 어디 저장됐는지 알림창
+          });
       });
     }
   }

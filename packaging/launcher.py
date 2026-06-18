@@ -11,6 +11,56 @@ if not getattr(sys, "frozen", False):
 
 from clfx.web.server import serve
 
+# 포렌식 뷰별 네이티브 자식 창 제목.
+TITLES = {"leaks": "유출·복사 의심", "attrib": "주체 왜곡 보정",
+          "mcp": "MCP 연결 흔적", "retention": "TMP 보존기간",
+          "attestation": "읽기전용 증명"}
+
+
+class _Api:
+    """pywebview js_api — JS(window.pywebview.api)에서 호출. webview는 메서드 내 지연 import
+    (모듈 import 시 GUI 의존성 없이 테스트 가능)."""
+    def __init__(self, base):
+        self.base = base
+
+    def open_view(self, view):
+        # 자식 창은 네이티브 chrome(최소화/복원/닫기). start() 이후 js_api 콜백에서 호출 — pywebview 허용.
+        # js_api=self 전달 → 자식 창에서도 save_url(CSV 저장) 등 호출 가능(메인창과 동일 api).
+        import webview
+        title = TITLES.get(view, "포렌식 뷰")
+        try:
+            webview.create_window(title, f"{self.base}/view.html?view={view}",
+                                  width=1000, height=760, resizable=True, js_api=self)
+        except TypeError:
+            webview.create_window(title, f"{self.base}/view.html?view={view}", js_api=self)
+
+    def save_url(self, endpoint, filename):
+        """로컬 서버 endpoint(GET) 바이트를 네이티브 SAVE 다이얼로그로 고른 위치에 저장.
+        pywebview/WebView2는 <a download>를 처리 못 하므로(다운로드 미배선) 이 경로로 저장한다.
+        증거가 아닌 *산출물*(취득 해시 원장 CSV 등) 쓰기 — read-only(증거 ~/.claude·tmp)와 무관.
+        반환 {ok,path} | {ok:False,cancelled} | {ok:False,error}."""
+        import urllib.request
+        import webview
+        try:
+            data = urllib.request.urlopen(self.base + endpoint, timeout=10).read()
+        except Exception as e:                       # noqa: BLE001 — 어떤 실패든 JS에 보고
+            return {"ok": False, "error": "fetch: " + str(e)}
+        win = webview.active_window()
+        if win is None and getattr(webview, "windows", None):
+            win = webview.windows[0]
+        if win is None:
+            return {"ok": False, "error": "no window"}
+        dest = win.create_file_dialog(webview.SAVE_DIALOG, save_filename=filename)
+        if not dest:                                 # 취소(None/빈)
+            return {"ok": False, "cancelled": True}
+        path = dest if isinstance(dest, str) else dest[0]
+        try:
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError as e:
+            return {"ok": False, "error": "write: " + str(e)}
+        return {"ok": True, "path": path}
+
 
 def _free_port(host, start=8770, span=50):
     for p in range(start, start + span):
@@ -44,23 +94,6 @@ def main(argv=None):
     # 우선 네이티브 GUI 창. 백엔드 없으면(import/런타임 실패) 브라우저로 폴백.
     try:
         import webview                                  # pywebview
-
-        # 포렌식 뷰별 네이티브 자식 창 제목.
-        TITLES = {"leaks": "유출·복사 의심", "attrib": "주체 왜곡 보정",
-                  "mcp": "MCP 연결 흔적", "retention": "TMP 보존기간"}
-
-        class _Api:
-            def __init__(self, base):
-                self.base = base
-
-            def open_view(self, view):
-                # 자식 창은 네이티브 chrome(최소화/복원/닫기). start() 이후 js_api 콜백에서 호출 — pywebview 허용.
-                title = TITLES.get(view, "포렌식 뷰")
-                try:
-                    webview.create_window(title, f"{self.base}/view.html?view={view}",
-                                          width=1000, height=760, resizable=True)
-                except TypeError:
-                    webview.create_window(title, f"{self.base}/view.html?view={view}")
 
         api = _Api(url)
         # maximized로 화면 꽉 채워 起動(좌상단 절반만 차지 문제 해소) + resizable.
