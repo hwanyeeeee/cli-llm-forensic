@@ -242,7 +242,7 @@ header{
 .src{font-family:var(--mono);font-size:11px;background:#eef3f9;border:1px solid var(--border);
   padding:3px 7px;border-radius:6px;color:var(--accent)}
 .detail pre{font-family:var(--mono);font-size:11px;background:#f5f7fa;border:1px solid var(--border);
-  padding:9px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:8px 0 0;max-height:150px;overflow:auto}
+  padding:9px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:8px 0 0}   /* 내용만큼 늘어남(내부 스크롤 제거) — 패널/컬럼이 스크롤 */
 .empty{color:var(--faint);font-size:12px;text-align:center;padding:18px 0}
 
 /* ---------- artifacts: leaks(해시 대조) + attribution(주체 왜곡) ---------- */
