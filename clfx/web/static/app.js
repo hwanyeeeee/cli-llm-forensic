@@ -626,6 +626,7 @@ async function loadArtifacts(){
 }
 function renderLeaks(d){
   const cl=(d&&d.hashes)||[];
+  setFbadge("leaks", cl.length, cl.some(c=>c.leak_suspect||c.secret));   // 복제 클러스터 수, 유출/시크릿이면 경고
   if(!cl.length){ $("#leaks").innerHTML='<div class="empty">동일 내용 복제 없음</div>'; return; }
   $("#leaks").innerHTML=cl.map(c=>{
     const sha=esc(String(c.sha256||"").slice(0,12));
@@ -650,6 +651,8 @@ function renderLeaks(d){
 function renderAttrib(d){
   const at=((d&&d.attribution)||[]).slice()
     .sort((a,b)=>(b.distortion?1:0)-(a.distortion?1:0));   // distortion=true 우선(엔진 값 기준 정렬만)
+  const dist=at.filter(r=>r.distortion).length;
+  setFbadge("attrib", dist, dist>0);                       // 주체 왜곡(에이전트 작성→사람 소유) 건수
   if(!at.length){ $("#attrib").innerHTML='<div class="empty">주체 왜곡 정황 없음</div>'; return; }
   $("#attrib").innerHTML=at.map(r=>{
     const actor=r.transcript_actor;
@@ -671,6 +674,8 @@ async function loadMcp(){
   const box=$("#mcp"); if(!box)return;
   try{
     const d=await jget("/api/mcp");
+    const uu=(d.used_unconfigured||[]).length;
+    setFbadge("mcp", uu>0?uu:(d.configs||[]).length, uu>0);   // 설정없이 사용=경고(빨강), 아니면 설정 서버수
     let html="";
     if(d.used_unconfigured&&d.used_unconfigured.length){
       html+=`<div class="warn">⚠ 설정 없이 사용된 서버: ${d.used_unconfigured.map(esc).join(", ")}</div>`;
@@ -691,6 +696,8 @@ async function loadMcp(){
 }
 function renderRetention(rows){
   const box=$("#retention"); if(!box)return;
+  const soon=(rows||[]).filter(r=>r.expires_in_days>0&&r.expires_in_days<=7).length;
+  setFbadge("retention", (rows||[]).length, soon>0);        // tmp 잔존 수, 만료임박(≤7d) 있으면 경고
   if(!rows||!rows.length){ box.innerHTML='<span class="muted">tmp 잔존 없음</span>'; return; }
   box.innerHTML=rows.map(r=>{
     const soon=r.expires_in_days>0&&r.expires_in_days<=7;   // 만료 임박(≤7일) 경고 강조
@@ -728,20 +735,48 @@ function initGutters(){
 function initPanelResizers(){
   document.querySelectorAll(".col-left .panel, .col-right .panel").forEach(p=>{
     if(p.querySelector(":scope > .vgrip"))return;            // 1회만(중복 가드)
-    const g=document.createElement("div"); g.className="vgrip"; p.appendChild(g);
-    let drag=null;
-    g.addEventListener("pointerdown",e=>{
-      drag={y:e.clientY, h:p.offsetHeight}; g.classList.add("drag");
-      try{ g.setPointerCapture(e.pointerId); }catch(_){}
-      e.preventDefault();
+    ["top","bottom"].forEach(edge=>{                          // 상/하단 가장자리 모두 드래그 가능
+      const g=document.createElement("div"); g.className="vgrip vgrip-"+edge; p.appendChild(g);
+      let drag=null;
+      g.addEventListener("pointerdown",e=>{
+        drag={y:e.clientY, h:p.offsetHeight}; g.classList.add("drag");
+        try{ g.setPointerCapture(e.pointerId); }catch(_){}
+        e.preventDefault();
+      });
+      g.addEventListener("pointermove",e=>{
+        if(!drag)return;
+        const dy=e.clientY-drag.y;
+        const nh=edge==="bottom"?drag.h+dy:drag.h-dy;         // 하단:아래로=↑ / 상단:위로=↑
+        p.style.height=Math.max(120,nh)+"px";                 // 최소 120px, 상한 없음(컬럼이 스크롤)
+      });
+      const end=()=>{drag=null; g.classList.remove("drag");};
+      g.addEventListener("pointerup",end); g.addEventListener("pointercancel",end);
     });
-    g.addEventListener("pointermove",e=>{
-      if(!drag)return;
-      p.style.height=Math.max(120, drag.h+(e.clientY-drag.y))+"px";   // 최소 120px, 상한 없음(컬럼이 스크롤)
-    });
-    const end=()=>{drag=null; g.classList.remove("drag");};
-    g.addEventListener("pointerup",end); g.addEventListener("pointercancel",end);
   });
+}
+
+/* ---------- 포렌식 상세 모달(좌측 버튼 → 열림) + 버튼 뱃지 ---------- */
+function initForensicModals(){
+  const modal=document.getElementById("fmodal"); if(!modal)return;
+  const title=document.getElementById("fmodal-title");
+  const TITLES={leaks:"유출·복사 의심 · 해시 대조", attrib:"주체 왜곡 보정 · FS↔transcript JOIN",
+                mcp:"MCP 연결 흔적 · 설정 vs 실사용", retention:"tmp 보존기간 · 만료 잔여"};
+  const panes=modal.querySelectorAll(".fm-pane");
+  function open(key){
+    title.textContent=TITLES[key]||key;
+    panes.forEach(p=>{p.hidden=(p.id!==key);});
+    modal.hidden=false;
+  }
+  const close=()=>{ modal.hidden=true; };
+  document.querySelectorAll(".fbtn").forEach(b=>b.addEventListener("click",()=>open(b.dataset.modal)));
+  const x=document.getElementById("fmodal-x"); if(x) x.addEventListener("click",close);
+  modal.addEventListener("click",e=>{ if(e.target===modal) close(); });           // 배경 클릭 닫기
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!modal.hidden) close(); });
+}
+function setFbadge(key,n,alert){
+  const el=document.getElementById("fn-"+key); if(!el)return;
+  el.textContent=n>0?String(n):"";
+  const btn=el.closest(".fbtn"); if(btn) btn.classList.toggle("alert",!!alert&&n>0);
 }
 
 function setCaseChip(live){
@@ -801,6 +836,7 @@ async function loadEventsInBackground(){
 
 initGutters();
 initPanelResizers();
+initForensicModals();
 boot();
 
 /* ---------- 코파일럿 크기 조절 (좌상단 핸들 드래그) ---------- */
