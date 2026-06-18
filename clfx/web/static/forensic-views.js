@@ -214,77 +214,107 @@
     el.innerHTML = html;
   }
 
-  /* [#3] 주체 귀속 요약: 에이전트(B) 작성 파일만 간결 표시.
-     owner/distortion/신뢰불가/FS↔transcript 표현 전부 제거. el에 본문 세팅(뱃지 제외). */
-  function renderAttrib(el, d) {
-    if (!el) return;
-    var agentWrites = ((d && d.attribution) || []).filter(function (r) {
-      return r.transcript_actor === "agent" && r.transcript_action === "write";
-    });
-    if (!agentWrites.length) {
-      el.innerHTML = '<div class="empty">에이전트 작성 파일 없음</div>';
-      return;
-    }
-    var html = '<div class="sub">에이전트(B)가 작성한 파일 ' + agentWrites.length + '개</div>';
-    html += agentWrites.slice(0, 12).map(function (r) {
-      return '<div class="apath">' + esc(r.path) + '</div>';
-    }).join("");
-    el.innerHTML = html;
-  }
-
   /* 파일 1행. "만료까지 N일 남음"(N=round(expires_in_days); ≤0이면 "만료 경과").
-     나이 Xd 표기 유지. 임박(≤7d) warn 강조. 값은 엔진 그대로(표시용 round만). */
-  function retentionRowHTML(r) {
+     "수정 후 X일" 표기(age_days 값 그대로, 라벨만). 임박(≤7d) warn 강조.
+     증거 관련(leakSet 포함) 행은 evtag 표식 + warn 우선 표시. 값은 엔진 그대로(표시용 round만). */
+  function retentionRowHTML(r, leakSet) {
     var ed = r.expires_in_days;
     var soon = ed > 0 && ed <= 7;
     var exp = ed > 0 ? '만료까지 ' + Math.round(ed) + '일 남음' : '만료 경과';
-    return '<div class="row' + (soon ? " warn" : "") + '">' + esc(r.path) + ' ' +
-      '<span class="muted">나이 ' + esc(r.age_days) + 'd · ' + exp + '</span></div>';
+    var isEv = !!(leakSet && leakSet.has(r.path));
+    var ev = isEv ? '<span class="evtag">증거 관련</span>' : '';
+    var cls = 'row' + (isEv ? ' ev' : '') + (soon ? ' warn' : '');
+    return '<div class="' + cls + '">' + ev + esc(r.path) + ' ' +
+      '<span class="muted">수정 후 ' + esc(r.age_days) + '일 · ' + exp + '</span></div>';
   }
 
-  /* path의 부모 디렉터리(마지막 구분자 앞). 구분자 없으면 "." */
-  function parentDir(p) {
-    var s = String(p);
-    var i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
-    return i >= 0 ? s.slice(0, i) : ".";
+  /* leak_suspect 클러스터의 tmp 경로 Set(증거 관련 tmp 파일).
+     d.hashes 중 leak_suspect인 클러스터의 paths에서 p.in_tmp인 p.path만 수집.
+     엔진 값 그대로 — JS 재판정 아님. renderRetention의 leakSet 인자로 사용(DRY). */
+  function leakTmpPaths(d) {
+    var set = new Set();
+    ((d && d.hashes) || []).forEach(function (c) {
+      if (!c.leak_suspect) return;
+      (c.paths || []).forEach(function (p) {
+        if (p && p.in_tmp && p.path != null) set.add(p.path);
+      });
+    });
+    return set;
   }
 
-  /* [#4] tmp 보존기간: 디렉터리 그룹 + 요약. 전수 보존(모든 행 그룹 안). */
-  function renderRetention(el, rows) {
+  /* 상위 롤업 키: 경로 구분자 split 후 빈 토큰 제거, 앞 3단계만(tmp 루트 기준 1~2단계).
+     그룹 수 대폭 축소 — 하위경로·파일은 그룹 안에 전수 포함(완전성). */
+  function rollupKey(path) {
+    return String(path).split(/[\/\\]+/).filter(Boolean).slice(0, 3).join("/");
+  }
+
+  /* [#4] tmp 보존기간: 상위 롤업 그룹 + 요약 + 증거 우선.
+     leakSet optional(없으면 증거표식 생략). 전수 보존(모든 행 그룹 안 — 분류·표시만 변경).
+     정렬: 그룹 = (증거포함 desc, 임박 desc, 최소잔여 asc, dir asc);
+           그룹내 행 = (증거 desc, expires_in_days asc). 결정성 보장. */
+  function renderRetention(el, rows, leakSet) {
     if (!el) return;
     if (!rows || !rows.length) { el.innerHTML = '<span class="muted">tmp 잔존 없음</span>'; return; }
+    var hasLeak = !!(leakSet && leakSet.size);
 
     var soonCount = rows.filter(function (r) {
       return r.expires_in_days > 0 && r.expires_in_days <= 7;
     }).length;
 
-    // 부모 디렉터리별 그룹.
+    function isEv(r) { return hasLeak && leakSet.has(r.path); }
+
+    // 상위 롤업별 그룹.
     var groups = {};
     rows.forEach(function (r) {
-      var dir = parentDir(r.path);
+      var dir = rollupKey(r.path);
       if (!groups[dir]) groups[dir] = [];
       groups[dir].push(r);
     });
 
     var html = '<div class="rnote">tmp 파일은 마지막 수정 후 약 30일이면 자동 삭제됩니다. ' +
       '‘만료까지 N일’=해당 파일이 사라지기까지 남은 기간(증거 보존 시한).</div>';
-    html += '<div class="sub">총 tmp ' + rows.length + '개 · 만료임박(≤7d) ' + soonCount + '개</div>';
+    html += '<div class="sub">총 tmp ' + rows.length + '개 · 만료임박(≤7d) ' + soonCount + '개' +
+      (soonCount === 0 ? ' · 현재 소실 위험 없음' : '') + '</div>';
 
-    html += Object.keys(groups).sort().map(function (dir) {
+    // 그룹 메타 계산.
+    var metas = Object.keys(groups).map(function (dir) {
       var items = groups[dir];
-      // 그룹 내 미경과(>0) 중 최소 잔여. 임박 파일 존재 여부.
-      var minExp = null, hasSoon = false;
+      var minExp = null, hasSoon = false, hasEv = false;
       items.forEach(function (r) {
+        if (isEv(r)) hasEv = true;
         if (r.expires_in_days > 0) {
           if (minExp === null || r.expires_in_days < minExp) minExp = r.expires_in_days;
           if (r.expires_in_days <= 7) hasSoon = true;
         }
       });
-      var minTxt = minExp === null ? "모두 만료 경과" : "만료까지 " + Math.round(minExp) + "일 남음";
-      var sumCls = hasSoon ? ' class="warn"' : "";
-      var body = items.map(retentionRowHTML).join("");
-      return '<details class="rgrp"><summary' + sumCls + '>' + esc(dir) + ' (' + items.length + '개 · ' + minTxt + ')</summary>' +
-        body + '</details>';
+      // 그룹내 행 정렬: 증거 desc, expires_in_days asc.
+      var sorted = items.slice().sort(function (a, b) {
+        var ea = isEv(a) ? 1 : 0, eb = isEv(b) ? 1 : 0;
+        if (eb !== ea) return eb - ea;
+        return a.expires_in_days - b.expires_in_days;
+      });
+      return { dir: dir, items: sorted, minExp: minExp, hasSoon: hasSoon, hasEv: hasEv };
+    });
+
+    // 그룹 정렬: 증거포함 desc, 임박 desc, 최소잔여 asc(null=경과는 맨 뒤), dir asc.
+    metas.sort(function (a, b) {
+      var ev = (b.hasEv ? 1 : 0) - (a.hasEv ? 1 : 0);
+      if (ev) return ev;
+      var sn = (b.hasSoon ? 1 : 0) - (a.hasSoon ? 1 : 0);
+      if (sn) return sn;
+      var am = a.minExp === null ? Infinity : a.minExp;
+      var bm = b.minExp === null ? Infinity : b.minExp;
+      if (am !== bm) return am - bm;
+      return a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0;
+    });
+
+    html += metas.map(function (g) {
+      var minTxt = g.minExp === null ? "모두 만료 경과" : "만료까지 " + Math.round(g.minExp) + "일 남음";
+      var sumCls = (g.hasEv ? " ev" : "") + (g.hasSoon ? " warn" : "");
+      var evtag = g.hasEv ? '<span class="evtag">증거 관련</span>' : '';
+      var body = g.items.map(function (r) { return retentionRowHTML(r, leakSet); }).join("");
+      return '<details class="rgrp"><summary class="rsum' + sumCls + '">' + evtag + esc(g.dir) +
+        ' (' + g.items.length + '개 · ' + minTxt + ')</summary>' + body + '</details>';
     }).join("");
 
     el.innerHTML = html;
@@ -293,9 +323,9 @@
   window.ForensicViews = {
     esc: esc,
     renderLeaks: renderLeaks,
-    renderAttrib: renderAttrib,
     renderMcp: renderMcp,
     renderRetention: renderRetention,
+    leakTmpPaths: leakTmpPaths,
     hashSearchBoxHTML: hashSearchBoxHTML,
     sha256Hex: sha256Hex,
     renderHashMatches: renderHashMatches,
