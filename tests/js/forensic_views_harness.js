@@ -99,7 +99,7 @@ ok(!("renderLeaks" in FV), "renderLeaks must be REMOVED from exports (auto leak 
 // ---- 5) renderAttestation exported ----
 ok(typeof FV.renderAttestation === "function", "renderAttestation must be EXPORTED (B-4 single-source render)");
 
-// ---- 6) renderAttestation renders the full Chain-of-Custody contract ----
+// ---- 6) [R8-B] renderAttestation renders plain-language Chain-of-Custody ----
 {
   const el = makeEl();
   FV.renderAttestation(el, {
@@ -115,16 +115,53 @@ ok(typeof FV.renderAttestation === "function", "renderAttestation must be EXPORT
     note: "라이브 제자리 분석. 취득 시 SHA-256 매니페스트 기록.",
   });
   const h = el.innerHTML;
-  has(h, "라이브 제자리 분석", "renderAttestation shows the assurance note");
-  has(h, "취득 <b>2</b>", "summary shows acquired count");
-  has(h, "stat-only <b>5</b>", "summary shows stat-only count");
-  has(h, "쓰기/삭제/이동 <b>0</b>", "summary shows write/delete/rename 0");
-  has(h, "전 open 읽기전용", "summary asserts all read-only");
-  has(h, "r, rb", "basis shows observed open modes");
-  has(h, 'id="attfilter"', "searchable manifest has a filter input");
+  // (1)(2) plain-language header + lead (no dev jargon up top)
+  has(h, "증거 무결성", "plain-language header");
+  has(h, "분석이 원본을 변경하지 않았음", "header tagline");
+  has(h, "100% 읽기 전용", "lead asserts 100% read-only in plain language");
+  // (3) plain-language stat cards
+  has(h, "읽기 전용 접근", "summary: read-only access");
+  has(h, "변경(쓰기/삭제/이동) 횟수", "stat card: write/delete/move count (plain)");
+  has(h, "해시 기록한 증거 파일", "stat card: acquired files (plain)");
+  has(h, "메타데이터만 확인", "stat card: stat-only (plain)");
+  // (4) verification-method section
+  has(h, "무결성 검증 방법", "verification-method section present");
+  has(h, "다시 계산해", "verification method explains re-hash compare");
+  // (5) dev terms moved into a collapsible <details>
+  has(h, "기술 상세", "developer terms moved into collapsible 기술 상세");
+  has(h, "attest-tech", "기술 상세 is a <details> (collapsed by default)");
+  has(h, "_ro_open", "_ro_open mentioned (only inside 기술 상세)");
+  has(h, "r, rb", "observed open modes shown in 기술 상세");
+  has(h, "라이브 제자리 분석", "note retained inside 기술 상세");
+  // (6) acquired ledger collapsed by default, search inside
+  has(h, "취득 해시 원장 (전체 2개)", "ledger collapsed with total count");
+  has(h, "attest-ledger", "ledger is a <details> (collapsed by default)");
+  has(h, 'id="attfilter"', "searchable manifest still has a filter input (inside ledger)");
   has(h, "/proj/a.txt", "manifest lists acquired path");
   has(h, "deadbeefcafe", "manifest shows sha256 prefix");
   lacks(h, "deadbeefcafe0123456789…", "manifest truncates sha to a prefix (not full+ellipsis)");
+}
+
+// ---- 9) [R8-A] renderMcp config section: deduped/grouped by server ----
+{
+  const el = makeEl();
+  FV.renderMcp(el, {
+    usage: [{ server: "playwright", tool: "click", count: 3 }],
+    configs: [
+      { server: "playwright", scope: "project", project: "/a", command: "npx playwright", env_keys: ["K"] },
+      { server: "playwright", scope: "project", project: "/b", command: "npx playwright", env_keys: [] },
+      { server: "playwright", scope: "global", project: null, command: "npx playwright", env_keys: [] },
+      { server: "ghidra", scope: "connector", project: null, command: "", env_keys: [] },
+    ],
+    configured_unused: [],
+    used_unconfigured: ["pyghidra"],
+  });
+  const h = el.innerHTML;
+  has(h, "설정된 외부 서버 2종 (인스턴스 4)", "configs deduped: N kinds (M instances)");
+  has(h, "mcpcfg", "each config server is a <details> group");
+  has(h, "cfgscope", "scope badges rendered per server group");
+  has(h, "×3", "playwright group shows its 3 instances (×3)");
+  has(h, "설정 출처 미확인: pyghidra", "used_unconfigured neutral line preserved");
 }
 
 // ---- 7) XSS: dynamic strings escaped ----
