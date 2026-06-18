@@ -22,8 +22,8 @@ def _static_dir():
 
 
 _STATIC = _static_dir()
-_ROUTES = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css"}
-_CT = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
+_ROUTES = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css", "/logo.png": "logo.png"}
+_CT = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png"}
 
 
 class ServerState:
@@ -48,7 +48,8 @@ def make_handler(state):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, body_bytes, code, content_type):
             self.send_response(code)
-            self.send_header("Content-Type", content_type + "; charset=utf-8")
+            ct = content_type + ("; charset=utf-8" if (content_type.startswith("text/") or content_type == "application/json") else "")
+            self.send_header("Content-Type", ct)
             self.send_header("Content-Length", str(len(body_bytes)))
             self.end_headers()
             self.wfile.write(body_bytes)

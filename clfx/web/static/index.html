@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>clfx — CLI 에이전트 포렌식 대시보드</title>
+<title>AgenTrace — CLI 에이전트 포렌식 대시보드</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
 
 <header>
   <div class="brand">
-    <div class="logo">clfx</div>
+    <img class="brand-logo" src="/logo.png" alt="AgenTrace">
     <div>
-      <h1>CLI 에이전트 포렌식 대시보드</h1>
-      <div class="sub">Claude Code 기록 사후 분석 · 행위 주체 규명 (A 사용자 / B 에이전트)</div>
+      <h1>AI 에이전트 행위 추적·분석</h1>
+      <div class="sub">CLI 에이전트 기록 사후 분석 · 행위 주체 규명 (A 사용자 / B 에이전트)</div>
     </div>
   </div>
   <div class="case">
@@ -105,9 +105,10 @@
 <!-- ============ AI COPILOT (floating, collapsible) ============ -->
 <button class="copilot-fab" id="copfab" title="AI 질의응답">🤖</button>
 <div class="copilot" id="copilot">
+  <div class="cop-resize" id="copresize" title="드래그하여 크기 조절"></div>
   <div class="cop-head">
     <div class="ai">🤖</div>
-    <div><div class="t">clfx 코파일럿</div><div class="s">결정적 엔진 + LLM 요약 · source 추적</div></div>
+    <div><div class="t">AgenTrace 코파일럿</div><div class="s">결정적 엔진 + LLM 요약 · source 추적</div></div>
     <button class="cop-x" id="copx">×</button>
   </div>
   <div class="chatlog" id="chatlog"></div>

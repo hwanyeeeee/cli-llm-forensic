@@ -31,7 +31,7 @@ def test_summarize_falls_back_when_llm_raises():
 
 def test_make_llm_default_returns_ollama_client():
     llm = make_llm()
-    assert isinstance(llm, OllamaLLM) and llm.model == "gemma4:12b"
+    assert isinstance(llm, OllamaLLM) and llm.model == "qwen2.5:7b"
 
 
 def test_make_llm_disabled_returns_none():

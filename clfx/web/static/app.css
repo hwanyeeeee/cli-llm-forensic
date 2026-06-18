@@ -36,6 +36,7 @@ header{
   background:linear-gradient(135deg,#38bdf8,#a855f7);color:#06121d;font-weight:800;font-size:17px;
   box-shadow:0 4px 14px rgba(56,189,248,.35);
 }
+.brand-logo{height:48px;width:auto;display:block}
 .brand h1{font-size:16px;margin:0;letter-spacing:.2px}
 .brand .sub{font-size:11.5px;color:var(--muted);margin-top:1px}
 .case{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
@@ -258,6 +259,10 @@ header{
   transform:translateY(14px) scale(.97);opacity:0;pointer-events:none;transition:.18s;
 }
 .copilot.open{transform:none;opacity:1;pointer-events:auto}
+/* 좌상단 드래그 핸들 — copilot은 우하단 고정이라 폭/높이 늘리면 좌·위로 확장됨 */
+.cop-resize{position:absolute;top:0;left:0;width:20px;height:20px;cursor:nwse-resize;z-index:6}
+.cop-resize::before{content:"";position:absolute;top:6px;left:6px;width:8px;height:8px;
+  border-top:2px solid var(--faint);border-left:2px solid var(--faint)}
 .cop-head{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);
   background:rgba(56,189,248,.06)}
 .cop-head .ai{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#38bdf8,#a855f7);

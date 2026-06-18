@@ -47,10 +47,10 @@ def main(argv=None):
         # maximized로 화면 꽉 채워 起動(좌상단 절반만 차지 문제 해소) + resizable.
         # 구버전 pywebview는 maximized 미지원(TypeError) → 인자 없이 재생성(폴백 아님, 창은 뜸).
         try:
-            webview.create_window("clfx — Claude 포렌식", url,
+            webview.create_window("AgenTrace — CLI 에이전트 포렌식", url,
                                   width=1280, height=860, resizable=True, maximized=True)
         except TypeError:
-            webview.create_window("clfx — Claude 포렌식", url,
+            webview.create_window("AgenTrace — CLI 에이전트 포렌식", url,
                                   width=1280, height=860, resizable=True)
         webview.start()                                 # 메인스레드 블로킹 GUI 루프(창 닫으면 반환)
     except Exception as e:
