@@ -10,9 +10,12 @@ def resolve_paste(item: dict, source) -> "str | None":
     if not h:
         return None
     p = source.paste_cache_path(h)
-    if not p.exists():
+    # exists() precheck 제거 → 직접 read 시도(파일당 syscall 1회 절감).
+    # 캐시 파일 없음/접근 불가(OSError·FileNotFoundError)면 None — 기존 missing-cache와 동일(무손실).
+    try:
+        return p.read_text(encoding="utf-8", errors="ignore")
+    except (OSError, FileNotFoundError):
         return None
-    return p.read_text(encoding="utf-8", errors="ignore")
 
 
 def decode_image(part: dict) -> bytes:

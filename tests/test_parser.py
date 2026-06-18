@@ -244,9 +244,13 @@ def test_parse_file_transcript_events_and_bypass(tmp_path):
     fp = root / "projects" / "p" / "t.jsonl"
     fp.write_text("\n".join(_j.dumps(x) for x in lines) + "\n", encoding="utf-8")
     src = ClaudeSource(str(root))
-    evs, byp = parse_file(src, fp, is_history=False)
+    evs, byp, sha = parse_file(src, fp, is_history=False)
     assert byp == {"sX"}                              # bypass sessionId 수집
     assert [e.action for e in evs] == ["prompt"]      # permission-mode는 이벤트 0, user text→prompt
+    # B-1: parse_file은 raw 파일 바이트의 SHA-256(64-hex 소문자)을 함께 반환(단일 읽기 부산물).
+    import hashlib as _hl
+    assert sha == _hl.sha256(fp.read_bytes()).hexdigest()
+    assert len(sha) == 64 and sha == sha.lower()
 
 
 def test_parse_file_history_no_bypass(tmp_path):
@@ -256,8 +260,29 @@ def test_parse_file_history_no_bypass(tmp_path):
     root = tmp_path / ".claude"; root.mkdir(parents=True)
     h = root / "history.jsonl"
     h.write_text(_j.dumps({"display": "x", "pastedContents": {}}) + "\n", encoding="utf-8")
-    evs, byp = parse_file(ClaudeSource(str(root)), h, is_history=True)
+    evs, byp, sha = parse_file(ClaudeSource(str(root)), h, is_history=True)
     assert byp == set()
+    import hashlib as _hl
+    assert sha == _hl.sha256(h.read_bytes()).hexdigest()
+
+
+def test_parse_file_sha_equals_raw_file_bytes(tmp_path):
+    # B-1: 임의 jsonl 픽스처서 parse_file의 sha가 파일 raw 바이트 해시와 정확히 일치(무손실 부산물).
+    import hashlib as _hl
+    import json as _j
+    from clfx.parser import parse_file
+    root = tmp_path / ".claude"; (root / "projects" / "p").mkdir(parents=True)
+    fp = root / "projects" / "p" / "t.jsonl"
+    lines = [
+        {"type": "user", "sessionId": "s", "message": {"content": [{"type": "text", "text": "한글 mixed ascii"}]}},
+        {"type": "assistant", "sessionId": "s", "message": {"content": [{"type": "text", "text": "ok"}]}},
+    ]
+    fp.write_text("\n".join(_j.dumps(x, ensure_ascii=False) for x in lines) + "\n", encoding="utf-8")
+    evs, byp, sha = parse_file(ClaudeSource(str(root)), fp, is_history=False)
+    assert sha == _hl.sha256(fp.read_bytes()).hexdigest()
+    assert len(sha) == 64 and sha == sha.lower()
+    # 무손실: 이벤트는 sha 계산과 무관하게 그대로(prompt + response).
+    assert [e.action for e in evs] == ["prompt", "response"]
 
 
 def test_mcp_tool_use_emits_mcp_action(tmp_path):

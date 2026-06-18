@@ -15,6 +15,11 @@ def test_resolve_via_paste_cache(built_root):
 def test_resolve_missing_cache_returns_none(built_root):
     assert resolve_paste({"type":"text","contentHash":"deadbeef"}, ClaudeSource(built_root)) is None
 
+def test_resolve_missing_cache_no_exception_direct_open(tmp_path):
+    # OPT-4: exists() precheck 제거 후 직접 read. 캐시 파일 부재 → None·예외 없음(무손실).
+    src = ClaudeSource(str(tmp_path))
+    assert resolve_paste({"type":"text","contentHash":"deadbeefdeadbeef"}, src) is None
+
 def test_decode_image_roundtrips_png():
     part = {"type":"image","source":{"type":"base64","data":PNG_1x1_B64}}
     raw = decode_image(part)

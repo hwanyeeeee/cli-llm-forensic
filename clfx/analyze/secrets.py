@@ -31,13 +31,48 @@ _PATTERNS = [
 ]
 
 
+# 리터럴 프리필터(OPT-5): 각 패턴이 매치되려면 반드시 존재해야 하는 고정 리터럴 앵커.
+#   앵커가 text에 없으면 regex는 절대 매치 불가 → finditer 호출을 건너뛴다(거짓음성 0).
+#   앵커는 패턴의 대소문자 민감도와 동일하게 비교한다.
+#   - aws_secret 은 (?i)로 키 이름이 대소문자 무시 → 앵커도 대소문자 무시(text.lower() 비교).
+#   - db_password 는 안전한 단일 리터럴 앵커가 없다(password/passwd/pwd, 선택적 db_ 접두).
+#     → GATE 제외: 항상 regex 실행(안전 우선, 절대 게이트하지 않음).
+def _ci_anchor(anchor):
+    """대소문자 무시 앵커: text.lower()에 lower(anchor)가 포함되는지."""
+    lo = anchor.lower()
+    return lambda text: lo in text.lower()
+
+
+def _cs_anchor(anchor):
+    """대소문자 민감 앵커: text에 anchor가 그대로 포함되는지."""
+    return lambda text: anchor in text
+
+
+# kind -> 게이트 함수(text를 받아 패턴 실행 여부 bool 반환). db_password는 의도적으로 미등록(항상 실행).
+_GATES = {
+    "ssh_private_key": _cs_anchor("PRIVATE KEY"),
+    "stripe":          _cs_anchor("sk_live_"),
+    "aws_key_id":      _cs_anchor("AKIA"),
+    "github_pat":      _cs_anchor("ghp_"),
+    "openai_key":      _cs_anchor("sk-"),
+    "npm_token":       _cs_anchor("npm_"),
+    "aws_secret":      _ci_anchor("aws_secret_access_key"),
+    "email":           _cs_anchor("@"),
+}
+
+
 def scan(text):
-    """겹치지 않는 탐지 결과(강/긴 패턴 우선). 캡처그룹 있으면 그 값, 없으면 전체 매치."""
+    """겹치지 않는 탐지 결과(강/긴 패턴 우선). 캡처그룹 있으면 그 값, 없으면 전체 매치.
+    각 regex 실행 전 _GATES의 리터럴 앵커 프리필터를 적용한다(앵커 부재 시 매치 불가능 → skip).
+    db_password는 안전한 단일 앵커가 없어 게이트하지 않고 항상 실행한다(거짓음성 0 보장)."""
     if not text:
         return []
     spans = []
     out = []
     for kind, rx in _PATTERNS:
+        gate = _GATES.get(kind)
+        if gate is not None and not gate(text):   # 앵커 부재 → regex 매치 불가 → skip
+            continue
         for m in rx.finditer(text):
             s, e = (m.span(m.lastindex) if m.lastindex else m.span())
             if any(not (e <= a or s >= b) for a, b in spans):   # 이미 잡힌 구간과 겹치면 skip

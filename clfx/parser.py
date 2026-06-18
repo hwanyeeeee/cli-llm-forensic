@@ -208,14 +208,18 @@ def _is_bypass_record(o):
 
 
 def parse_file(src, path, is_history):
-    """단일 파일 1회 읽기 → (events, bypass_sids). transcript면 같은 레코드서 bypass sessionId도 수집
-    (enrich 2차 재읽기 제거). 레코드 단위 무상태 → 파일 병렬 안전. 이벤트/순서는 parse_source와 동일."""
-    recs = list(src._iter_jsonl(path))          # 단일 읽기(materialize)
+    """단일 파일 1회 읽기 → (events, bypass_sids, sha256_hex). transcript면 같은 레코드서 bypass
+    sessionId도 수집(enrich 2차 재읽기 제거). 레코드 단위 무상태 → 파일 병렬 안전.
+    B-1: sha256_hex = 그 단일 읽기서 누적한 raw 파일 바이트 SHA-256(64-hex 소문자, 추가 읽기 0).
+    파일을 못 열어 yield가 없으면 sha=None. 이벤트/순서/태그는 parse_source와 byte-identical."""
+    sha_holder = {}                             # 호출자 소유 → src 공유상태 없이 스레드 분리(병렬 안전)
+    recs = list(src._iter_jsonl(path, sha_out=sha_holder))   # 단일 읽기(materialize) → sha 확정
+    sha = sha_holder.get("sha")
     if is_history:
-        return list(_history_events_from(recs, src)), set()   # history엔 bypass 없음(=_bypass_sessions와 동일)
+        return list(_history_events_from(recs, src)), set(), sha   # history엔 bypass 없음(=_bypass_sessions와 동일)
     evs = list(_transcript_events_from(recs, src.agent))
     bypass = {r.obj["sessionId"] for r in recs if _is_bypass_record(r.obj)}
-    return evs, bypass
+    return evs, bypass, sha
 
 
 def parse_source(src):

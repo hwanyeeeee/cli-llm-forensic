@@ -25,16 +25,20 @@ def enrich(events, src, bypass=None):
     if bypass is None:
         bypass = _bypass_sessions(src)
     for e in events:
-        findings = scan(e.preview)
-        kinds = {f.kind for f in findings}
-        if kinds - {"email"}:
-            if "secret" not in e.tags:
-                e.tags.append("secret")
-        if "email" in kinds:
-            if "pii" not in e.tags:
-                e.tags.append("pii")
-        if findings:
-            e.preview = mask(e.preview, findings)
+        # 빈/falsy preview는 scan이 [] 반환 → 비밀 태깅·마스킹 작업이 전부 무의미.
+        # 명시적으로 scan/mask를 건너뛴다(scan 자체도 빈 입력은 []지만 의도를 드러냄).
+        # bypass-mode 태깅은 preview와 무관하므로 이 가드 밖에서 항상 수행한다.
+        if e.preview:
+            findings = scan(e.preview)
+            kinds = {f.kind for f in findings}
+            if kinds - {"email"}:
+                if "secret" not in e.tags:
+                    e.tags.append("secret")
+            if "email" in kinds:
+                if "pii" not in e.tags:
+                    e.tags.append("pii")
+            if findings:
+                e.preview = mask(e.preview, findings)
         if e.action == "read" and e.session and e.session in bypass and "bypass-mode" not in e.tags:
             e.tags.append("bypass-mode")
     return events
