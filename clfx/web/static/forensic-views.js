@@ -268,9 +268,9 @@
       if (!g.cmd && c.command) g.cmd = c.command;   // 대표 command(첫 비어있지 않은 것)
     });
     var cfgServers = Object.keys(byCfg).sort();      // 결정성: 서버명 오름차순
-    html += '<div class="sub">설정된 외부 서버 ' + cfgServers.length +
-      '종 (인스턴스 ' + cfgs.length + ')</div>';
-    html += cfgServers.map(function (s) {
+    // [사용자] 섹션 헤더 자체를 토글(<details.mcpcfgwrap>)로 — 클릭 시 N종 펼침.
+    //   usage 아코디언과 시각적 간격은 .mcpcfgwrap{margin-top}로 분리.
+    var cfgBody = cfgServers.map(function (s) {
       var g = byCfg[s];
       var scopes = Object.keys(g.scopes).sort();     // scope 뱃지 정렬
       var badges = scopes.map(function (sc) {
@@ -293,11 +293,13 @@
         '</summary>' + insts + '</details>';
     }).join("");
     if (d.configured_unused && d.configured_unused.length) {
-      html += '<div class="sub muted">설정O 미사용: ' + d.configured_unused.map(esc).join(", ") + '</div>';
+      cfgBody += '<div class="sub muted">설정O 미사용: ' + d.configured_unused.map(esc).join(", ") + '</div>';
     }
     if (d.used_unconfigured && d.used_unconfigured.length) {
-      html += '<div class="sub muted">설정 출처 미확인: ' + d.used_unconfigured.map(esc).join(", ") + '</div>';
+      cfgBody += '<div class="sub muted">설정 출처 미확인: ' + d.used_unconfigured.map(esc).join(", ") + '</div>';
     }
+    html += '<details class="mcpcfgwrap"><summary>설정된 외부 서버 ' + cfgServers.length +
+      '종 (인스턴스 ' + cfgs.length + ')</summary>' + cfgBody + '</details>';
     el.innerHTML = html;
   }
 
