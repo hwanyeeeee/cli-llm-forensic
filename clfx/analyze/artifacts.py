@@ -224,6 +224,40 @@ def _walk_tmp(tmp_dirs):
 RETENTION_DAYS = 30        # Claude tmp 보존기간 실측치(docs/실측-temp-원본보존-원리.md)
 
 
+def _path_origin(path):
+    r"""경로 → 출처 머신 판정(결정적, 단일 진실원천).
+    windows: 드라이브문자(^[A-Za-z]:[\\/]) 또는 /mnt/<drive>/ 마운트.
+    wsl: //wsl.localhost\... , //wsl$\... , /tmp , /var/tmp , 기타 posix 절대경로.
+    포렌식 노트: //wsl.localhost\<distro>\tmp 는 UNC로 접근한 WSL ext4 /tmp — systemd가
+      ~30일 정리하므로 'wsl'(만료 표시). 무기한 잔존이라 주장하면 자동삭제 파일의 증거 유실 위험.
+      (디렉티브 산문은 \\wsl.localhost를 windows로 한 번 적으나, 여기선 wsl로 분류 — 의도된 deviation.)"""
+    s = str(path).replace("\\", "/")
+    if re.match(r"^//wsl\.localhost/", s) or re.match(r"^//wsl\$/", s):
+        return "wsl"
+    if re.match(r"^[A-Za-z]:/", s):                  # 드라이브문자 절대경로 → windows
+        return "windows"
+    if re.match(r"^/mnt/[A-Za-z]/", s):              # WSL이 본 Windows 드라이브 마운트 → windows
+        return "windows"
+    return "wsl"                                      # /tmp, /var/tmp, 기타 posix 절대경로 → wsl
+
+
+def _norm_path(path):
+    """JOIN 매칭 전용 정규화 키(표시는 항상 원본 경로 — 무손실).
+    백슬래시→슬래시, 중복슬래시 축약, trailing slash 제거. os.name=='nt'에서만 소문자화
+    (Windows FS는 대소문자 무시; posix는 /tmp/Foo != /tmp/foo 보존)."""
+    s = str(path).replace("\\", "/")
+    # UNC 선행 // 는 보존(\\wsl.localhost\... → //wsl.localhost/...). 내부 중복 슬래시만 축약.
+    lead = "//" if s.startswith("//") else ""
+    body = s[len(lead):]
+    body = re.sub(r"/+", "/", body)
+    s = lead + body
+    if len(s) > len(lead) and s != lead:
+        s = s.rstrip("/") or lead
+    if os.name == "nt":
+        s = s.lower()
+    return s
+
+
 def _epoch_from_iso(iso):
     """_iso()로 만든 'YYYY-MM-DDTHH:MM:SSZ' → epoch(초). 인벤토리 mtime/atime을 나이 계산에 재사용.
     _iso는 초 단위 truncate이므로 round-trip은 같은 초 정밀도(결정적). 재-stat 회피 전용."""
@@ -231,10 +265,17 @@ def _epoch_from_iso(iso):
     return datetime.fromisoformat(s).timestamp()
 
 
-def tmp_retention(tmp_dirs, now_epoch=None, inventory=None):
+def tmp_retention(tmp_dirs, now_epoch=None, inventory=None, referenced=None):
     """tmp 전수 → 각 정규파일 보존기간 메타. read-only. OPT-1: 인벤토리에서 size/mtime/atime 소싱(재-stat 금지).
     now_epoch: 나이 계산 기준 현재시각(테스트 주입용; None이면 time.time()).
     inventory: build_tmp_inventory 결과(없으면 내부 구축 — 직접호출 동작 동일).
+    referenced: hash_clusters의 referenced map(real_path → rec). 주입 시 _norm_path JOIN으로
+      transcript file-action을 tmp 경로에 귀속(attributed/actor/transcript_action/source 부여).
+      None이면 모든 행 attributed=False(회귀 안전). rec 재사용 — 재집계/재해시 없음.
+    출처(origin)별:
+      - 기존 키(path/size/mtime/atime/age_days)는 모든 origin 보존(완전성·무손실).
+      - expires_in_days: wsl → RETENTION_DAYS-age_days(>0 아니면 0); windows → None(자동삭제 없음).
+      - retention_policy: wsl → "wsl-systemd-30d"; windows → "windows-none".
     반환 {"retention":[...정렬: path...], "errors":[...정렬: path...]}."""
     import time
     if now_epoch is None:
@@ -242,18 +283,47 @@ def tmp_retention(tmp_dirs, now_epoch=None, inventory=None):
     inv = _resolve_inventory(tmp_dirs, inventory)
     # 인벤토리의 접근 실패 흔적 그대로 누적(완전성).
     errors = [{"path": e["path"], "reason": e["reason"]} for e in inv["errors"]]
+    # EVIDENCE 단일 진실원천: referenced rec를 _norm_path 키로 1회 인덱싱(재집계/재해시 없음).
+    ref_by_norm = {}
+    if referenced:
+        for rp, rec in referenced.items():
+            ref_by_norm[_norm_path(rp)] = rec
     rows = []
     for rec in inv["files"]:
         mtime_epoch = _epoch_from_iso(rec["mtime"])
         age_days = (now_epoch - mtime_epoch) / 86400.0
-        expires = RETENTION_DAYS - age_days
+        origin = _path_origin(rec["path"])
+        if origin == "wsl":
+            expires = RETENTION_DAYS - age_days
+            expires_in_days = round(expires, 2) if expires > 0 else 0
+            retention_policy = "wsl-systemd-30d"
+        else:
+            expires_in_days = None              # windows tmp는 자동삭제 없음
+            retention_policy = "windows-none"
+        hit = ref_by_norm.get(_norm_path(rec["path"]))
+        if hit is not None:
+            attributed = True
+            actor = hit["actor"]
+            transcript_action = hit["action"]
+            source = hit["source"]
+        else:
+            attributed = False
+            actor = None
+            transcript_action = None
+            source = None
         rows.append({
-            "path": rec["path"],
+            "path": rec["path"],            # 표시는 원본 경로(무손실)
             "size": rec["size"],
             "mtime": rec["mtime"],
             "atime": rec["atime"],
             "age_days": round(age_days, 2),
-            "expires_in_days": round(expires, 2) if expires > 0 else 0,
+            "expires_in_days": expires_in_days,
+            "origin": origin,
+            "retention_policy": retention_policy,
+            "attributed": attributed,
+            "actor": actor,
+            "transcript_action": transcript_action,
+            "source": source,
         })
     rows.sort(key=lambda r: r["path"])
     errors.sort(key=lambda e: e["path"])
@@ -472,6 +542,9 @@ def hash_clusters(events_with_root, roots=None, tmp_dirs=None,
         "tmp_hash_index": tmp_hash_index,
         "acquired_hashes": acquired_hashes,
         "stat_only": stat_only,
+        # ADDITIVE: 내부 referenced map 표면화(real_path → 대표 이벤트 rec). tmp_retention JOIN이
+        #   재집계/재해시 없이 재사용. 기존 키/값 불변. (forensic_scan이 반환 전 pop해 /api 비노출.)
+        "referenced": referenced,
     }
 
 

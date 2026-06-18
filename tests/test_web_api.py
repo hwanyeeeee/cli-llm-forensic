@@ -470,3 +470,48 @@ def test_empty_set_treated_as_full():
     eng = _origin_engine()
     assert stats_payload(eng, origins=set()) == stats_payload(eng, origins=None)
     assert files_payload(eng, origins=set()) == files_payload(eng, origins=None)
+
+
+def test_forensic_scan_retention_rows_have_attribution_fields(tmp_path, monkeypatch):
+    # (e) forensic_scan retention 행에 origin/retention_policy/attributed/actor/
+    #     transcript_action/source 포함 + transcript가 참조한 tmp 파일은 attributed.
+    import os
+    monkeypatch.setattr(os, "name", "posix")
+    from clfx.web.api import forensic_scan
+    from clfx.event import Event, Source
+    tdir = tmp_path / "tmp"; tdir.mkdir()
+    target = tdir / "agent_wrote.env"
+    target.write_bytes(b"SECRET=1\n")
+    (tdir / "residue.bin").write_bytes(b"noise-data")   # 귀속 안 된 잔존물
+    root = str(tmp_path)
+    # transcript write 이벤트가 tmp 경로 자체를 가리킴 → 그 tmp 파일이 attributed.
+    evs = [(Event("2026-06-16T01:00:00Z", "claude", "s", "agent", "write",
+                  str(target), "", Source("h.jsonl", 9), []), root)]
+    out = forensic_scan(evs, roots=[root], tmp_dirs=[str(tdir)])
+    # referenced 키는 forensic_scan에서 pop됨 — /api/artifacts로 안 샌다.
+    assert "referenced" not in out
+    rows = {r["path"]: r for r in out["retention"]}
+    for r in rows.values():
+        for k in ("origin", "retention_policy", "attributed", "actor",
+                  "transcript_action", "source", "expires_in_days", "age_days"):
+            assert k in r
+    hit = rows[str(target)]
+    assert hit["attributed"] is True
+    assert hit["actor"] == "agent"
+    assert hit["transcript_action"] == "write"
+    assert hit["source"] == {"file": "h.jsonl", "line": 9}
+    residue = rows[str(tdir / "residue.bin")]
+    assert residue["attributed"] is False
+    assert residue["source"] is None
+
+
+def test_forensic_scan_key_set_unchanged_with_referenced_popped(tmp_path, monkeypatch):
+    # (d) referenced popped → forensic_scan KEY SET 불변(contract).
+    import os
+    monkeypatch.setattr(os, "name", "posix")
+    from clfx.web.api import forensic_scan
+    out = forensic_scan([], roots=[], tmp_dirs=[])
+    assert set(out) == {"scanned", "missing", "tmp_scanned", "tmp_roots",
+                        "errors", "hashes", "attribution", "retention", "tmp_hash_index",
+                        "hashed", "stat_verified", "content_unread",
+                        "tmp_inventory", "acquired_hashes", "stat_only"}

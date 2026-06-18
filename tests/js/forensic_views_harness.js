@@ -185,6 +185,58 @@ ok(typeof FV.renderAttestation === "function", "renderAttestation must be EXPORT
   lacks(h, "<script>", "note/sha must be escaped (no raw <script>)");
 }
 
+// ---- 10) renderRetention: attributed-first, origin-aware expiry, residue collapsed ----
+{
+  const rows = [
+    // wsl attributed row (agent, expires 5, source)
+    { path: "/tmp/work.txt", size: 10, mtime: "2026-06-10T00:00:00Z", atime: "2026-06-10T00:00:00Z",
+      age_days: 8, expires_in_days: 5, origin: "wsl", retention_policy: "wsl-systemd-30d",
+      attributed: true, actor: "agent", transcript_action: "write",
+      source: { file: "t.jsonl", line: 12 } },
+    // windows attributed row (user, expires null)
+    { path: "C:\\Temp\\u.txt", size: 20, mtime: "2026-06-01T00:00:00Z", atime: "2026-06-01T00:00:00Z",
+      age_days: 17, expires_in_days: null, origin: "windows", retention_policy: "windows-none",
+      attributed: true, actor: "user", transcript_action: "read",
+      source: { file: "u.jsonl", line: 3 } },
+    // non-attributed environment residue
+    { path: "/tmp/resi/<x>.bin", size: 30, mtime: "2026-05-01T00:00:00Z", atime: "2026-05-01T00:00:00Z",
+      age_days: 48, expires_in_days: 0, origin: "wsl", retention_policy: "wsl-systemd-30d",
+      attributed: false, actor: null, transcript_action: null, source: null },
+  ];
+  const el = makeEl();
+  const leakSet = new Set(["/tmp/work.txt"]);
+  FV.renderRetention(el, rows, leakSet);
+  const h = el.innerHTML;
+  // header completeness: total + attributed count
+  has(h, "전체 tmp", "retention header discloses full total (completeness)");
+  has(h, "transcript 귀속", "retention header shows attributed count");
+  has(h, "만료임박", "retention header shows soon count");
+  // note replaced exactly
+  has(h, "WSL /tmp는 ~30일(systemd) 후 정리될 수 있음", "retention note WSL phrase");
+  has(h, "Windows tmp는 자동삭제 없음(무기한 잔존)", "retention note Windows phrase");
+  has(h, "transcript에 기록된 작업 파일만", "retention note attributed-only phrase");
+  lacks(h, "tmp 파일은 마지막 수정 후 약 30일", "old uniform-30d note removed");
+  // actor badges
+  has(h, "B", "agent actor badge B shown");
+  has(h, "A", "user actor badge A shown");
+  has(h, "actorbadge", "actor badge class present");
+  // source shown + escaped path/line
+  has(h, "t.jsonl:12", "wsl row shows source file:line");
+  has(h, "rsource", "source uses .rsource class");
+  // wsl expiry vs windows no-expiry
+  has(h, "만료까지", "wsl row shows 만료까지 N일");
+  has(h, "자동삭제 없음", "windows row shows 자동삭제 없음");
+  // non-attributed collapsed details
+  has(h, "환경 잔존물(귀속 안 됨)", "non-attributed residue section labelled");
+  has(h, "<details", "residue is a collapsed <details>");
+  // evidence marking still works
+  has(h, "증거 관련", "evidence tag present for leakSet path");
+  has(h, "evtag", "evidence tag class present");
+  // escaping: residue path with <x> escaped, never raw
+  lacks(h, "/tmp/resi/<x>.bin", "residue path must be escaped (no raw <x>)");
+  has(h, "&lt;x&gt;", "residue path escaped to entities");
+}
+
 // ---- 8) defensive: null payload -> placeholder, no crash ----
 {
   const el = makeEl();
