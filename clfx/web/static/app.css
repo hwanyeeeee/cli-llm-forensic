@@ -72,9 +72,34 @@ header{
   position:relative; overflow:hidden;        /* .vgrip 절대배치 컨테이너; 내부 주콘텐츠가 flex로 채움 */
   min-height:120px; display:flex; flex-direction:column;
 }
-/* 패널 하단 가장자리 리사이즈 핸들 — hover 시 row-resize 커서, 드래그로 높이 조절(JS initPanelResizers). */
-.vgrip{position:absolute;left:0;right:0;bottom:0;height:8px;cursor:row-resize;z-index:4}
+/* 패널 상/하단 가장자리 리사이즈 핸들 — hover 시 row-resize 커서, 드래그로 높이 조절(JS initPanelResizers). */
+.vgrip{position:absolute;left:0;right:0;height:8px;cursor:row-resize;z-index:4}
+.vgrip-top{top:0} .vgrip-bottom{bottom:0}
 .vgrip:hover,.vgrip.drag{background:var(--border)}
+
+/* 포렌식 상세: 좌측 버튼 바 + 모달(클릭 시 열림, 본문 스크롤) */
+.forensic-bar{display:flex;flex-direction:column;gap:8px}
+.fbtn{display:flex;align-items:center;gap:8px;text-align:left;padding:11px 14px;
+  border:1px solid var(--border);border-radius:12px;background:var(--panel);cursor:pointer;
+  font-size:13px;font-weight:600;color:var(--txt);box-shadow:0 1px 3px rgba(16,24,40,.05)}
+.fbtn:hover{border-color:var(--accent)}
+.fbtn::after{content:"▸";margin-left:auto;color:var(--faint)}
+.fbtn-n{min-width:20px;height:18px;padding:0 6px;border-radius:9px;background:var(--border);
+  color:var(--txt);font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.fbtn-n:empty{display:none}
+.fbtn.alert{border-color:var(--agent)}
+.fbtn.alert .fbtn-n{background:var(--agent);color:#fff}
+.fmodal{position:fixed;inset:0;background:rgba(16,24,40,.45);display:flex;align-items:center;
+  justify-content:center;z-index:50;padding:24px}
+.fmodal[hidden]{display:none}
+.fmodal-card{background:var(--panel);border-radius:16px;width:min(820px,94vw);max-height:88vh;
+  display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(16,24,40,.28)}
+.fmodal-head{display:flex;align-items:center;padding:15px 20px;border-bottom:1px solid var(--border)}
+.fmodal-head h2{margin:0;font-size:15px}
+.fmodal-x{margin-left:auto;border:none;background:transparent;font-size:26px;line-height:1;
+  cursor:pointer;color:var(--faint);padding:0 4px}
+.fmodal-x:hover{color:var(--txt)}
+.fmodal-body{padding:16px 20px;overflow:auto}   /* 스크롤 — 길어도 아래 내용 다 보임 */
 .panel h2{
   font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);
   margin:0 0 12px;display:flex;align-items:center;gap:8px;font-weight:700;
