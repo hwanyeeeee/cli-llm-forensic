@@ -15,7 +15,8 @@
     });
   }
 
-  /* 한 해시 클러스터 1개 행 마크업. leak_suspect면 강조. (기존 마크업 재사용) */
+  /* 한 해시 클러스터 = 네이티브 접이식 <details>. summary=헤더(해시12…·N곳·크기·flags·reason),
+     본문=경로 목록(기존 lpath 마크업). 기본 접힘(open 없음). leak_suspect면 강조. */
   function leakRowHTML(c) {
     var sha = esc(String(c.sha256 || "").slice(0, 12));
     var flags = [];
@@ -28,22 +29,29 @@
       var src = (p.source && p.source.file != null) ? '<span class="src">' + esc(p.source.file) + ':' + esc(p.source.line) + '</span>' : '';
       return '<div class="lpath">' + tag + '<span class="lpp">' + esc(p.path) + '</span>' + src + '</div>';
     }).join("");
-    var reason = c.reason ? '<div class="lreason">' + esc(c.reason) + '</div>' : '';
-    return '<div class="' + cls + '">' +
-      '<div class="lhead"><span class="lsha">' + sha + '…</span>' +
-      '<span class="lct">' + esc(c.count) + '곳 · ' + esc(c.size) + 'B</span>' + flags.join("") + '</div>' +
-      reason + paths + '</div>';
+    var reason = c.reason ? '<span class="lreason">' + esc(c.reason) + '</span>' : '';
+    return '<details class="' + cls + '"><summary class="lhead">' +
+      '<span class="lsha">' + sha + '…</span>' +
+      '<span class="lct">' + esc(c.count) + '곳 · ' + esc(c.size) + 'B</span>' +
+      flags.join("") + reason + '</summary>' + paths + '</details>';
   }
 
   /* 유출·복사 의심: 동일 내용 해시 클러스터.
-     leak_suspect 먼저/강조. tmp_only(설치/캐시 중복)는 노이즈로 접이식 분리. */
+     (1) 최상단 해시검색 박스, (2) leak_suspect 우선 정렬한 main(!tmp_only),
+     (3) tmp_only 노이즈 접이식. 각 클러스터는 접이식 헤더만 보이고 클릭 시 경로 펼침.
+     렌더 직후 el-scoped 자체 wiring(DRY — app.js/view.js는 호출만). */
   function renderLeaks(el, d) {
     if (!el) return;
     var cl = (d && d.hashes) || [];
     var main = cl.filter(function (c) { return !c.tmp_only; });
     var noise = cl.filter(function (c) { return c.tmp_only; });
 
-    var html = "";
+    // leak_suspect 먼저(결정성: 엔진 순서 안정 유지 — leak_suspect만 앞으로, 재집계/재판정 아님).
+    main = main.slice().sort(function (a, b) {
+      return (b.leak_suspect ? 1 : 0) - (a.leak_suspect ? 1 : 0);
+    });
+
+    var html = hashSearchBoxHTML();   // (1) 해시검색 박스 최상단(빈 main이어도 유지)
     if (main.length) {
       html += main.map(leakRowHTML).join("");
     } else {
@@ -54,6 +62,29 @@
         '건 (설치/캐시 — 유출 아님)</summary>' + noise.map(leakRowHTML).join("") + '</details>';
     }
     el.innerHTML = html;
+    wireHashSearch(el);   // 자체 wiring(DRY)
+  }
+
+  /* [#2b] 해시검색 박스 자체 wiring. el-scoped querySelector(전역 getElementById 회피).
+     파일 → 브라우저 로컬 SHA-256 hex → /api/hash-search?sha=hex(파일내용 전송 0). */
+  function wireHashSearch(el) {
+    if (!el) return;
+    var btn = el.querySelector("#hsbtn");
+    var fin = el.querySelector("#hsfile");
+    var res = el.querySelector("#hsresult");
+    if (!btn || !fin || !res) return;
+    btn.addEventListener("click", function () {
+      var file = fin.files && fin.files[0];
+      if (!file) { res.innerHTML = '<div class="empty">파일을 선택하세요</div>'; return; }
+      res.innerHTML = '<div class="empty">해시 계산 중…</div>';
+      sha256Hex(file)                                          // 브라우저 로컬 SHA-256(hex만)
+        .then(function (hex) {
+          return fetch("/api/hash-search?sha=" + encodeURIComponent(hex)); // hex만 전송
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { renderHashMatches(res, (j && j.matches) || []); })
+        .catch(function () { res.innerHTML = '<div class="empty">검색 실패</div>'; });
+    });
   }
 
   /* [#2b] 동일 해시 tmp 검색 박스 HTML(DRY 공유). id는 호출측이 querySelector로 잡는다. */
@@ -201,12 +232,14 @@
     el.innerHTML = html;
   }
 
-  /* 파일 1행(나이/만료, 임박 ≤7d는 warn 강조) — DRY. */
+  /* 파일 1행. "만료까지 N일 남음"(N=round(expires_in_days); ≤0이면 "만료 경과").
+     나이 Xd 표기 유지. 임박(≤7d) warn 강조. 값은 엔진 그대로(표시용 round만). */
   function retentionRowHTML(r) {
-    var soon = r.expires_in_days > 0 && r.expires_in_days <= 7;
+    var ed = r.expires_in_days;
+    var soon = ed > 0 && ed <= 7;
+    var exp = ed > 0 ? '만료까지 ' + Math.round(ed) + '일 남음' : '만료 경과';
     return '<div class="row' + (soon ? " warn" : "") + '">' + esc(r.path) + ' ' +
-      '<span class="muted">나이 ' + esc(r.age_days) + 'd · 만료 ' +
-      (r.expires_in_days > 0 ? esc(r.expires_in_days) + 'd 후' : '경과') + '</span></div>';
+      '<span class="muted">나이 ' + esc(r.age_days) + 'd · ' + exp + '</span></div>';
   }
 
   /* path의 부모 디렉터리(마지막 구분자 앞). 구분자 없으면 "." */
@@ -233,11 +266,13 @@
       groups[dir].push(r);
     });
 
-    var html = '<div class="sub">총 tmp ' + rows.length + '개 · 만료임박(≤7d) ' + soonCount + '개</div>';
+    var html = '<div class="rnote">tmp 파일은 마지막 수정 후 약 30일이면 자동 삭제됩니다. ' +
+      '‘만료까지 N일’=해당 파일이 사라지기까지 남은 기간(증거 보존 시한).</div>';
+    html += '<div class="sub">총 tmp ' + rows.length + '개 · 만료임박(≤7d) ' + soonCount + '개</div>';
 
     html += Object.keys(groups).sort().map(function (dir) {
       var items = groups[dir];
-      // 그룹 최단만료(만료경과 무시, >0 중 최소). 임박 파일 존재 여부.
+      // 그룹 내 미경과(>0) 중 최소 잔여. 임박 파일 존재 여부.
       var minExp = null, hasSoon = false;
       items.forEach(function (r) {
         if (r.expires_in_days > 0) {
@@ -245,7 +280,7 @@
           if (r.expires_in_days <= 7) hasSoon = true;
         }
       });
-      var minTxt = minExp === null ? "모두 경과" : "최단만료 " + minExp + "d";
+      var minTxt = minExp === null ? "모두 만료 경과" : "만료까지 " + Math.round(minExp) + "일 남음";
       var sumCls = hasSoon ? ' class="warn"' : "";
       var body = items.map(retentionRowHTML).join("");
       return '<details class="rgrp"><summary' + sumCls + '>' + esc(dir) + ' (' + items.length + '개 · ' + minTxt + ')</summary>' +

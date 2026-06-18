@@ -720,30 +720,10 @@ function initForensicModals(){
   const TITLES={leaks:"유출·복사 의심 · 해시 대조", attrib:"주체 왜곡 보정 · FS↔transcript JOIN",
                 mcp:"MCP 연결 흔적 · 설정 vs 실사용", retention:"tmp 보존기간 · 만료 잔여"};
   const panes=modal.querySelectorAll(".fm-pane");
-  let hsWired=false;   // #2b 해시검색 박스/핸들러 1회 바인딩 가드(중복 방지)
-  function wireHashSearch(){
-    const pane=document.getElementById("leaks"); if(!pane||hsWired)return;
-    // 렌더 본문 하단에 해시검색 박스 삽입(마크업은 ForensicViews 위임 — DRY). 1회만.
-    pane.insertAdjacentHTML("beforeend", ForensicViews.hashSearchBoxHTML());
-    hsWired=true;
-    const btn=document.getElementById("hsbtn");
-    if(btn) btn.addEventListener("click", async()=>{
-      const fin=document.getElementById("hsfile");
-      const res=document.getElementById("hsresult");
-      const file=fin&&fin.files&&fin.files[0];
-      if(!file){ if(res)res.innerHTML='<div class="empty">파일을 선택하세요</div>'; return; }
-      if(res)res.innerHTML='<div class="empty">해시 계산 중…</div>';
-      try{
-        const hex=await ForensicViews.sha256Hex(file);      // 브라우저 로컬 SHA-256(파일내용 전송 0 — hex만)
-        const d=await jget("/api/hash-search?sha="+encodeURIComponent(hex));
-        ForensicViews.renderHashMatches(res, (d&&d.matches)||[]);
-      }catch(err){ if(res)res.innerHTML='<div class="empty">검색 실패: '+esc(err.message)+'</div>'; }
-    });
-  }
+  // 해시검색 박스+wiring은 ForensicViews.renderLeaks가 #leaks pane 안에서 자체 소유(DRY) — app.js는 추가 작업 불요.
   openFmodal=function(key){
     title.textContent=TITLES[key]||key;
     panes.forEach(p=>{p.hidden=(p.id!==key);});
-    if(key==="leaks") wireHashSearch();   // leaks 열 때 1회 해시검색 와이어
     modal.hidden=false;
   };
   const close=()=>{ modal.hidden=true; };

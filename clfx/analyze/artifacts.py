@@ -300,6 +300,12 @@ def hash_clusters(events_with_root, roots=None, tmp_dirs=None):
             reason = "tmp 내부 중복(설치/캐시 등 — 유출 아님)"
         else:
             reason = f"동일 내용이 {len(paths)}개 경로에 존재"
+        # [R4] 빈 파일(0B)은 유출할 내용이 없음 → 분류만 덮어쓴다(전수 스캔·그룹핑은 유지).
+        #      size==0일 때만 적용. size None(stat 실패)은 0이 아님 → 건드리지 않음.
+        if size == 0:
+            leak_suspect = False
+            tmp_only = True
+            reason = "빈 파일(0B) — 내용 없음, 유출 아님"
         hashes.append({
             "sha256": digest,
             "size": size if size is not None else 0,
