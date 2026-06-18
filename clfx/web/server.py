@@ -13,7 +13,7 @@ from clfx import roio
 from clfx.web.api import (events_payload, events_payload_bytes, query_payload, stats_payload,
                           activity_payload, files_payload, keywords_payload,
                           sources_payload, scan_to_engine, forensic_scan,
-                          mcp_payload, attestation_payload)
+                          mcp_payload, attestation_payload, attestation_csv)
 
 # B-1/B-2: ServerState 초기 attestation — empty-but-valid 계약(스캔 전 GET /api/attestation 안전).
 _ATTEST_EMPTY = {"acquired": [], "acquired_count": 0, "stat_only_count": 0,
@@ -185,6 +185,19 @@ def make_handler(state):
             if u.path == "/api/attestation":     # B-1/B-2: chain-of-custody attestation(read-only)
                 try:
                     self._json(state.attestation)
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
+            if u.path == "/api/attestation.csv":  # B-1: 취득 해시 매니페스트 CSV 다운로드(read-only·메모리만)
+                try:
+                    body = attestation_csv(state.attestation).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition",
+                                     'attachment; filename="acquisition-hash-manifest.csv"')
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return

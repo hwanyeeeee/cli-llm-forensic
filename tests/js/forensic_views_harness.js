@@ -140,6 +140,10 @@ ok(typeof FV.renderAttestation === "function", "renderAttestation must be EXPORT
   has(h, "/proj/a.txt", "manifest lists acquired path");
   has(h, "deadbeefcafe", "manifest shows sha256 prefix");
   lacks(h, "deadbeefcafe0123456789…", "manifest truncates sha to a prefix (not full+ellipsis)");
+  // (4b) CSV export link — same-origin download of the acquisition hash manifest.
+  has(h, 'href="/api/attestation.csv"', "CSV export links to /api/attestation.csv");
+  has(h, "취득 해시 원장 CSV 내보내기", "CSV export button labelled in plain Korean");
+  has(h, 'download="acquisition-hash-manifest.csv"', "download attribute hints standard filename");
 }
 
 // ---- 9) [R8-A] renderMcp config section: deduped/grouped by server ----

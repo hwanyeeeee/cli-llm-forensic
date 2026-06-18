@@ -126,6 +126,13 @@
       '같으면 분석 이후에도 변조가 없었음이 증명됩니다. ' +
       '(대시보드 파일목록의 ‘동일 해시 tmp 검색’으로 특정 파일을 즉시 대조할 수도 있습니다.)</div></div>';
 
+    // (4b) CSV 내보내기 — 실무 표준 산출물(취득 해시 원장을 파일로 보존). 동일출처 링크라 view/modal 동일 동작.
+    //   서버가 Content-Disposition으로 파일명 강제 + download 속성 힌트. 재해시 없음(메모리 매니페스트 직렬화).
+    html += '<div class="attest-export">' +
+      '<a class="att-csv" href="/api/attestation.csv" download="acquisition-hash-manifest.csv">' +
+      '취득 해시 원장 CSV 내보내기 (전체 ' + esc(ac) + '개)</a>' +
+      '<span class="muted">path · algorithm(SHA-256) · sha256 · UTF-8</span></div>';
+
     // (5) 기술 상세(접이식, 기본 접힘) — 개발자 용어(_ro_open 등)는 이 안에서만.
     var modesTxt = modes.length ? modes.map(esc).join(", ") : "(없음)";
     html += '<details class="attest-tech"><summary>기술 상세</summary>' +

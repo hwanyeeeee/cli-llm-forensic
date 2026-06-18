@@ -1,5 +1,7 @@
 """웹 대시보드용 순수 API 로직. HTTP 무관 — dict만 반환해 테스트가 쉽다.
 엔진(QueryEngine)이 단일 진실원천. 여기서 검색/탐지 로직을 재구현하지 않는다."""
+import csv
+import io
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -328,6 +330,24 @@ def attestation_payload(parse_manifest, forensic_out):
         "write_delete_rename_ops": roio.write_delete_rename_ops(),
         "note": ATTEST_NOTE,
     }
+
+
+CSV_COLUMNS = ("path", "algorithm", "sha256")
+
+
+def attestation_csv(attestation):
+    """B-1 취득 해시 매니페스트를 CSV 텍스트로 직렬화 — 실무 chain-of-custody 표준 산출물.
+    attestation_payload가 이미 표면화한 acquired({path,sha256})만 그대로 행으로 — 재해시·재집계 없음.
+    열: path, algorithm(=SHA-256 상수, 자기설명적), sha256. 행 순서 = acquired 순서(payload가 path 정렬 → 결정적).
+    csv 모듈로 RFC-4180 인용(콤마·따옴표·개행 안전), 선두에 UTF-8 BOM(Excel에서 한글 경로 자동 인식).
+    read-only(메모리만, FS 미접근)·무손실(해시 보유 전 파일 1행). stat_only(내용 미판독)는 해시가 없어 제외."""
+    acquired = (attestation or {}).get("acquired") or []
+    buf = io.StringIO()
+    w = csv.writer(buf)                          # 기본 lineterminator="\r\n" (RFC-4180)
+    w.writerow(CSV_COLUMNS)
+    for a in acquired:
+        w.writerow([a.get("path", ""), "SHA-256", a.get("sha256", "")])
+    return "﻿" + buf.getvalue()             # UTF-8 BOM 선두
 
 
 def mcp_payload(engine, roots, on_progress=None):
