@@ -3,7 +3,7 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from clfx.query.llm import route_intent, summarize, answer, answer_overview, make_llm
+from clfx.query.llm import route_intent, summarize, answer, answer_overview, answer_timeline, make_llm, search_terms
 from clfx.analyze.keywords import keyword_stats
 from clfx.event import norm_ts
 from clfx.sources.claude import ClaudeSource
@@ -45,7 +45,7 @@ def _by_origins(events, origins):
 def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origins=None):
     """자연어 질의 → op 판정(route_intent) → engine 실행 → dict.
     이 디스패치가 op→engine 매핑의 단일 진실원천(cli.cmd_query도 이걸 쓴다).
-    llm 미지정=make_llm()(웹 copilot, 항상 gemma4 답). llm=None=digest(테스트, ollama 비호출).
+    llm 미지정=make_llm()(웹 copilot, 항상 LLM 답). llm=None=digest(테스트, ollama 비호출).
     answer_only_summary=True면 요약 intent에만 answer(CLI용 — 비요약은 LLM 비호출·summary None).
     origins(set) 주어지면 체크된 플랫폼(origin)만 답변 근거 — 파싱은 전량, 답변 범위만 좁힘(무손실)."""
     intent = route_intent(q)
@@ -61,12 +61,26 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origin
         res = engine.timeline(actor=a)
     else:
         res = engine.search(intent.get("kw", ""), actor=a)
+        if not res:
+            # 긴 문장 kw는 substring 통검색 0건 → 의미 토큰을 '순서대로' 시도, 첫 유효 토큰 결과 사용.
+            # 핵심: 토큰을 OR-합치지 않는다(조사/어미 토큰이 흔한 단어로 과매치→무관 이벤트 무더기 방지).
+            # 질문 앞 토큰=주제어(예: "인물 …요약"→"인물")이므로 앞 토큰 우선. 과매치(불용어성) 토큰은 스킵.
+            cap = max(50, int(len(engine.events) * 0.4))
+            for t in search_terms(intent.get("kw", "")):
+                hit = engine.search(t, actor=a)
+                if hit and len(hit) <= cap:        # 과매치 토큰(전체의 40%+ 매칭)은 무의미 → 스킵
+                    res = hit
+                    break
+            # 전부 0건이거나 과매치뿐 → res 빈 채 아래 overview 폴백(순수 개요질문 의도된 분기)
     res = _by_origins(res, origins)               # ← 체크된 플랫폼만(답변 범위)
     if answer_only_summary and not intent.get("summarize"):
         summary = None                            # CLI 비요약 → LLM/답 없음(make_llm 비호출)
     else:
         use_llm = make_llm() if llm is _DEFAULT_LLM else llm   # 웹=gemma4 / 테스트(llm=None)=digest
-        if op == "search" and not res:
+        if op == "timeline":
+            # 타임라인 요약 → 시간 흐름(초기→최근) 대화 주제 변화 서술.
+            summary = answer_timeline(q, res, llm=use_llm)
+        elif op == "search" and not res:
             # 막연한 대화형 질문(특정 키워드 매칭 0건) → 전체 행위 개요로 답(소스 필터된 집계 근거).
             summary = answer_overview(q, _by_origins(engine.events, origins), llm=use_llm)
         else:
