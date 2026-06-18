@@ -16,6 +16,8 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
+- **tmp 보존기간 패널 포렌식정확성 수정 panel1 투입**(/tmp/panel1-retention.txt): 실측(docs/실측-temp-원본보존-원리.md §C·§E) 근거 2버그. [A] RETENTION_DAYS=30을 origin무관 전파일 적용 → Windows(C:\tmp systemd 안닿음·무기한잔존)에 거짓만료. 수정=WSL만 ~30일 계산, Windows 만료칸 빈값. [B] tmp 전수나열(C:/Users 11360 환경잔존 포함) → "클로드 작업"처럼 오해. 수정=referenced(transcript 파일-action 타깃, source{file,line}) JOIN으로 귀속분만 1차표시+출처(jsonl:line)+actor(A/B), 전수스캔은 완전성 유지(헤더 "전체N중 귀속M"+환경잔존 접이식). 사용자 결정=Windows만료비우기/귀속파일만추출+출처. read-only·무손실·결정성 강제. 완료 후 검증·커밋 panel0.
+- **MCP 패널 라벨·토글 + CSV 내보내기(panel0 직접, 미push)**: ① 취득 해시 원장 CSV 내보내기 `00c7586`(api.attestation_csv RFC-4180+UTF-8 BOM, GET /api/attestation.csv attachment, 메모리만→read-only·무손실, 364 green). ② MCP 설정섹션 토글화+간격 `6dae692`. ③ 라벨 단순화 'MCP 사용 현황'/'설정된 MCP' `3bdf3e8`. ④ CSV 버튼 'CSV로 내보내기' `f66a143`. 전부 표시/메모리만, 백엔드 분석 무변경.
 - **취득 해시 원장 CSV 내보내기 완료·커밋 00c7586**(panel0 직접, 364 green +7 CSV): 실무 chain-of-custody 산출물 — api.attestation_csv(acquired{path,sha256}→CSV: path/algorithm(SHA-256)/sha256, csv모듈 RFC-4180 인용+UTF-8 BOM(Excel 한글)+CRLF, 재해시X 메모리만→read-only·무손실·결정성), server GET /api/attestation.csv(text/csv + Content-Disposition attachment), 읽기전용 증명 패널에 'CSV 내보내기' 링크(동일출처 href+download). 백엔드 분석/스캔 무변경.
 - **MCP 설정섹션 토글화 진행중**(사용자 이미지 피드백): "설정된 외부 서버 N종" 위에 usage 아코디언과 간격 추가 + 그 헤더 자체를 <details> 토글로(클릭 시 8종 펼침). presentation only.
 - **round8 완료·커밋 abb6160**(357 green): A) MCP 설정목록 서버명 dedupe+그룹 접이식("N종(인스턴스 M)", 중복=정상데이터). B) "읽기전용 증명" 패널 일반어 재설계: 헤더/리드(100% 읽기전용·쓰기차단)/핵심수치/무결성 검증법(원본 재해시 대조)/기술상세·취득원장 접이식. 백엔드·payload 무변경. (주의: panel1에 Escape 금지=인터럽트.)
