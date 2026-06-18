@@ -16,6 +16,7 @@ clfx — Claude Code 기록 포렌식 CLI (파싱→분석→질의). 시연: A/
 
 ## 현재 작업
 - 도구: claude (opus·ultracode)
+- **round8 panel1 투입**(/tmp/panel1-round8.txt, UI 가독성·presentation only): A) MCP "설정된 서버" 평면나열(같은 서버가 여러 프로젝트에 설정돼 21개 중복) → 서버별 dedupe+그룹 접이식("N종(인스턴스 M)"). B) "읽기전용 증명" 패널 개발자용어(_ro_open·stat-only·15539줄 덤프) → 일반어 재설계: 헤더/리드(100% 읽기전용·쓰기차단)/핵심수치(일반어)/무결성 검증법(원본 재해시 대조)/기술상세·취득원장 접이식. 백엔드·payload 무변경. 완료 후 검증·커밋 panel0. (주의: panel1에 Escape 금지=인터럽트.)
 - **round6 완료·커밋 1df8be0**(327 green): 소스(Win/WSL) 토글 전역화. _by_origins+_origins_key(메모키 분리), stats/files/activity/keywords payload origins 파라미터, server ?sources= 파싱, app.js srcQ()+토글시 loadAggregates 재fetch. origins=None==기존 byte-identical 회귀. 포렌식 윈도우 미변경(범위 밖).
 - **round7 완료**(357 green): Issue-1 = "유출·복사 의심" 패널 제거(자동 해시클러스터 leak는 _MEI PyInstaller 자기추출 등 오탐) → 해시검색 박스를 접근 파일목록 패널로 이전(수사관 on-demand, hex만 전송). 백엔드 hash_clusters/tmp_hash_index/retention 증거표식 유지. B = 읽기전용 증명(Chain of Custody): clfx/roio.py `_ro_open`(read 외 mode ValueError 차단)+인메모리 open audit+취득 해시 매니페스트(transcript 파싱 패스 streaming SHA-256·round5 해시 재사용·내용미독 stat-only 분리)+/api/attestation+renderAttestation UI. 비변경=구성보장(쓰기 syscall 0), 라이브 제자리 분석 전제(전후 재해싱 미수행).
 - **rounds 5-7 squash·커밋 3e5ad95·PUSH 완료**(origin/main=3e5ad95, ahead 0): GitHub Push Protection(GH013)이 test_secrets.py 가짜 Stripe 키를 오탐 → 픽스처 시크릿 리터럴을 **인접 문자열 결합으로 분리**(`"sk_live_" "CLFXTEST..."` — 값 동일·테스트 통과·연속 시크릿 소멸). 리터럴이 round5 커밋(c349a99)에 박혀있어 `-i` 불가 환경에서 **soft-reset+재커밋으로 round5/6/7 미push 6커밋을 1커밋 squash**(stray 0·시크릿 0 검증) 후 push. 357 passed.
