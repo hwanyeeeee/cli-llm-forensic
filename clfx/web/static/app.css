@@ -403,3 +403,48 @@ details.leakrow>summary>.lreason{font-size:10px;color:var(--faint);font-style:it
 .fsw{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
 .fln{font-family:var(--mono);word-break:break-all}
 .flc{color:var(--muted);margin-left:auto;font-family:var(--mono);font-size:10.5px}
+
+/* ---------- [R8-A] MCP 설정 서버 그룹(서버명 dedupe, 접이식) ---------- */
+details.mcpcfg{margin-top:6px}
+details.mcpcfg>summary{cursor:pointer;font-size:11.5px;color:var(--muted);padding:4px 2px;
+  list-style:none;border-bottom:1px solid var(--border);user-select:none}
+details.mcpcfg>summary::-webkit-details-marker{display:none}
+details.mcpcfg>summary::before{content:"▸";margin-right:6px;color:var(--faint);font-size:10px}
+details[open].mcpcfg>summary::before{content:"▾"}
+details.mcpcfg>summary>b{font-family:var(--mono)}
+.cfgscope{display:inline-block;font-size:9.5px;padding:1px 6px;border-radius:8px;
+  background:var(--border);color:var(--muted);margin:0 2px;vertical-align:middle}
+.cfgcmd{font-family:var(--mono);font-size:10px}
+
+/* ---------- [R8-B] 읽기전용 증명 — 일반어 패널 ---------- */
+.attest-head{font-size:13px;font-weight:700;margin-bottom:8px;line-height:1.4}
+.attest-lead{font-size:11.5px;line-height:1.65;padding:9px 11px;border:1px solid var(--accent);
+  border-radius:9px;background:var(--panel2);margin-bottom:10px}
+.attest-lead b{color:var(--accent)}
+.attest-roline{font-size:12px;margin-bottom:6px}
+.attest-roline b{color:#16a34a}
+.attest-nums{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.anum{flex:1 1 96px;min-width:96px;padding:9px 8px;border:1px solid var(--border);
+  border-radius:9px;background:var(--panel2);text-align:center}
+.anum.ok{border-color:#16a34a}
+.anv{font-size:24px;font-weight:800;font-family:var(--mono);line-height:1}
+.anum.ok .anv{color:#16a34a}
+.anl{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.35}
+.attest-verify{margin-bottom:8px}
+.attest-verify .row{font-size:11px;line-height:1.65;color:var(--txt)}
+details.attest-tech,details.attest-ledger{margin-top:8px;border:1px solid var(--border);
+  border-radius:9px;background:var(--panel2);padding:6px 9px}
+details.attest-tech>summary,details.attest-ledger>summary{cursor:pointer;font-size:11px;
+  color:var(--muted);list-style:none;user-select:none;font-weight:600}
+details.attest-tech>summary::-webkit-details-marker,
+details.attest-ledger>summary::-webkit-details-marker{display:none}
+details.attest-tech>summary::before,details.attest-ledger>summary::before{
+  content:"▸";margin-right:6px;color:var(--faint);font-size:10px}
+details[open].attest-tech>summary::before,details[open].attest-ledger>summary::before{content:"▾"}
+details.attest-tech .row{font-size:10.5px;color:var(--muted);line-height:1.55;margin-top:5px}
+.attest-note{font-style:italic}
+.attest-filter{width:100%;margin:7px 0;padding:5px 8px;border:1px solid var(--border);
+  border-radius:7px;font-size:11px;background:var(--panel);color:var(--txt);box-sizing:border-box}
+.attest-list{max-height:340px;overflow:auto}
+.attest-list .attrow{padding:2px 0;font-size:11px;border-bottom:1px solid var(--border)}
+.attest-list .lpp{font-family:var(--mono);word-break:break-all}

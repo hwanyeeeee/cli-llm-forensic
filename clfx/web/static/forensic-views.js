@@ -80,9 +80,10 @@
     }).join("");
   }
 
-  /* [B-4] 읽기전용 증명(Chain of Custody) 단일 진실원천 렌더. d=/api/attestation payload.
-     단언적 무변경 보증(note) + 요약 한 줄 + 근거(read-only 불변식·테스트) +
-     검색 가능 매니페스트(경로 substring 필터 + 취득 {path: sha256 앞12자…} 목록).
+  /* [B-4][R8-B] 읽기전용 증명(Chain of Custody) 단일 진실원천 렌더. d=/api/attestation payload.
+     일반어 재설계: (1)헤더 (2)리드(100% 읽기전용 보증) (3)핵심 수치 카드(변경 0·취득·메타데이터만)
+     (4)무결성 검증 방법(일반어) (5)기술 상세=접이식(개발자 용어 _ro_open/modes/note는 여기에만)
+     (6)취득 해시 원장=접이식 기본 접힘(펼치면 경로 검색 — 대량 덤프 방지).
      값은 서버/엔진이 단일진실 — 여기서 재해싱·재판정 없음. 모든 동적 문자열 esc().
      el-scoped 자체 wiring(필터 input — 전역 의존 0, view/modal 동일 동작). */
   function renderAttestation(el, d) {
@@ -95,36 +96,54 @@
     var ac = (d.acquired_count != null) ? d.acquired_count : acquired.length;
     var so = d.stat_only_count || 0;
     var ops = d.write_delete_rename_ops || 0;
-    var allRo = !!d.all_read_only;
     var modes = (d.modes_seen || []).slice();
     var note = d.note || "";
 
-    // 단언적 보증 문구(증거 무변경 guarantee — 강한 어조). note는 서버 단일진실.
-    var html = '<div class="attest-assure"><b>증거 무변경 보증.</b> ' + esc(note) + '</div>';
+    // (1) 헤더 — 일반어(수사관이 기능을 즉시 이해).
+    var html = '<div class="attest-head"><b>증거 무결성</b> — 분석이 원본을 변경하지 않았음</div>';
 
-    // 요약 한 줄: 취득 N · 내용 미독 stat-only M · 쓰기/삭제/이동 0 · 전 open 읽기전용.
-    var roTxt = allRo ? '전 open 읽기전용' : '읽기전용 위반 감지';
-    html += '<div class="attest-summary">' +
-      '취득 <b>' + esc(ac) + '</b>건 · 내용 미독 stat-only <b>' + esc(so) + '</b>건 · ' +
-      '쓰기/삭제/이동 <b>' + esc(ops) + '</b> · <b>' + esc(roTxt) + '</b></div>';
+    // (2) 리드(강조 박스, 일반어).
+    html += '<div class="attest-lead">이 분석은 <b>100% 읽기 전용</b>으로 수행됐습니다. ' +
+      '도구는 파일을 열 때 읽기 모드만 사용하며 쓰기·삭제·수정은 차단됩니다(시도 시 즉시 오류). ' +
+      '따라서 분석 과정이 증거 파일을 건드릴 수 없습니다.</div>';
 
-    // 근거: read-only 불변식 + 관측된 open 모드 + 테스트.
-    var modesTxt = modes.length ? modes.map(esc).join(", ") : "(없음)";
-    html += '<div class="attest-basis">' +
-      '<div class="sub">근거 (Chain of Custody)</div>' +
-      '<div class="row">공유 _ro_open이 모든 파일을 읽기전용으로만 연다(쓰기/추가/생성 모드 거부). 매니페스트·감사는 메모리 전용(디스크 쓰기 0).</div>' +
-      '<div class="row">감사가 관측한 open 모드: <span class="muted">' + modesTxt + '</span> (r/rb 부분집합만 허용).</div>' +
-      '<div class="row">회귀 테스트: 읽기전용 불변식 · 무손실(test_scan_equivalent_to_sequential) 상시 green.</div>' +
+    // (3) 핵심 수치(큰 글씨, 일반어). ops==0이면 ok(초록) 강조.
+    var okCls = (ops === 0) ? ' ok' : '';
+    html += '<div class="attest-roline">읽기 전용 접근: <b>전부</b></div>';
+    html += '<div class="attest-nums">' +
+      '<div class="anum' + okCls + '"><div class="anv">' + esc(ops) + '</div>' +
+        '<div class="anl">변경(쓰기/삭제/이동) 횟수</div></div>' +
+      '<div class="anum"><div class="anv">' + esc(ac) + '</div>' +
+        '<div class="anl">해시 기록한 증거 파일</div></div>' +
+      '<div class="anum"><div class="anv">' + esc(so) + '</div>' +
+        '<div class="anl">메타데이터만 확인(내용 미접근)</div></div>' +
       '</div>';
 
-    // 검색 가능 매니페스트: 필터 input + 취득 {path: sha256(앞12자…)} 목록.
-    html += '<div class="sub">취득 매니페스트 (취득 시 SHA-256 기록 · 경로 검색)</div>';
-    html += '<input type="text" id="attfilter" class="attest-filter" placeholder="경로로 검색…" autocomplete="off">';
-    if (acquired.length) {
-      html += '<div id="attlist" class="attest-list">' + attRowsHTML(acquired) + '</div>';
-    } else {
-      html += '<div id="attlist" class="attest-list"><div class="empty">취득(내용 독취) 파일 없음</div></div>';
-    }
+    // (4) 무결성 검증 방법(일반어 설명).
+    html += '<div class="attest-verify"><div class="sub">무결성 검증 방법</div>' +
+      '<div class="row">각 파일을 읽는 순간 SHA-256 지문을 아래 원장에 기록했습니다(취득 해시). ' +
+      '나중에 원본 파일의 SHA-256을 다시 계산해 이 값과 비교하세요 — ' +
+      '같으면 분석 이후에도 변조가 없었음이 증명됩니다. ' +
+      '(대시보드 파일목록의 ‘동일 해시 tmp 검색’으로 특정 파일을 즉시 대조할 수도 있습니다.)</div></div>';
+
+    // (5) 기술 상세(접이식, 기본 접힘) — 개발자 용어(_ro_open 등)는 이 안에서만.
+    var modesTxt = modes.length ? modes.map(esc).join(", ") : "(없음)";
+    html += '<details class="attest-tech"><summary>기술 상세</summary>' +
+      '<div class="row">읽기전용 강제: 공유 _ro_open이 모든 파일을 읽기 모드(r/rb)로만 연다 — ' +
+      '쓰기·추가·생성 모드는 거부(ValueError). 코드 불변식 + 자동 회귀 테스트로 상시 보증.</div>' +
+      '<div class="row">관측된 open 모드: <span class="muted">' + modesTxt + '</span> (r/rb 부분집합만 허용).</div>' +
+      '<div class="row">매니페스트·감사는 메모리 전용 — 디스크 쓰기 0.</div>' +
+      (note ? '<div class="row attest-note">' + esc(note) + '</div>' : '') +
+      '</details>';
+
+    // (6) 취득 해시 원장(접이식, 기본 접힘) — 기본 화면에 대량 덤프 방지. 펼치면 검색.
+    html += '<details class="attest-ledger"><summary>취득 해시 원장 (전체 ' + esc(ac) + '개) — 펼쳐서 검색</summary>' +
+      '<input type="text" id="attfilter" class="attest-filter" placeholder="경로로 검색…" autocomplete="off">' +
+      (acquired.length
+        ? '<div id="attlist" class="attest-list">' + attRowsHTML(acquired) + '</div>'
+        : '<div id="attlist" class="attest-list"><div class="empty">취득(내용 독취) 파일 없음</div></div>') +
+      '</details>';
+
     el.innerHTML = html;
 
     // 필터 wiring(el-scoped): 경로 substring으로 클라이언트측 필터(재해싱 없음 — 표시만).
@@ -229,11 +248,42 @@
     }
 
     // 설정 섹션(#5 중립화) — 경보 제거. used_unconfigured는 중립 표기만.
-    html += '<div class="sub">설정된 서버 ' + (d.configs ? d.configs.length : 0) + '개</div>';
-    html += (d.configs || []).map(function (c) {
-      return '<div class="row"><b>' + esc(c.server) + '</b> <span class="muted">(' + esc(c.scope) + ')</span> ' + esc(c.command || "") +
-        (c.env_keys && c.env_keys.length ? ' <span class="muted">env: ' + c.env_keys.map(esc).join(",") + '</span>' : "") +
-        '</div>';
+    // [R8-A] 서버명으로 dedupe+그룹(표시만 — 재집계/재판정 아님). 같은 서버가 여러 프로젝트에
+    //   설정돼 d.configs가 중복되므로(정상 데이터), 서버 N종 / 인스턴스 M으로 접어 보여준다.
+    var cfgs = (d.configs || []);
+    var byCfg = {};
+    cfgs.forEach(function (c) {
+      var s = c.server;
+      if (!byCfg[s]) byCfg[s] = { server: s, scopes: {}, insts: [], cmd: "" };
+      var g = byCfg[s];
+      if (c.scope) g.scopes[c.scope] = true;       // scope 집합(connector/global/project)
+      g.insts.push(c);
+      if (!g.cmd && c.command) g.cmd = c.command;   // 대표 command(첫 비어있지 않은 것)
+    });
+    var cfgServers = Object.keys(byCfg).sort();      // 결정성: 서버명 오름차순
+    html += '<div class="sub">설정된 외부 서버 ' + cfgServers.length +
+      '종 (인스턴스 ' + cfgs.length + ')</div>';
+    html += cfgServers.map(function (s) {
+      var g = byCfg[s];
+      var scopes = Object.keys(g.scopes).sort();     // scope 뱃지 정렬
+      var badges = scopes.map(function (sc) {
+        return '<span class="cfgscope">' + esc(sc) + '</span>';
+      }).join("");
+      var insts = g.insts.slice().sort(function (a, b) {   // 인스턴스 정렬(scope·project)
+        var ap = (a.scope || "") + " " + (a.project || "");
+        var bp = (b.scope || "") + " " + (b.project || "");
+        return ap < bp ? -1 : ap > bp ? 1 : 0;
+      }).map(function (c) {
+        return '<div class="row"><span class="muted">(' + esc(c.scope || "") +
+          (c.project ? ' · ' + esc(c.project) : "") + ')</span> ' + esc(c.command || "") +
+          (c.env_keys && c.env_keys.length ?
+            ' <span class="muted">env: ' + c.env_keys.map(esc).join(",") + '</span>' : "") +
+          '</div>';
+      }).join("");
+      return '<details class="mcpcfg"><summary><b>' + esc(g.server) + '</b> ' + badges +
+        ' <span class="muted">×' + esc(g.insts.length) + '</span>' +
+        (g.cmd ? ' <span class="muted cfgcmd">' + esc(g.cmd) + '</span>' : "") +
+        '</summary>' + insts + '</details>';
     }).join("");
     if (d.configured_unused && d.configured_unused.length) {
       html += '<div class="sub muted">설정O 미사용: ' + d.configured_unused.map(esc).join(", ") + '</div>';
