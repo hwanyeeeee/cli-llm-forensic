@@ -142,7 +142,7 @@ ok(typeof FV.renderAttestation === "function", "renderAttestation must be EXPORT
   lacks(h, "deadbeefcafe0123456789…", "manifest truncates sha to a prefix (not full+ellipsis)");
   // (4b) CSV export link — same-origin download of the acquisition hash manifest.
   has(h, 'href="/api/attestation.csv"', "CSV export links to /api/attestation.csv");
-  has(h, "취득 해시 원장 CSV 내보내기", "CSV export button labelled in plain Korean");
+  has(h, "CSV로 내보내기", "CSV export button labelled 'CSV로 내보내기'");
   has(h, 'download="acquisition-hash-manifest.csv"', "download attribute hints standard filename");
 }
 

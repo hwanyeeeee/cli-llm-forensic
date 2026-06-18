@@ -130,8 +130,8 @@
     //   서버가 Content-Disposition으로 파일명 강제 + download 속성 힌트. 재해시 없음(메모리 매니페스트 직렬화).
     html += '<div class="attest-export">' +
       '<a class="att-csv" href="/api/attestation.csv" download="acquisition-hash-manifest.csv">' +
-      '취득 해시 원장 CSV 내보내기 (전체 ' + esc(ac) + '개)</a>' +
-      '<span class="muted">path · algorithm(SHA-256) · sha256 · UTF-8</span></div>';
+      'CSV로 내보내기</a>' +
+      '<span class="muted">취득 해시 원장 ' + esc(ac) + '개 · path · sha256 (UTF-8)</span></div>';
 
     // (5) 기술 상세(접이식, 기본 접힘) — 개발자 용어(_ro_open 등)는 이 안에서만.
     var modesTxt = modes.length ? modes.map(esc).join(", ") : "(없음)";
