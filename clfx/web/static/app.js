@@ -263,9 +263,11 @@ function renderFiles(){
     const primaryU=f.u>=f.a,tg=f.tags[0];   // 아이콘은 다수 주체(장식). 카운트는 user/agent 둘 다 노출.
     const bcol=tg==="pii"?"var(--pii)":"var(--bypass)";
     const bg=tg?`<span class="fbadge" style="background:rgba(16,24,40,.04);color:${bcol};border:1px solid ${bcol}">${tg}</span>`:"";
+    // 에이전트(B) 작성 표식: 첫 등장 이벤트(idx)가 agent/write이면 작은 B 뱃지(사람 생성과 시각 구분). EVENTS 로드 전 idx -1 → 뱃지 없음(무해).
+    const bw=(f.idx>=0&&EVENTS[f.idx]&&EVENTS[f.idx].actor==="agent"&&EVENTS[f.idx].action==="write")?`<span class="fbw" title="에이전트(B) 작성">B</span>`:"";
     return `<div class="frow ${SEL===f.idx?'sel':''}" data-i="${f.idx}">
       <div class="fic ${primaryU?'u':'a'}">${primaryU?'👤':'🤖'}</div>
-      <div class="fmeta"><div class="fpath">${esc(path)}</div>
+      <div class="fmeta"><div class="fpath">${esc(path)}${bw}</div>
         <div class="fsub">사용자 ${f.u} · 에이전트 ${f.a} · 총 ${f.u+f.a}회</div></div>${bg}</div>`;
   }).join("");
 }
@@ -347,6 +349,7 @@ function renderDetail(i){
     <div class="row"><span class="k">시각</span><span class="v">${tsFull(e.ts)}</span></div>
     <div class="row"><span class="k">주체</span><span class="v"><span class="who ${e.actor}">${e.actor==="user"?"A 사용자(직접 입력)":"B 에이전트(자율)"}</span></span></div>
     <div class="row"><span class="k">동작</span><span class="v">${e.action}</span></div>
+    ${e.actor==="agent"&&e.action==="write"?`<div class="row"><span class="k">작성 주체</span><span class="v">${esc("B 에이전트")} <span class="muted">(디스크상 소유자는 A 사용자로 표시되나 transcript상 B가 작성)</span></span></div>`:""}
     <div class="row"><span class="k">대상</span><span class="v">${esc(e.target)}</span></div>
     <div class="row"><span class="k">태그</span><span class="v">${showTags(e.tags).length?showTags(e.tags).map(badge).join(" "):"-"}</span></div>
     <div class="row"><span class="k">소스</span><span class="v">${originOf(e)?(SRC_LABEL[originOf(e)]||originOf(e)):"-"}</span></div>
@@ -621,7 +624,7 @@ async function loadAggregates(){
 /* ---------- 아티팩트 포렌식(해시 대조 + 주체 왜곡 보정) ----------
    엔진(/api/artifacts)이 단일 진실원천 — JS 재집계/재판정 금지, 값 그대로 그림. XSS: 모든 동적 문자열 esc(). */
 async function loadArtifacts(){
-  try{ const d=await jget("/api/artifacts"); renderLeaks(d); renderAttrib(d); renderRetention(d.retention); }
+  try{ const d=await jget("/api/artifacts"); renderLeaks(d); renderRetention(d.retention, d); }
   catch(_){ $("#leaks").innerHTML='<div class="empty">아티팩트 분석 불러오기 실패</div>'; }
 }
 /* 뱃지 계산은 app.js, HTML 빌드는 ForensicViews(forensic-views.js) 단일 진실원천에 위임 — 중복 markup 금지. */
@@ -630,12 +633,6 @@ function renderLeaks(d){
   const leak=((d&&d.hashes)||[]).filter(c=>c.leak_suspect).length;
   setFbadge("leaks", leak, leak>0);
   ForensicViews.renderLeaks($("#leaks"), d);
-}
-function renderAttrib(d){
-  // 뱃지=에이전트(B) 작성 파일 수. 중립(#3) — 경보색 없음.
-  const writes=((d&&d.attribution)||[]).filter(r=>r.transcript_actor==="agent"&&r.transcript_action==="write").length;
-  setFbadge("attrib", writes, false);
-  ForensicViews.renderAttrib($("#attrib"), d);
 }
 
 /* ---------- MCP 연결 흔적(설정 vs 실사용) + tmp 보존기간 ----------
@@ -649,11 +646,11 @@ async function loadMcp(){
     ForensicViews.renderMcp(box, d);
   }catch(_){ box.innerHTML='<span class="muted">불러오기 실패</span>'; }
 }
-function renderRetention(rows){
+function renderRetention(rows, d){
   const box=$("#retention"); if(!box)return;
   const soon=(rows||[]).filter(r=>r.expires_in_days>0&&r.expires_in_days<=7).length;
   setFbadge("retention", (rows||[]).length, soon>0);        // tmp 잔존 수, 만료임박(≤7d) 있으면 경고
-  ForensicViews.renderRetention(box, rows);
+  ForensicViews.renderRetention(box, rows, d?ForensicViews.leakTmpPaths(d):null);
 }
 /* ---------- 컬럼 폭 드래그 리사이즈(좌|중, 중|우 경계 거터) ---------- */
 function initGutters(){
@@ -717,7 +714,7 @@ let openFmodal=function(){};
 function initForensicModals(){
   const modal=document.getElementById("fmodal"); if(!modal)return;
   const title=document.getElementById("fmodal-title");
-  const TITLES={leaks:"유출·복사 의심 · 해시 대조", attrib:"주체 왜곡 보정 · FS↔transcript JOIN",
+  const TITLES={leaks:"유출·복사 의심 · 해시 대조",
                 mcp:"MCP 연결 흔적 · 설정 vs 실사용", retention:"tmp 보존기간 · 만료 잔여"};
   const panes=modal.querySelectorAll(".fm-pane");
   // 해시검색 박스+wiring은 ForensicViews.renderLeaks가 #leaks pane 안에서 자체 소유(DRY) — app.js는 추가 작업 불요.

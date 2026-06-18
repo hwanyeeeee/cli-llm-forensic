@@ -171,6 +171,72 @@ def test_mcp_summary_recognizes_extra_config_sources(tmp_path):
     assert out["plugin_prefixes"] == ["plugin_claude-mem"]
 
 
+# --- [R1]: 플러그인 매니페스트 mcpServers 문자열 회귀 (실서버만 잡기) ----------
+
+def test_find_mcp_configs_ignores_plugin_manifest_string_mcpservers(tmp_path):
+    """plugin.json의 mcpServers가 dict 아닌 경로 '문자열'("./.mcp.json")인 실데이터:
+    글자단위 순회로 '.' '/' 'm' 등 단일문자 서버가 만들어지면 안 된다(부풀림 방지)."""
+    root = tmp_path / ".claude"
+    root.mkdir()
+    # 형제 .claude.json — pluginUsage만 있고 글로벌/프로젝트 서버 없음
+    (tmp_path / ".claude.json").write_text(_json.dumps({
+        "pluginUsage": {"omc@mp": 1},
+    }), encoding="utf-8")
+    # ~/.claude/plugins/**/plugin.json 에 mcpServers가 경로 문자열
+    pdir = root / "plugins" / "repos" / "omc"
+    pdir.mkdir(parents=True)
+    (pdir / "plugin.json").write_text(_json.dumps({
+        "name": "omc",
+        "mcpServers": "./.mcp.json",
+    }), encoding="utf-8")
+
+    out = find_mcp_configs([str(root)])
+    servers = {c["server"] for c in out["configs"]}
+    # (a) 회귀: 단일문자/경로문자 서버가 하나도 없음
+    for ch in [".", "/", "m", "c", "p", "j", "s", "o", "n"]:
+        assert ch not in servers, f"노이즈 서버 {ch!r} 가 configs에 들어감"
+    # (b) 플러그인 매니페스트 서버는 미포함 → configs 비어 있음
+    assert out["configs"] == []
+    # plugin scope 행 자체가 없음
+    assert not any(c["scope"] == "plugin" for c in out["configs"])
+    # (c) plugin_prefixes는 pluginUsage에서 여전히 채워짐
+    assert out["plugin_prefixes"] == ["plugin_omc"]
+
+
+def test_find_mcp_configs_keeps_real_servers_drops_plugin_manifest(tmp_path):
+    """글로벌/커넥터/project 서버는 포함, 플러그인 매니페스트 서버는 미포함."""
+    root = tmp_path / ".claude"
+    root.mkdir()
+    proj = tmp_path / "proj-r1"
+    proj.mkdir()
+    (proj / ".mcp.json").write_text(_json.dumps({
+        "mcpServers": {"playwright": {"command": "npx"}}
+    }), encoding="utf-8")
+    (tmp_path / ".claude.json").write_text(_json.dumps({
+        "mcpServers": {"global-server": {"command": "node"}},
+        "claudeAiMcpEverConnected": ["claude_ai_Notion"],
+        "pluginUsage": {"omc@mp": 1},
+        "projects": {str(proj): {"enabledMcpjsonServers": ["pyghidra"]}},
+    }), encoding="utf-8")
+    # 플러그인 매니페스트(문자열 mcpServers) — 무시되어야 함
+    pdir = root / "plugins" / "repos" / "omc"
+    pdir.mkdir(parents=True)
+    (pdir / "plugin.json").write_text(_json.dumps({
+        "name": "omc", "mcpServers": "./.mcp.json",
+    }), encoding="utf-8")
+
+    out = find_mcp_configs([str(root)])
+    servers = {c["server"] for c in out["configs"]}
+    # 실서버는 전부 포함
+    assert {"global-server", "playwright", "claude_ai_Notion", "pyghidra"} <= servers
+    # 플러그인 매니페스트 서버/노이즈는 미포함
+    assert not any(c["scope"] == "plugin" for c in out["configs"])
+    for ch in [".", "/", "m", "c", "p", "j", "s", "o", "n"]:
+        assert ch not in servers
+    # plugin_prefixes는 채워짐
+    assert out["plugin_prefixes"] == ["plugin_omc"]
+
+
 # --- [B2]: 이름 정규화 매칭 (커넥터 표기 vs usage명 표기차 흡수) ----------------
 
 def test_mcp_summary_normalizes_connector_name_vs_usage(tmp_path):

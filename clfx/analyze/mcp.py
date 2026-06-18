@@ -160,30 +160,15 @@ def find_mcp_configs(roots):
         for name in data.get("claudeAiMcpEverConnected") or []:
             if isinstance(name, str):
                 _add_row(_synthetic_row(name, "connector", None, claude_json))
-        # 플러그인 사용 (pluginUsage: {"<plugin>@<marketplace>": n}) → plugin_<plugin> prefix
+        # 플러그인 사용 (pluginUsage: {"<plugin>@<marketplace>": n}) → plugin_<plugin> prefix.
+        # prefix는 사용량 귀속(plugin_x__tool 가 used_unconfigured로 오분류 방지)에만 쓴다.
+        # 플러그인 매니페스트(plugin.json)의 mcpServers는 설정목록에 넣지 않는다 —
+        # 실데이터상 경로 문자열("./.mcp.json") 등 노이즈뿐이라 서버 수를 부풀린다.
         for key in (data.get("pluginUsage") or {}):
             if isinstance(key, str):
                 plugin = key.split("@", 1)[0]
                 if plugin:
                     plugin_prefixes.add("plugin_" + plugin)
-        # best-effort: 플러그인 매니페스트(plugin.json)의 mcpServers를 서버명(scope="plugin")으로 추가.
-        # 경로 불확실 → 실패해도 errors[]에 기록하고 계속(조용히 누락 금지).
-        plugins_dir = os.path.join(os.path.dirname(claude_json), ".claude", "plugins")
-        if os.path.isdir(plugins_dir):
-            for dirpath, _dirs, files in os.walk(plugins_dir, followlinks=False):
-                for fname in files:
-                    if fname != "plugin.json":
-                        continue
-                    mpath = os.path.join(dirpath, fname)
-                    try:
-                        with open(mpath, "r", encoding="utf-8") as f:
-                            mdata = json.load(f)
-                        mserv = mdata.get("mcpServers") or {}
-                        for sname in mserv:
-                            if isinstance(sname, str):
-                                _add_row(_synthetic_row(sname, "plugin", None, mpath))
-                    except Exception as e:                      # noqa: BLE001 - best-effort: 실패도 기록
-                        errors.append({"path": mpath, "reason": type(e).__name__})
         # 프로젝트별
         for proj, pdata in (data.get("projects") or {}).items():
             # 인라인 projects[proj].mcpServers
