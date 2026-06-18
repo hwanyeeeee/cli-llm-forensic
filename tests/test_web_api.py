@@ -144,6 +144,19 @@ def test_query_payload_secrets_actor_filter(monkeypatch):
     assert p["count"] >= 1 and all(e["actor"] == "user" for e in p["events"])
 
 
+def test_query_payload_bypass(monkeypatch):
+    # [B1] "bypass 모드로 읽은 파일?" → bypass op, bypass-mode 이벤트 매칭(>0). llm=None=digest.
+    import clfx.web.api as api
+    eng = QueryEngine([
+        Event("2026-06-11T01:00:00Z", "claude", "s", "agent", "read", "/x/.env", "x", Source("f", 1), ["bypass-mode"]),
+        Event("2026-06-11T02:00:00Z", "claude", "s", "user", "prompt", "", "y", Source("f", 2), []),
+    ])
+    p = api.query_payload(eng, "bypass 모드로 읽은 파일?", llm=None)
+    assert p["op"] == "bypass"
+    assert p["count"] > 0
+    assert all("bypass-mode" in e["tags"] for e in p["events"])
+
+
 def test_mcp_payload_has_contract_keys():
     from clfx.web.api import scan_to_engine, mcp_payload
     eng = scan_to_engine(["tests/fixtures/mcp"])

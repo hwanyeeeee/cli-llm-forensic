@@ -55,6 +55,8 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origin
         res = engine.who_did(intent["action"], intent.get("target", ""), actor=a)
     elif op == "secrets":
         res = engine.secrets(actor=a)
+    elif op == "bypass":
+        res = engine.bypass(actor=a)
     elif op == "on_date":
         res = engine.on_date(intent["day"], actor=a)
     elif op == "timeline":

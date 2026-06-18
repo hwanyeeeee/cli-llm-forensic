@@ -95,6 +95,26 @@ def test_secrets_actor_filter():
     assert len(eng.secrets()) == 2                      # None=전체
 
 
+def test_bypass_lists_bypass_mode_events():
+    # [B1] bypass()는 bypass-mode 태그 이벤트만(secrets 미러: 순회순, actor 필터).
+    eng = QueryEngine([
+        Event("2026-06-11T01:00:00Z", "claude", "s", "agent", "read", "/x/.env", "x", Source("f", 1), ["bypass-mode"]),
+        Event("2026-06-11T02:00:00Z", "claude", "s", "user", "paste", ".env", "y", Source("f", 2), ["secret"]),
+    ])
+    res = eng.bypass()
+    assert len(res) == 1 and "bypass-mode" in res[0].tags
+    assert res[0].source.line == 1
+
+
+def test_bypass_actor_filter():
+    eng = QueryEngine([
+        Event("2026-06-11T01:00:00Z", "claude", "s", "user", "read", "/x/.env", "x", Source("f", 1), ["bypass-mode"]),
+        Event("2026-06-11T02:00:00Z", "claude", "s", "agent", "read", "/x/.env", "y", Source("f", 2), ["bypass-mode"]),
+    ])
+    assert [e.actor for e in eng.bypass(actor="user")] == ["user"]
+    assert len(eng.bypass()) == 2                       # None=전체
+
+
 def test_on_date_handles_epoch_ms_no_crash():
     # raw epoch-ms int ts → 옛 e.ts.startswith는 AttributeError. norm_ts로 ISO Z 통일 후 startswith.
     mid = int(datetime(2026, 6, 11, 12, 0, 0, tzinfo=timezone.utc).timestamp() * 1000)

@@ -126,6 +126,10 @@ def route_intent(q):
                     "actor": actor, "summarize": summarize}
     if any(w in ql for w in ("타임라인", "timeline", "시간순", "시간 순")):
         return {"op": "timeline", "actor": actor, "summarize": summarize}
+    # bypass(우회권한) 모드 질의 → bypass op. "읽은/read" 동사가 섞여도("bypass 모드로 읽은 파일?")
+    # who_did/secrets로 새지 않게 read·secrets 분기보다 먼저 매칭.
+    if "bypass" in ql:
+        return {"op": "bypass", "actor": actor, "summarize": summarize}
     # read 동사가 명시되면 who_did 우선 — 파일명에 secret이 들어가도("누가 .secret.key 읽었어?") read 의도 보존.
     # tgt는 위에서 이미 추출함(재추출 금지·일관).
     if any(w in ql for w in ("읽", "read", "접근", "access")):

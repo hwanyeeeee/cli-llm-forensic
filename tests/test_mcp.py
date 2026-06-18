@@ -169,3 +169,26 @@ def test_mcp_summary_recognizes_extra_config_sources(tmp_path):
     # 셋 다 설정출처 인식 → 진짜 미설정만 남음
     assert out["used_unconfigured"] == ["rogue"]
     assert out["plugin_prefixes"] == ["plugin_claude-mem"]
+
+
+# --- [B2]: 이름 정규화 매칭 (커넥터 표기 vs usage명 표기차 흡수) ----------------
+
+def test_mcp_summary_normalizes_connector_name_vs_usage(tmp_path):
+    # 커넥터는 'claude.ai Notion'(공백·점), usage는 'claude_ai_Notion'(밑줄·대문자) — 표기 불일치.
+    root = tmp_path / ".claude"
+    root.mkdir()
+    (tmp_path / ".claude.json").write_text(_json.dumps({
+        "claudeAiMcpEverConnected": ["claude.ai Notion"],
+    }), encoding="utf-8")
+    evs = [
+        _ev("mcp__claude_ai_Notion__fetch", "2026-06-18T01:00:00Z"),
+        _ev("mcp__rogue__x", "2026-06-18T01:00:01Z"),
+    ]
+    out = mcp_summary([str(root)], evs)
+    # 정규화 매칭 → 커넥터로 인식되어 used_unconfigured에서 빠짐
+    assert "claude_ai_Notion" not in out["used_unconfigured"]
+    # 진짜 미설정만 남음 (표시는 원본 usage명)
+    assert out["used_unconfigured"] == ["rogue"]
+    # configured_unused도 정규화 매칭 → 사용됨으로 인식되어 비어 있음 (표시는 원본 커넥터명)
+    assert "claude.ai Notion" not in out["configured_unused"]
+    assert out["configured_unused"] == []

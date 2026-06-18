@@ -23,6 +23,10 @@ def test_route_strips_korean_particles():
         intent = route_intent(q)
         assert intent["op"] == "who_did" and intent["target"] == want, (q, intent)
 
+def test_route_bypass():
+    # [B1] "bypass 모드" 질의 → bypass op(secrets·search 폴백 아님). secrets보다 먼저 매칭.
+    assert route_intent("bypass 모드로 읽은 파일?")["op"] == "bypass"
+
 def test_route_case_insensitive():
     # secret/summar 키워드 대소문자 무관(ql 일관)
     assert route_intent("SECRET leaked")["op"] == "secrets"
