@@ -15,55 +15,10 @@
     });
   }
 
-  /* 한 해시 클러스터 = 네이티브 접이식 <details>. summary=헤더(해시12…·N곳·크기·flags·reason),
-     본문=경로 목록(기존 lpath 마크업). 기본 접힘(open 없음). leak_suspect면 강조. */
-  function leakRowHTML(c) {
-    var sha = esc(String(c.sha256 || "").slice(0, 12));
-    var flags = [];
-    if (c.secret)       flags.push('<span class="lflag secret">secret</span>');
-    if (c.in_tmp)       flags.push('<span class="lflag tmp">tmp 사본</span>');
-    if (c.leak_suspect) flags.push('<span class="lflag leak">유출 의심</span>');
-    var cls = c.secret ? 'leakrow secret' : (c.leak_suspect ? 'leakrow leak' : 'leakrow');
-    var paths = (c.paths || []).map(function (p) {
-      var tag = p.in_tmp ? '<span class="lpt tmp">tmp</span>' : (p.referenced ? '<span class="lpt ref">참조됨</span>' : '<span class="lpt">미참조</span>');
-      var src = (p.source && p.source.file != null) ? '<span class="src">' + esc(p.source.file) + ':' + esc(p.source.line) + '</span>' : '';
-      return '<div class="lpath">' + tag + '<span class="lpp">' + esc(p.path) + '</span>' + src + '</div>';
-    }).join("");
-    var reason = c.reason ? '<span class="lreason">' + esc(c.reason) + '</span>' : '';
-    return '<details class="' + cls + '"><summary class="lhead">' +
-      '<span class="lsha">' + sha + '…</span>' +
-      '<span class="lct">' + esc(c.count) + '곳 · ' + esc(c.size) + 'B</span>' +
-      flags.join("") + reason + '</summary>' + paths + '</details>';
-  }
-
-  /* 유출·복사 의심: 동일 내용 해시 클러스터.
-     (1) 최상단 해시검색 박스, (2) leak_suspect 우선 정렬한 main(!tmp_only),
-     (3) tmp_only 노이즈 접이식. 각 클러스터는 접이식 헤더만 보이고 클릭 시 경로 펼침.
-     렌더 직후 el-scoped 자체 wiring(DRY — app.js/view.js는 호출만). */
-  function renderLeaks(el, d) {
-    if (!el) return;
-    var cl = (d && d.hashes) || [];
-    var main = cl.filter(function (c) { return !c.tmp_only; });
-    var noise = cl.filter(function (c) { return c.tmp_only; });
-
-    // leak_suspect 먼저(결정성: 엔진 순서 안정 유지 — leak_suspect만 앞으로, 재집계/재판정 아님).
-    main = main.slice().sort(function (a, b) {
-      return (b.leak_suspect ? 1 : 0) - (a.leak_suspect ? 1 : 0);
-    });
-
-    var html = hashSearchBoxHTML();   // (1) 해시검색 박스 최상단(빈 main이어도 유지)
-    if (main.length) {
-      html += main.map(leakRowHTML).join("");
-    } else {
-      html += '<div class="empty">동일 내용 복제 없음(유출 정황)</div>';
-    }
-    if (noise.length) {
-      html += '<details class="leak-noise"><summary>tmp 내부 중복 ' + noise.length +
-        '건 (설치/캐시 — 유출 아님)</summary>' + noise.map(leakRowHTML).join("") + '</details>';
-    }
-    el.innerHTML = html;
-    wireHashSearch(el);   // 자체 wiring(DRY)
-  }
+  /* [Issue-1] 자동 유출분류(leakRowHTML/renderLeaks)는 제거됨 — 오탐(_MEI PyInstaller 자기추출 등)으로
+     부정확. 동일내용 탐지는 파일목록 컨텍스트의 온디맨드 해시검색(hashSearchBoxHTML+wireHashSearch)으로
+     이전됨(수사관이 특정 파일을 골라 동일해시 tmp 사본을 직접 조회). leakTmpPaths는 retention 증거표식에
+     계속 쓰이므로 유지(아래). */
 
   /* [#2b] 해시검색 박스 자체 wiring. el-scoped querySelector(전역 getElementById 회피).
      파일 → 브라우저 로컬 SHA-256 hex → /api/hash-search?sha=hex(파일내용 전송 0). */
@@ -87,9 +42,12 @@
     });
   }
 
-  /* [#2b] 동일 해시 tmp 검색 박스 HTML(DRY 공유). id는 호출측이 querySelector로 잡는다. */
-  function hashSearchBoxHTML() {
+  /* [#2b] 동일 해시 tmp 검색 박스 HTML(DRY 공유). id는 호출측이 querySelector로 잡는다.
+     [Issue-1] 파일목록 컨텍스트로 이전 — label 인자로 용도 설명을 둔다(기본 = 파일선택 안내). */
+  function hashSearchBoxHTML(label) {
+    var lbl = label || "파일 선택 → 동일 해시 tmp 사본 검색";
     return '<div class="hsbox">' +
+      '<div class="hslabel">' + esc(lbl) + '</div>' +
       '<input type="file" id="hsfile">' +
       '<button id="hsbtn">동일 해시 tmp 검색</button>' +
       '<div id="hsresult"></div></div>';
@@ -119,6 +77,78 @@
     el.innerHTML = matches.map(function (m) {
       return '<div class="row"><span class="lpp">' + esc(m.path) + '</span> ' +
         '<span class="muted">' + esc(m.size) + 'B · ' + esc(m.mtime) + '</span></div>';
+    }).join("");
+  }
+
+  /* [B-4] 읽기전용 증명(Chain of Custody) 단일 진실원천 렌더. d=/api/attestation payload.
+     단언적 무변경 보증(note) + 요약 한 줄 + 근거(read-only 불변식·테스트) +
+     검색 가능 매니페스트(경로 substring 필터 + 취득 {path: sha256 앞12자…} 목록).
+     값은 서버/엔진이 단일진실 — 여기서 재해싱·재판정 없음. 모든 동적 문자열 esc().
+     el-scoped 자체 wiring(필터 input — 전역 의존 0, view/modal 동일 동작). */
+  function renderAttestation(el, d) {
+    if (!el) return;
+    if (!d) {
+      el.innerHTML = '<div class="empty">읽기전용 증명 불러오기 실패 (/api/attestation)</div>';
+      return;
+    }
+    var acquired = (d.acquired || []);
+    var ac = (d.acquired_count != null) ? d.acquired_count : acquired.length;
+    var so = d.stat_only_count || 0;
+    var ops = d.write_delete_rename_ops || 0;
+    var allRo = !!d.all_read_only;
+    var modes = (d.modes_seen || []).slice();
+    var note = d.note || "";
+
+    // 단언적 보증 문구(증거 무변경 guarantee — 강한 어조). note는 서버 단일진실.
+    var html = '<div class="attest-assure"><b>증거 무변경 보증.</b> ' + esc(note) + '</div>';
+
+    // 요약 한 줄: 취득 N · 내용 미독 stat-only M · 쓰기/삭제/이동 0 · 전 open 읽기전용.
+    var roTxt = allRo ? '전 open 읽기전용' : '읽기전용 위반 감지';
+    html += '<div class="attest-summary">' +
+      '취득 <b>' + esc(ac) + '</b>건 · 내용 미독 stat-only <b>' + esc(so) + '</b>건 · ' +
+      '쓰기/삭제/이동 <b>' + esc(ops) + '</b> · <b>' + esc(roTxt) + '</b></div>';
+
+    // 근거: read-only 불변식 + 관측된 open 모드 + 테스트.
+    var modesTxt = modes.length ? modes.map(esc).join(", ") : "(없음)";
+    html += '<div class="attest-basis">' +
+      '<div class="sub">근거 (Chain of Custody)</div>' +
+      '<div class="row">공유 _ro_open이 모든 파일을 읽기전용으로만 연다(쓰기/추가/생성 모드 거부). 매니페스트·감사는 메모리 전용(디스크 쓰기 0).</div>' +
+      '<div class="row">감사가 관측한 open 모드: <span class="muted">' + modesTxt + '</span> (r/rb 부분집합만 허용).</div>' +
+      '<div class="row">회귀 테스트: 읽기전용 불변식 · 무손실(test_scan_equivalent_to_sequential) 상시 green.</div>' +
+      '</div>';
+
+    // 검색 가능 매니페스트: 필터 input + 취득 {path: sha256(앞12자…)} 목록.
+    html += '<div class="sub">취득 매니페스트 (취득 시 SHA-256 기록 · 경로 검색)</div>';
+    html += '<input type="text" id="attfilter" class="attest-filter" placeholder="경로로 검색…" autocomplete="off">';
+    if (acquired.length) {
+      html += '<div id="attlist" class="attest-list">' + attRowsHTML(acquired) + '</div>';
+    } else {
+      html += '<div id="attlist" class="attest-list"><div class="empty">취득(내용 독취) 파일 없음</div></div>';
+    }
+    el.innerHTML = html;
+
+    // 필터 wiring(el-scoped): 경로 substring으로 클라이언트측 필터(재해싱 없음 — 표시만).
+    var fin = el.querySelector("#attfilter");
+    var list = el.querySelector("#attlist");
+    if (fin && list) {
+      fin.addEventListener("input", function () {
+        var q = String(fin.value || "").toLowerCase();
+        var hits = acquired.filter(function (a) {
+          return String(a.path || "").toLowerCase().indexOf(q) !== -1;
+        });
+        list.innerHTML = hits.length ? attRowsHTML(hits)
+          : '<div class="empty">일치하는 경로 없음</div>';
+      });
+    }
+  }
+
+  /* [B-4] 취득 매니페스트 행 HTML(DRY). 각 행: 경로 + sha256 앞 12자…(전체 hex는 esc된 title). */
+  function attRowsHTML(rows) {
+    return rows.map(function (a) {
+      var full = String(a.sha256 || "");
+      var sha = esc(full.slice(0, 12));
+      return '<div class="row attrow"><span class="lpp">' + esc(a.path) + '</span> ' +
+        '<span class="muted" title="' + esc(full) + '">' + sha + '…</span></div>';
     }).join("");
   }
 
@@ -322,11 +352,12 @@
 
   window.ForensicViews = {
     esc: esc,
-    renderLeaks: renderLeaks,
     renderMcp: renderMcp,
     renderRetention: renderRetention,
+    renderAttestation: renderAttestation,
     leakTmpPaths: leakTmpPaths,
     hashSearchBoxHTML: hashSearchBoxHTML,
+    wireHashSearch: wireHashSearch,
     sha256Hex: sha256Hex,
     renderHashMatches: renderHashMatches,
     donutSVG: donutSVG

@@ -65,9 +65,9 @@
 
     <!-- 포렌식 상세는 버튼 → 모달(fmodal). 좌측 컬럼은 요약/추이/키워드만 유지. -->
     <div class="forensic-bar">
-      <button class="fbtn" data-modal="leaks">유출·복사 의심<span class="fbtn-n" id="fn-leaks"></span></button>
       <button class="fbtn" data-modal="mcp">MCP 연결 흔적<span class="fbtn-n" id="fn-mcp"></span></button>
       <button class="fbtn" data-modal="retention">TMP 보존기간<span class="fbtn-n" id="fn-retention"></span></button>
+      <button class="fbtn" data-modal="attestation">읽기전용 증명<span class="fbtn-n" id="fn-attestation"></span></button>
     </div>
   </div>
 
@@ -92,6 +92,8 @@
   <div class="col col-right">
     <div class="panel">
       <h2>접근 파일 목록 <span class="tag" id="fcount"></span></h2>
+      <!-- Issue-1: 온디맨드 해시검색 마운트(파일목록 컨텍스트). #files 밖이라 renderFiles가 덮어쓰지 않음. -->
+      <div id="filehash"></div>
       <div class="files" id="files"></div>
     </div>
     <div class="panel detail">
@@ -106,9 +108,9 @@
   <div class="fmodal-card">
     <div class="fmodal-head"><h2 id="fmodal-title"></h2><button class="fmodal-x" id="fmodal-x" title="닫기">×</button></div>
     <div class="fmodal-body">
-      <div id="leaks" class="fm-pane" hidden></div>
       <div id="mcp" class="mcp fm-pane" hidden></div>
       <div id="retention" class="retention fm-pane" hidden></div>
+      <div id="attestation" class="attestation fm-pane" hidden></div>
     </div>
   </div>
 </div>

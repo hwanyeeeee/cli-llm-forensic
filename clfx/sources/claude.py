@@ -1,6 +1,9 @@
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+
+from clfx import roio
 
 
 @dataclass
@@ -18,14 +21,26 @@ class ClaudeSource:
         self.root = Path(root)
         self._on_file = on_file          # 파일 1개 읽기 시작 시 호출(진행률 카운트용). None=무동작.
 
-    def _iter_jsonl(self, path: Path):
-        if not path.exists():
+    def _iter_jsonl(self, path: Path, sha_out=None):
+        # exists() precheck 제거 → 직접 open 시도(slow UNC에서 파일당 syscall 1회 절감).
+        # OSError(없는 파일/권한 등)면 yield 없이 종료 — 기존 missing-file 케이스와 동일(무손실).
+        # on_file은 open 성공(실제 읽는 파일) 후에만 1회 발화 → 진행률 카운트 의미 보존.
+        # B-2: 모든 read는 roio._ro_open 경유(read-only 강제 + in-memory audit 기록).
+        # B-1: 바이너리 라인으로 읽어 raw 바이트 SHA-256을 같은 읽기서 누적(추가 읽기 0),
+        #      각 라인을 decode+strip 후 json.loads — jsonl(\n-종단) 1-기반 line·파싱 byte-identical.
+        #      sha_out(주어지면 호출자 소유 dict)에 끝까지 읽은 뒤 ["sha"]=hex 기록 → src 공유상태
+        #      없이 스레드별 분리(32-thread parse 병렬 안전). 못 열면 키 미설정(None 의미).
+        try:
+            f = roio._ro_open(path, "rb")
+        except OSError:
             return
         if self._on_file:
-            self._on_file(str(path))     # 실제로 읽는 파일만(존재) 1회 보고
-        with path.open(encoding="utf-8", errors="ignore") as f:
-            for i, line in enumerate(f, start=1):
-                line = line.strip()
+            self._on_file(str(path))     # 실제로 읽는(열린) 파일만 1회 보고
+        h = hashlib.sha256()
+        with f:
+            for i, raw in enumerate(f, start=1):
+                h.update(raw)                              # raw 바이트(개행 포함) 연결 == 정확한 파일 바이트
+                line = raw.decode("utf-8", errors="ignore").strip()
                 if not line:
                     continue
                 try:
@@ -33,6 +48,8 @@ class ClaudeSource:
                 except json.JSONDecodeError:
                     continue
                 yield RawRecord(str(path), i, obj)
+        if sha_out is not None:
+            sha_out["sha"] = h.hexdigest()                 # 끝까지 읽은 파일의 raw-바이트 해시 확정
 
     def history_records(self):
         yield from self._iter_jsonl(self.root / "history.jsonl")

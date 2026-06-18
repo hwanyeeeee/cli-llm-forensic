@@ -103,6 +103,14 @@ const SRC_LABEL={wsl:"WSL",windows:"Windows",other:"기타"};
 function originOf(e){const t=(e.tags||[]).find(x=>x.startsWith("origin:"));return t?t.slice(7):null;}
 function originLabels(){return [...new Set(EVENTS.map(originOf).filter(Boolean))].sort();}
 function inSrc(e){const o=originOf(e);if(o===null)return true;return !srcActive||srcActive.has(o);}  // origin 없는 이벤트(MOCK)는 항상 표시
+/* 서버집계 fetch에 붙일 ?sources= 조각. 전체선택(또는 null/빈) → ""(백엔드는 origins=None 동일경로·무손실회귀).
+   일부선택 → sep+"sources=a,b"(백엔드 _by_origins로 그 origin만 집계). sep는 그 URL의 첫 파라미터면 "?", 아니면 "&". */
+function srcParam(sep){
+  if(!srcActive||srcActive.size===0)return "";          // 미설정/빈 → 전체(서버 기본)
+  const all=originLabels();
+  if(all.length && srcActive.size>=all.length && all.every(l=>srcActive.has(l)))return "";  // 전부선택=전체(동일경로)
+  return sep+"sources="+encodeURIComponent([...srcActive].join(","));
+}
 function showTags(tags){return (tags||[]).filter(t=>!t.startsWith("origin:"));}  // origin: 태그는 배지서 숨김(필터·상세에만 사용)
 function renderSrcFilters(){
   const labels=originLabels(),box=$("#srcfilters");
@@ -113,13 +121,14 @@ function renderSrcFilters(){
 
 /* ---------- stats ---------- */
 function renderStats(){
-  // 점진부팅: EVENTS 로드 전엔 경량 /api/stats로 타일 즉시(무손실 — 로드 후 EVENTS 1패스와 같은 값).
-  if(LIVE && SRV_STATS && EVENTS.length===0){
+  // LIVE: 타일도 엔진 /api/stats 단일진실(소스토글 시 loadAggregates가 선택 origin으로 재요청 → 서버범위).
+  //   점진부팅(EVENTS 로드 전)에도 동일 경로 — SRV_STATS 그대로(JS 재집계 금지·다른 서버패널과 일관).
+  if(LIVE && SRV_STATS){
     $("#st-total").textContent=SRV_STATS.total; $("#st-bypass").textContent=SRV_STATS.bypass;
     $("#st-user").textContent=SRV_STATS.user;   $("#st-agent").textContent=SRV_STATS.agent;
     return;
   }
-  // 소스 토글 반영(EVENTS 기반). 11.7만 전량 1패스 집계(4중 filter 스캔 제거 — 멈춤 완화).
+  // !LIVE(MOCK/offline) 전용: 서버 없음 → EVENTS 기반 파생(소스 토글 inSrc 반영, 전량 1패스).
   let total=0,byp=0,u=0,a=0;
   for(const e of EVENTS){
     if(!inSrc(e))continue;
@@ -366,12 +375,15 @@ $("#filters").addEventListener("click",ev=>{
   const c=ev.target.closest(".fchip");if(!c)return;
   const f=c.dataset.f;active[f]=!active[f];c.setAttribute("aria-pressed",active[f]);renderTimeline();
 });
-$("#srcfilters").addEventListener("click",ev=>{
+$("#srcfilters").addEventListener("click",async ev=>{
   const c=ev.target.closest(".fchip.src");if(!c||!srcActive)return;
   const l=c.dataset.src;
   if(srcActive.has(l))srcActive.delete(l);else srcActive.add(l);
   c.setAttribute("aria-pressed",srcActive.has(l));
-  renderAll();   // 소스 토글 → 타임라인·통계 갱신(EVENTS 기반). 서버집계(히트맵/도넛/파일)는 전체 범위 유지.
+  // 소스 토글 → 선택 origin으로 서버집계 재요청(JS 재집계 금지·증거 단일진실). 캐시 SRV_* 재사용 금지(범위 변경).
+  // LIVE만 의미(MOCK은 srcActive=전체라 srcParam=""·재요청 무해). 재요청 후 전 패널 재렌더(타임라인은 inSrc 즉시반응).
+  if(LIVE) await loadAggregates();
+  renderAll();
 });
 $("#tlscroll").addEventListener("click",ev=>{
   const more=ev.target.closest(".more");
@@ -552,10 +564,8 @@ $("#scan-go").addEventListener("click",async()=>{
     while(polling){
       try{
         const pr=await (await fetch("/api/scan/progress")).json();
-        const pct=pr.total?Math.round(pr.done/pr.total*100):0;
         const sec=Math.round((Date.now()-t0)/1000);
-        let label=`파싱 중 ${pr.done}/${pr.total} 파일 (${pct}%) · 누적 ${pr.events||0}건 · 경과 ${sec}초`;
-        if(pct>=5 && pct<100){ const eta=Math.round(sec*(100-pct)/pct); label+=` · 예상 ${eta}초`; }
+        const {pct,label}=progressInfo(pr,sec);   // OPT-7: 단계 인지 라벨(구버전 자동 폴백)
         if(!pr.finished) showProgress(pct, label, true);
       }catch(_){}
       await new Promise(r=>setTimeout(r,300));
@@ -578,6 +588,33 @@ $("#scan-go").addEventListener("click",async()=>{
 
 /* ---------- util ---------- */
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+/* ---------- 스캔 진행률 라벨(OPT-7) ----------
+   서버 /api/scan/progress 가 stage/stage_done/stage_total/overall_percent 를 추가 제공하면
+   파싱 종료 후에도(forensic/mcp 등) 현재 단계명+비율로 계속 움직인다. 필드 부재(구버전 서버)면
+   기존 done/total 파싱 라벨로 폴백 — 파싱 단계 표시는 깨지 않는다. 순수 함수(테스트 가능).*/
+const STAGE_LABELS={parse:"파싱",mask:"마스킹",resolve:"경로해석","walk-tmp":"tmp 스캔",
+  hash:"아티팩트 해싱",attribution:"주체 대조",retention:"보존기간",mcp:"MCP 대조",finalize:"마무리"};
+// pr=progress payload, sec=경과초. {pct, label} 반환(pct는 바 폭). 부수효과 없음.
+function progressInfo(pr,sec){
+  pr=pr||{};
+  const hasStage=typeof pr.stage==="string" && pr.stage!=="";
+  if(hasStage){
+    // 신버전: 단계명 + 단계 비율. 바 폭은 overall_percent(파싱 후 100% 멈춤 회피).
+    const name=STAGE_LABELS[pr.stage]||pr.stage;
+    const sd=pr.stage_done||0, stt=pr.stage_total||0;
+    const ratio=stt?` ${sd}/${stt}`:"";
+    const op=(typeof pr.overall_percent==="number")?pr.overall_percent:0;
+    let label=`${name}${ratio} (${op}%) · 누적 ${pr.events||0}건 · 경과 ${sec}초`;
+    if(op>=5 && op<100){ const eta=Math.round(sec*(100-op)/op); label+=` · 예상 ${eta}초`; }
+    return {pct:op, label};
+  }
+  // 구버전 폴백: done/total 파싱 라벨(기존 동작 그대로).
+  const pct=pr.total?Math.round(pr.done/pr.total*100):0;
+  let label=`파싱 중 ${pr.done||0}/${pr.total||0} 파일 (${pct}%) · 누적 ${pr.events||0}건 · 경과 ${sec}초`;
+  if(pct>=5 && pct<100){ const eta=Math.round(sec*(100-pct)/pct); label+=` · 예상 ${eta}초`; }
+  return {pct, label};
+}
 
 /* ---------- 스캔 진행률 바 ---------- */
 function showProgress(pct,label,active){
@@ -616,23 +653,48 @@ function renderAll(){renderStats();renderHeatmap();renderDateJump();renderDonut(
 async function jget(url){const r=await fetch(url);if(!r.ok)throw new Error(url+" "+r.status);
   const d=await r.json();if(d&&d.error)throw new Error(d.error);return d;}
 async function loadAggregates(){
-  try{SRV_ACTIVITY=await jget("/api/activity?by=day");}catch(_){SRV_ACTIVITY=null;}
-  try{SRV_FILES=await jget("/api/files");}catch(_){SRV_FILES=null;}
-  try{SRV_KEYWORDS=await jget("/api/keywords");}catch(_){SRV_KEYWORDS=null;}
+  // OPT-8: 집계를 동시 fetch(직렬 대기 제거). 각 promise는 개별 catch로 null 회수 →
+  // 하나 실패해도 나머지를 비우지 않는다(기존 패널별 독립 fallback 동작 무손실 유지).
+  // 소스 토글 반영: 각 fetch에 srcParam을 그 URL의 첫 파라미터 여부에 맞는 sep로 붙인다.
+  // 전체선택/미설정이면 srcParam은 ""(백엔드 origins=None 동일경로 → byte-identical 무손실회귀).
+  // /api/stats도 같이 가져와 SRV_STATS를 서버범위로 갱신 — 네 패널 모두 엔진 단일진실(JS 재집계 금지).
+  const [s,a,f,k]=await Promise.all([
+    jget("/api/stats"+srcParam("?")).catch(()=>null),
+    jget("/api/activity?by=day"+srcParam("&")).catch(()=>null),
+    jget("/api/files"+srcParam("?")).catch(()=>null),
+    jget("/api/keywords"+srcParam("?")).catch(()=>null),
+  ]);
+  SRV_STATS=s; SRV_ACTIVITY=a; SRV_FILES=f; SRV_KEYWORDS=k;
 }
 
 /* ---------- 아티팩트 포렌식(해시 대조 + 주체 왜곡 보정) ----------
    엔진(/api/artifacts)이 단일 진실원천 — JS 재집계/재판정 금지, 값 그대로 그림. XSS: 모든 동적 문자열 esc(). */
 async function loadArtifacts(){
-  try{ const d=await jget("/api/artifacts"); renderLeaks(d); renderRetention(d.retention, d); }
-  catch(_){ $("#leaks").innerHTML='<div class="empty">아티팩트 분석 불러오기 실패</div>'; }
+  // Issue-1: 자동 유출패널 제거 — retention만 그린다(증거표식은 leakTmpPaths over d.hashes로 유지).
+  try{ const d=await jget("/api/artifacts"); renderRetention(d.retention, d); }
+  catch(_){ const box=$("#retention"); if(box) box.innerHTML='<div class="empty">아티팩트 분석 불러오기 실패</div>'; }
 }
-/* 뱃지 계산은 app.js, HTML 빌드는 ForensicViews(forensic-views.js) 단일 진실원천에 위임 — 중복 markup 금지. */
-function renderLeaks(d){
-  // 뱃지=유출 의심 클러스터 수만(tmp_only 내부중복 노이즈 제외 — #2a). 그 수>0이면 경고.
-  const leak=((d&&d.hashes)||[]).filter(c=>c.leak_suspect).length;
-  setFbadge("leaks", leak, leak>0);
-  ForensicViews.renderLeaks($("#leaks"), d);
+
+/* ---------- 읽기전용 증명(Chain of Custody) ----------
+   엔진/API(/api/attestation)가 단일 진실원천 — JS 재해싱/재판정 금지(값 그대로 렌더). HTML 빌드는 ForensicViews 위임.
+   개발 중 엔드포인트 부재 시 크래시 없이 placeholder(렌더 함수가 d=null 방어). */
+async function loadAttestation(){
+  const box=$("#attestation"); if(!box)return;
+  try{
+    const d=await jget("/api/attestation");
+    setFbadge("attestation", d.acquired_count||0, false);   // 뱃지=취득 건수(경보 아님 — 중립)
+    ForensicViews.renderAttestation(box, d);
+  }catch(_){ ForensicViews.renderAttestation(box, null); }   // 부재/실패 → placeholder(무크래시)
+}
+
+/* Issue-1: 온디맨드 해시검색 박스를 파일목록 컨텍스트(#filehash)에 1회만 마운트.
+   #files 밖이라 renderFiles innerHTML이 덮어쓰지 않음(재마운트 가드 — 이미 박스 있으면 skip).
+   박스는 브라우저측 SHA-256(ForensicViews.sha256Hex) → GET /api/hash-search?sha=<hex>(파일내용 전송 0·hex만). */
+function mountFileHashSearch(){
+  const el=$("#filehash"); if(!el)return;
+  if(el.querySelector(".hsbox"))return;        // 1회만(중복 마운트 금지)
+  el.innerHTML=ForensicViews.hashSearchBoxHTML("파일 선택 → 동일 해시 tmp 사본 검색");
+  ForensicViews.wireHashSearch(el);
 }
 
 /* ---------- MCP 연결 흔적(설정 vs 실사용) + tmp 보존기간 ----------
@@ -714,10 +776,10 @@ let openFmodal=function(){};
 function initForensicModals(){
   const modal=document.getElementById("fmodal"); if(!modal)return;
   const title=document.getElementById("fmodal-title");
-  const TITLES={leaks:"유출·복사 의심 · 해시 대조",
-                mcp:"MCP 연결 흔적 · 설정 vs 실사용", retention:"tmp 보존기간 · 만료 잔여"};
+  const TITLES={mcp:"MCP 연결 흔적 · 설정 vs 실사용", retention:"tmp 보존기간 · 만료 잔여",
+                attestation:"읽기전용 증명 · Chain of Custody"};
   const panes=modal.querySelectorAll(".fm-pane");
-  // 해시검색 박스+wiring은 ForensicViews.renderLeaks가 #leaks pane 안에서 자체 소유(DRY) — app.js는 추가 작업 불요.
+  // Issue-1: 해시검색 박스는 파일목록 컨텍스트(#filehash)로 이전 — boot서 1회 마운트(아래). 모달은 mcp/retention/attestation만.
   openFmodal=function(key){
     title.textContent=TITLES[key]||key;
     panes.forEach(p=>{p.hidden=(p.id!==key);});
@@ -758,8 +820,10 @@ async function boot(){
     EVENTS=[]; TARGET_IDX=new Map();          // 아직 이벤트 없음(타임라인 백그라운드 로드)
     srcActive=null;                           // 집계는 전체 기준(소스필터는 EVENTS 로드 후 활성)
     renderStats();renderHeatmap();renderDonut();renderDateJump();renderFiles();
+    mountFileHashSearch();                     // Issue-1: 온디맨드 해시검색 박스 1회 마운트(#filehash — renderFiles 영향 밖)
     loadArtifacts();                          // 아티팩트 패널(점진 — EVENTS 무관, await 안 함)
     loadMcp();                                 // MCP 연결흔적 패널(점진 — await 안 함)
+    loadAttestation();                         // 읽기전용 증명 패널(점진 — await 안 함)
     $("#tlscroll").innerHTML='<div class="empty">타임라인 불러오는 중… (전체 이벤트 로드)</div>';
     setCaseChip(true);
     addMsg("ai",`기록 로드 완료. 총 <b>${SRV_STATS.total}</b>건 · bypass 모드 자율 행위 <b>${SRV_STATS.bypass}</b>건. 무엇을 조사할까요?`);
@@ -815,3 +879,15 @@ boot();
   });
   window.addEventListener("pointerup",()=>{drag=false;});
 })();
+
+/* 테스트 전용 노출(브라우저서는 module 미정의 → no-op). 순수 함수 + 소스집계 검증용 훅.
+   __setSrcActive/__setEvents/__setLive는 모듈 let 바인딩을 갱신(클로저가 값 아닌 바인딩을 캡처) —
+   srcParam/loadAggregates의 실제 URL 빌드를 fetch 스파이로 검증하기 위함. 브라우저 동작엔 무영향. */
+if(typeof module!=="undefined" && module.exports){
+  module.exports={
+    progressInfo, STAGE_LABELS, srcParam, loadAggregates,
+    __setSrcActive:v=>{srcActive=v;},
+    __setEvents:v=>{EVENTS=v;},
+    __setLive:v=>{LIVE=v;},
+  };
+}
