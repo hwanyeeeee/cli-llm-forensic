@@ -650,8 +650,20 @@ async function showScan(){
 /* ---------- boot: 서버 연결 시도 → 실데이터, 실패 시 샘플 ---------- */
 function renderAll(){renderStats();renderHeatmap();renderDateJump();renderDonut();renderFiles();renderTimeline();}
 /* 엔진 집계 엔드포인트 — 패널별 독립 try/catch(하나 실패해도 대시보드 유지, 그 패널만 파생 fallback) */
-async function jget(url){const r=await fetch(url);if(!r.ok)throw new Error(url+" "+r.status);
-  const d=await r.json();if(d&&d.error)throw new Error(d.error);return d;}
+const FETCH_TIMINGS=[];   // Phase1 계측: {url, ms} — perfReport 콘솔 표시용(데이터 무영향)
+async function jget(url){const t0=performance.now();try{
+  const r=await fetch(url);if(!r.ok)throw new Error(url+" "+r.status);
+  const d=await r.json();if(d&&d.error)throw new Error(d.error);return d;
+}finally{FETCH_TIMINGS.push({url:url,ms:Math.round(performance.now()-t0)});}}
+function perfReport(){
+  try{
+    const rows=performance.getEntriesByType("measure")
+      .filter(m=>m.name.indexOf("clfx-")===0)
+      .map(m=>({name:m.name,ms:Math.round(m.duration)}));
+    if(rows.length)console.table(rows);
+    if(FETCH_TIMINGS.length)console.table(FETCH_TIMINGS);
+  }catch(_){}
+}
 async function loadAggregates(){
   // OPT-8: 집계를 동시 fetch(직렬 대기 제거). 각 promise는 개별 catch로 null 회수 →
   // 하나 실패해도 나머지를 비우지 않는다(기존 패널별 독립 fallback 동작 무손실 유지).
@@ -804,6 +816,7 @@ function setCaseChip(live){
 }
 
 async function boot(){
+  try{performance.mark("clfx-boot-start");}catch(_){}
   // 즉시 로딩 표시(await 전 — 빈 0화면 방지). 데이터 도착 시 각 패널이 차례로 덮어씀.
   ["#st-total","#st-bypass","#st-user","#st-agent"].forEach(s=>{const el=$(s); if(el) el.textContent="…";});
   ["#bars","#donut","#files","#tlscroll"].forEach(s=>{const el=$(s); if(el) el.innerHTML='<div class="empty">분석 데이터 불러오는 중…</div>';});
@@ -828,6 +841,7 @@ async function boot(){
     setCaseChip(true);
     addMsg("ai",`기록 로드 완료. 총 <b>${SRV_STATS.total}</b>건 · bypass 모드 자율 행위 <b>${SRV_STATS.bypass}</b>건. 무엇을 조사할까요?`);
     renderSuggest(); $("#rescan").hidden=false;
+    try{performance.mark("clfx-boot-stage1");performance.measure("clfx-boot-stage1","clfx-boot-start");}catch(_){}
     // 2단계(백그라운드): 전체 이벤트(무거움) → 타임라인/소스필터/상세연결. await 안 함(대시보드 이미 떠 있음).
     loadEventsInBackground();
   }else{
@@ -852,6 +866,8 @@ async function loadEventsInBackground(){
   renderDateJump();     // EVENTS 로드 후에도 LIVE면 SRV_ACTIVITY 유지(동일)
   renderFiles();        // TARGET_IDX 채워진 뒤 재렌더 → 파일행 상세연결(idx) 활성
   renderTimeline();     // 카드 채움(가상화: 최신 날만 자동 펼침)
+  try{performance.mark("clfx-boot-stage2");performance.measure("clfx-boot-stage2","clfx-boot-start");}catch(_){}
+  perfReport();
 }
 
 initGutters();
@@ -886,6 +902,7 @@ boot();
 if(typeof module!=="undefined" && module.exports){
   module.exports={
     progressInfo, STAGE_LABELS, srcParam, loadAggregates,
+    FETCH_TIMINGS, perfReport,
     __setSrcActive:v=>{srcActive=v;},
     __setEvents:v=>{EVENTS=v;},
     __setLive:v=>{LIVE=v;},
