@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from clfx.query.llm import route_intent, summarize, answer, answer_overview, answer_timeline, make_llm, search_terms
@@ -266,34 +267,46 @@ def forensic_scan(events_with_root, roots=None, tmp_dirs=None, on_progress=None)
         if on_progress is not None:
             on_progress(stage, done, total)
 
+    timings = {}
+
     # 1) walk-tmp: 단일 인벤토리(재-walk 금지 — 이후 전 단계 공유).
     _emit("walk-tmp", 0, 1)
+    _t = time.perf_counter()
     inventory = artifacts.build_tmp_inventory(tmp_dirs)
+    timings["walk_tmp_s"] = round(time.perf_counter() - _t, 3)
     _emit("walk-tmp", 1, 1)
 
     # 2) resolve: (root,target) 해석 캐시 1회(hash_clusters·attribution_join 공유 — 중복 resolve 제거).
     _emit("resolve", 0, 1)
+    _t = time.perf_counter()
     resolved = artifacts.build_reference_resolution(events_with_root)
+    timings["resolve_s"] = round(time.perf_counter() - _t, 3)
     _emit("resolve", 1, 1)
 
     # 3) hash: size-prefilter 해싱(N/M 진행은 hash_clusters의 on_hash_progress가 forward).
     _emit("hash", 0, 0)
+    _t = time.perf_counter()
     out = artifacts.hash_clusters(events_with_root, roots=roots, tmp_dirs=tmp_dirs,
                                   inventory=inventory, resolved=resolved,
                                   on_hash_progress=lambda d, t: _emit("hash", d, t))
+    timings["hash_s"] = round(time.perf_counter() - _t, 3)
 
     # 4) attribution(공유 resolved).
     _emit("attribution", 0, 1)
+    _t = time.perf_counter()
     out["attribution"] = artifacts.attribution_join(events_with_root, resolved=resolved)
+    timings["attribution_s"] = round(time.perf_counter() - _t, 3)
     _emit("attribution", 1, 1)
 
     # 5) retention(공유 inventory — 재-stat 금지; referenced map으로 transcript 귀속 JOIN).
     #    referenced는 hash_clusters가 이미 만든 rec — 재집계/재해시 없이 재사용.
     _emit("retention", 0, 1)
+    _t = time.perf_counter()
     ret = artifacts.tmp_retention(tmp_dirs, inventory=inventory,
                                   referenced=out.get("referenced"))
     out["retention"] = ret["retention"]
     out["errors"] = sorted(out["errors"] + ret["errors"], key=lambda e: e["path"])  # 보존 스캔 실패도 병합
+    timings["retention_s"] = round(time.perf_counter() - _t, 3)
     _emit("retention", 1, 1)
 
     # referenced는 JOIN에만 쓰고 반환 KEY SET서 제거(/api/artifacts 비대화 방지·contract 불변).
@@ -301,6 +314,8 @@ def forensic_scan(events_with_root, roots=None, tmp_dirs=None, on_progress=None)
 
     # server lazy 전수 reverse-index 빌드용(unique-size 포함). /api/artifacts엔 server가 pop해 비노출.
     out["tmp_inventory"] = inventory["files"]
+    # Phase1 계측(I6): 비결정 타이밍은 별도 키 — server가 pop해 /api/artifacts 미노출.
+    out["timings"] = timings
     return out
 
 

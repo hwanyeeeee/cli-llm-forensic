@@ -514,4 +514,5 @@ def test_forensic_scan_key_set_unchanged_with_referenced_popped(tmp_path, monkey
     assert set(out) == {"scanned", "missing", "tmp_scanned", "tmp_roots",
                         "errors", "hashes", "attribution", "retention", "tmp_hash_index",
                         "hashed", "stat_verified", "content_unread",
-                        "tmp_inventory", "acquired_hashes", "stat_only"}
+                        "tmp_inventory", "acquired_hashes", "stat_only",
+                        "timings"}   # Phase1 계측(I6: 별도 키 — 값 비교 금지)

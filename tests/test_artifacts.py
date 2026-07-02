@@ -308,7 +308,8 @@ def test_forensic_scan_contract():
                         "errors", "hashes", "attribution", "retention", "tmp_hash_index",
                         "hashed", "stat_verified", "content_unread",
                         "tmp_inventory",
-                        "acquired_hashes", "stat_only"}   # OPT-3 투명 카운터 + OPT-1 lazy-search 인벤토리 + B-1 manifest
+                        "acquired_hashes", "stat_only",
+                        "timings"}   # OPT-3 투명 카운터 + OPT-1 lazy-search 인벤토리 + B-1 manifest + Phase1 계측(I6: 값 비교 금지)
     assert out["hashes"] == [] and out["attribution"] == [] and out["errors"] == []
     assert out["retention"] == [] and out["tmp_hash_index"] == {}
     assert out["hashed"] == 0 and out["stat_verified"] == 0 and out["content_unread"] == 0

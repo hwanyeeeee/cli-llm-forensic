@@ -251,8 +251,10 @@ def make_handler(state):
                     state.engine = eng                       # 엔진 교체
                     acquired_hashes = {}
                     stat_only = []
+                    scan_timings = {}
                     try:                                     # FS 실패해도 스캔 응답은 성공(빈 계약 유지)
                         full = forensic_scan(ev_root, roots=roots, on_progress=_fprog)
+                        scan_timings = full.pop("timings", {})   # I6: 증거 계약 밖으로 분리(Task2서 state.scan에 합류)
                         # tmp_hash_index/tmp_inventory 둘 다 pop — /api/artifacts엔 안 실림(분리).
                         full.pop("tmp_hash_index", None)
                         state.tmp_inventory = full.pop("tmp_inventory", [])
