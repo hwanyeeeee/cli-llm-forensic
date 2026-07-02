@@ -83,6 +83,7 @@ def make_handler(state):
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, body_bytes, code, content_type):
+            self._sent_bytes = len(body_bytes)          # Phase1 계측: 응답 크기(_timed가 로그)
             self.send_response(code)
             ct = content_type + ("; charset=utf-8" if (content_type.startswith("text/") or content_type == "application/json") else "")
             self.send_header("Content-Type", ct)
@@ -106,6 +107,23 @@ def make_handler(state):
             self._send(body, 200, _CT.get(ext, "application/octet-stream"))
 
         def do_GET(self):
+            self._timed("GET", self._route_get)
+
+        def do_POST(self):
+            self._timed("POST", self._route_post)
+
+        def _timed(self, method, route):
+            """Phase1 계측: 요청별 소요·응답크기 stderr 1줄(증거 페이로드 무관 — I6)."""
+            t0 = time.perf_counter()
+            self._sent_bytes = 0
+            try:
+                route()
+            finally:
+                ms = int((time.perf_counter() - t0) * 1000)
+                path = urlparse(self.path).path
+                print(f"[clfx.timing] {method} {path} {ms}ms {self._sent_bytes}B", file=sys.stderr)
+
+        def _route_get(self):
             u = urlparse(self.path)
             if u.path in _ROUTES:
                 self._static(_ROUTES[u.path])
@@ -199,6 +217,7 @@ def make_handler(state):
                                      'attachment; filename="acquisition-hash-manifest.csv"')
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
+                    self._sent_bytes = len(body)         # Phase1 계측: _send 비경유 유일 경로
                     self.wfile.write(body)
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
@@ -213,7 +232,7 @@ def make_handler(state):
                 return
             self._json({"error": "not found"}, 404)
 
-        def do_POST(self):
+        def _route_post(self):
             u = urlparse(self.path)
             if u.path == "/api/scan":
                 try:

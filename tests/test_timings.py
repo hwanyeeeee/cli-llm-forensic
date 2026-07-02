@@ -77,3 +77,31 @@ def test_scan_progress_exposes_timings():
                 "attribution_s", "retention_s", "mcp_s"} <= set(t)
     finally:
         httpd.shutdown()
+
+
+import time as _time
+
+from clfx.event import Event, Source
+
+
+def _mini_engine():
+    return QueryEngine([
+        Event("2026-06-11T09:00:00Z", "claude", "s1", "agent", "read", "a.txt",
+              "x", Source("h.jsonl", 1), []),
+    ])
+
+
+def test_request_timing_logged_to_stderr(capsys):
+    httpd = _server_with(ServerState(_mini_engine()))
+    try:
+        _get(httpd, "/api/stats")
+        err = ""
+        for _ in range(50):                      # 핸들러 스레드 print 플러시 대기(비플레이키)
+            err += capsys.readouterr().err
+            if "[clfx.timing] GET /api/stats" in err:
+                break
+            _time.sleep(0.02)
+        assert "[clfx.timing] GET /api/stats" in err
+        assert "ms" in err and "B" in err
+    finally:
+        httpd.shutdown()
