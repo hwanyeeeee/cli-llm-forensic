@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -41,7 +42,8 @@ class ServerState:
         self.engine = engine
         # OPT-7: 단계 진행 필드 추가(기존 키 유지 — 폴링·테스트 불변).
         self.scan = {"total": 0, "done": 0, "events": 0, "current": None, "finished": True, "error": None,
-                     "stage": None, "stage_done": 0, "stage_total": 0, "overall_percent": 100}
+                     "stage": None, "stage_done": 0, "stage_total": 0, "overall_percent": 100,
+                     "timings": {}}
         # 아티팩트 포렌식 결과(POST /api/scan서 forensic_scan으로 갱신, GET /api/artifacts가 읽음).
         # FS 분석 실패해도 빈 계약 유지(스캔 응답은 성공).
         self.artifacts = {"scanned": 0, "missing": 0, "tmp_scanned": 0, "tmp_roots": [],
@@ -224,7 +226,8 @@ def make_handler(state):
                     #   parse → resolve → walk-tmp → hash → attribution → retention → mcp → finalize.
                     state.scan = {"total": len(roots), "done": 0, "events": 0,
                                   "current": None, "finished": False, "error": None,
-                                  "stage": "parse", "stage_done": 0, "stage_total": 0, "overall_percent": 0}
+                                  "stage": "parse", "stage_done": 0, "stage_total": 0, "overall_percent": 0,
+                                  "timings": {}}
                     # 단계 누적 가중치(합=100). 단계 내부 진행은 그 가중치 비율로 환산.
                     _STAGE_BASE = {"parse": 0, "walk-tmp": 40, "resolve": 50, "hash": 55,
                                    "attribution": 85, "retention": 90, "mcp": 95, "finalize": 100}
@@ -277,17 +280,24 @@ def make_handler(state):
                             {"acquired_hashes": acquired_hashes, "stat_only": stat_only})
                     except Exception:
                         state.attestation = dict(_ATTEST_EMPTY)
+                    mcp_s = 0.0
                     try:                                     # MCP 실패해도 스캔 응답은 성공(빈 계약 유지)
+                        _t_mcp = time.perf_counter()
                         state.mcp = mcp_payload(eng, roots, on_progress=_fprog)
+                        mcp_s = round(time.perf_counter() - _t_mcp, 3)
                     except Exception:
                         state.mcp = {"configs": [], "usage": [], "configured_unused": [],
                                      "used_unconfigured": [], "errors": []}
                     from clfx.query.llm import prewarm
                     threading.Thread(target=prewarm, daemon=True).start()   # 모델 미리 로드(쿼리 전 워밍, fire-and-forget)
                     evs = eng.events
+                    # Phase1 계측(I6): parse/forensic/mcp 타이밍 합류 — 진행판 전용 필드(증거 계약 밖).
+                    all_timings = {**getattr(eng, "parse_timings", {}), **scan_timings, "mcp_s": mcp_s}
                     state.scan.update(done=state.scan["total"], events=len(evs),
                                       finished=True, current=None,
-                                      stage="finalize", stage_done=1, stage_total=1, overall_percent=100)
+                                      stage="finalize", stage_done=1, stage_total=1, overall_percent=100,
+                                      timings=all_timings)
+                    print("[clfx.timing] scan " + json.dumps(all_timings, sort_keys=True), file=sys.stderr)
                     self._json({"ok": True, "count": len(evs), "by_origin": by})
                 except Exception as e:
                     state.scan.update(finished=True, error=str(e))

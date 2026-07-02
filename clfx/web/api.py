@@ -180,7 +180,9 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     if not roots:
         if on_progress:
             on_progress(0, 0, 0, None)
-        return (QueryEngine([]), [], {}, {}) if collect_artifacts else QueryEngine([])
+        eng0 = QueryEngine([])
+        eng0.parse_timings = {"parse_wall_s": 0.0, "enrich_s": 0.0}   # Phase1 계측(속성 부착 — arity 불변)
+        return (eng0, [], {}, {}) if collect_artifacts else eng0
     srcs = [ClaudeSource(r) for r in roots]
     file_lists = [s.jsonl_files() for s in srcs]            # [history(존재시), *sorted transcripts]
     hists = [s.root / "history.jsonl" for s in srcs]
@@ -206,12 +208,15 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
         return ri, fi, evs, byp, sha
 
     evidence_manifest = {}                                  # B-1: str(path) → sha256(읽은 jsonl 증거파일 전수)
+    _t_parse = time.perf_counter()
     with ThreadPoolExecutor(max_workers=min(32, max(1, len(tasks)))) as ex:  # OPT-8: 32 동시 파싱
         for ri, fi, evs, byp, sha in ex.map(_work, tasks):  # 결과는 메인스레드서 수집(results/bypass 경합 없음)
             results[(ri, fi)] = evs
             bypass_by_root[ri] |= byp                       # set union — 순서무관 결정적
             if sha is not None:                             # 못 연 파일(sha None)은 매니페스트 제외(콘텐츠 미판독)
                 evidence_manifest[str(tasks_path[(ri, fi)])] = sha
+    parse_wall = time.perf_counter() - _t_parse
+    t_enrich = 0.0
     events = []
     ev_root = []                                            # collect_artifacts=True일 때만 채워 반환
     by_origin = {}                                          # OPT-8: origin별 카운트(조립 루프서 동시 누적)
@@ -224,7 +229,9 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
                 if tag not in e.tags:
                     e.tags.append(tag)                      # origin 태그 먼저(parse_source_tagged와 동일 순서)
                 root_evs.append(e)
+        _t = time.perf_counter()
         enrich(root_evs, srcs[ri], bypass=bypass_by_root[ri])   # 수집된 bypass로 태깅(재읽기 X)
+        t_enrich += time.perf_counter() - _t
         events.extend(root_evs)
         if collect_artifacts:
             ev_root.extend((e, str(root)) for e in root_evs)    # enrich 끝난 최종 상태 객체 + root 문자열
@@ -237,6 +244,8 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     if on_progress:
         on_progress(total_files, total_files, len(events), None)
     engine = QueryEngine(events)
+    # Phase1 계측(I6): 속성 부착(evidence_manifest와 같은 패턴 — 반환 arity·이벤트 불변).
+    engine.parse_timings = {"parse_wall_s": round(parse_wall, 3), "enrich_s": round(t_enrich, 3)}
     # B-1 acquisition manifest(증거 jsonl 파일 전수): str(path)→sha256(정렬). 추가 읽기 없이
     #   parse 단계서 누적한 raw-바이트 해시. 튜플 arity는 불변 — 엔진 속성으로 부착(회귀 안전).
     engine.evidence_manifest = {p: evidence_manifest[p] for p in sorted(evidence_manifest)}

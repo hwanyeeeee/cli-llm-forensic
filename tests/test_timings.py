@@ -51,3 +51,29 @@ def test_artifacts_payload_has_no_timings():
         assert "timings" not in json.loads(body)
     finally:
         httpd.shutdown()
+
+
+def test_scan_to_engine_attaches_parse_timings():
+    eng = scan_to_engine(["tests/fixtures/dot-claude"])
+    t = eng.parse_timings
+    assert set(t) == {"parse_wall_s", "enrich_s"}
+    assert all(isinstance(v, float) and v >= 0.0 for v in t.values())
+
+
+def test_scan_to_engine_empty_roots_parse_timings():
+    eng = scan_to_engine([])
+    assert eng.parse_timings == {"parse_wall_s": 0.0, "enrich_s": 0.0}
+
+
+def test_scan_progress_exposes_timings():
+    state = ServerState(QueryEngine([]))
+    httpd = _server_with(state)
+    try:
+        code, _ = _post(httpd, "/api/scan", {"roots": ["tests/fixtures/dot-claude"]})
+        assert code == 200
+        _, body = _get(httpd, "/api/scan/progress")
+        t = json.loads(body)["timings"]
+        assert {"parse_wall_s", "enrich_s", "walk_tmp_s", "resolve_s", "hash_s",
+                "attribution_s", "retention_s", "mcp_s"} <= set(t)
+    finally:
+        httpd.shutdown()
