@@ -1,5 +1,6 @@
 import json
 import re
+import time
 import urllib.request
 from urllib.parse import urlparse
 
@@ -403,6 +404,7 @@ class OllamaLLM:
         self.model = model
         self.host = _check_host(host).rstrip("/")   # 로컬만 허용(증거 외부전송 차단·P0)
         self.timeout = timeout
+        self.last_timing = None              # Phase1 계측: 직전 complete의 {"network_ms": int}
 
     def complete(self, prompt, system=None):
         # /api/chat 사용 — 인스트럭트 모델의 채팅 템플릿을 ollama가 적용(/api/generate raw 프롬프트는
@@ -421,8 +423,10 @@ class OllamaLLM:
         }).encode("utf-8")
         req = urllib.request.Request(self.host + "/api/chat", data=body,
                                      headers={"Content-Type": "application/json"})
+        _t0 = time.perf_counter()
         with urllib.request.urlopen(req, timeout=self.timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
+        self.last_timing = {"network_ms": int((time.perf_counter() - _t0) * 1000)}
         msg = data.get("message") or {}
         content = (msg.get("content") or "").strip()
         if content:

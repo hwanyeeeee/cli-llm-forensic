@@ -91,6 +91,43 @@ def _mini_engine():
     ])
 
 
+import urllib.request as _ureq
+
+from clfx.web.api import query_payload
+from clfx.query.llm import OllamaLLM
+
+
+def test_query_payload_timings_no_llm():
+    out = query_payload(_mini_engine(), "타임라인 보여줘", llm=None)
+    t = out["timings"]
+    assert {"intent_ms", "search_ms", "llm_ms", "total_ms"} <= set(t)
+    assert all(isinstance(v, int) and v >= 0 for v in t.values())
+    assert out["op"] == "timeline" and out["count"] == 1      # 기존 계약 불변
+
+
+def test_query_payload_timings_cli_no_summary():
+    # answer_only_summary=True + 비요약 intent → LLM 비호출 경로에서도 timings 존재.
+    out = query_payload(_mini_engine(), "a.txt 누가 읽었어?", llm=None, answer_only_summary=True)
+    assert out["summary"] is None
+    assert {"intent_ms", "search_ms", "llm_ms", "total_ms"} <= set(out["timings"])
+
+
+def test_ollama_complete_records_network_ms(monkeypatch):
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return json.dumps({"message": {"content": "답"}}).encode("utf-8")
+
+    monkeypatch.setattr(_ureq, "urlopen", lambda req, timeout=None: FakeResp())
+    llm = OllamaLLM()
+    assert llm.last_timing is None
+    assert llm.complete("질문") == "답"
+    assert isinstance(llm.last_timing["network_ms"], int) and llm.last_timing["network_ms"] >= 0
+
+
 def test_request_timing_logged_to_stderr(capsys):
     httpd = _server_with(ServerState(_mini_engine()))
     try:

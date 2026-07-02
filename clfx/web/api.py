@@ -64,10 +64,13 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origin
     이 디스패치가 op→engine 매핑의 단일 진실원천(cli.cmd_query도 이걸 쓴다).
     llm 미지정=make_llm()(웹 copilot, 항상 LLM 답). llm=None=digest(테스트, ollama 비호출).
     answer_only_summary=True면 요약 intent에만 answer(CLI용 — 비요약은 LLM 비호출·summary None).
-    origins(set) 주어지면 체크된 플랫폼(origin)만 답변 근거 — 파싱은 전량, 답변 범위만 좁힘(무손실)."""
+    origins(set) 주어지면 체크된 플랫폼(origin)만 답변 근거 — 파싱은 전량, 답변 범위만 좁힘(무손실).
+    반환 timings(I6): intent/search/llm/total ms — 비결정 계측값, 증거(events/summary)와 분리."""
+    _t0 = time.perf_counter()
     intent = route_intent(q)
     op = intent["op"]
     a = intent.get("actor")               # §3: 주체 필터(None=전체)
+    _t_intent = time.perf_counter()
     if op == "who_did":
         res = engine.who_did(intent["action"], intent.get("target", ""), actor=a)
     elif op == "secrets":
@@ -92,6 +95,8 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origin
                     break
             # 전부 0건이거나 과매치뿐 → res 빈 채 아래 overview 폴백(순수 개요질문 의도된 분기)
     res = _by_origins(res, origins)               # ← 체크된 플랫폼만(답변 범위)
+    _t_search = time.perf_counter()
+    use_llm = None
     if answer_only_summary and not intent.get("summarize"):
         summary = None                            # CLI 비요약 → LLM/답 없음(make_llm 비호출)
     else:
@@ -104,9 +109,18 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origin
             summary = answer_overview(q, _by_origins(engine.events, origins), llm=use_llm)
         else:
             summary = answer(q, res, llm=use_llm) # 검색된 res만 근거. ollama 없으면 digest.
+    _t_end = time.perf_counter()
+    # Phase1 계측(I6): 비결정 ms — 증거(events/summary/count)와 분리된 별도 키.
+    timings = {"intent_ms": int((_t_intent - _t0) * 1000),
+               "search_ms": int((_t_search - _t_intent) * 1000),
+               "llm_ms": int((_t_end - _t_search) * 1000),
+               "total_ms": int((_t_end - _t0) * 1000)}
+    lt = getattr(use_llm, "last_timing", None)
+    if lt and isinstance(lt.get("network_ms"), int):
+        timings["llm_network_ms"] = lt["network_ms"]
     return {"op": op, "intent": intent, "actor": a,
             "events": [e.to_dict() for e in res], "count": len(res),
-            "summary": summary}
+            "summary": summary, "timings": timings}
 
 
 def _stats_build(events):
