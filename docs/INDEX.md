@@ -46,4 +46,5 @@
 | `superpowers/plans/2026-06-18-clfx-B-아티팩트-해시귀속.md` | B단계 ①+④ 구현 플랜(read-only FS 해시대조·복제유출탐지·FS↔transcript JOIN 주체왜곡보정, Task1~6 TDD) |
 | `superpowers/plans/2026-06-18-clfx-C-MCP통합-tmp보존.md` | C단계 ⑧ 구현 플랜(MCP 설정·실사용 통합·used_unconfigured 신호 + tmp 보존기간, Prefetch 보류, Task1~10 TDD) |
 | `superpowers/specs/2026-07-02-clfx-성능개선-design.md` | 성능개선 설계 — 계측 우선 2-페이즈 + sqlite3 케이스 파일 + 표적 백로그(gzip·인덱스·LLM 스트리밍), 불변식 I1~I6 |
+| `superpowers/plans/2026-07-02-clfx-성능개선-P1-계측.md` | Phase 1 계측 하네스 구현 플랜(스캔 timings·요청 로그·LLM timings·프런트 marks·bench.py, Task 1~6 TDD) |
 | `plan.md` / `STATE.md` | 개발 진행판 (개발 시작 후) |
