@@ -59,6 +59,14 @@ def _origins_key(origins):
     return "all" if not origins else ",".join(sorted(origins))
 
 
+def _remote_root(root):
+    """O9: 지연-계층(remote-ish) root 판정 — 스레드 중첩이 이득인 경로.
+    UNC(\\wsl.localhost·\\wsl$ 등 //로 시작)와 /mnt/(WSL drvfs)는 I/O 지연 지배 → 스레드풀.
+    네이티브 FS는 GIL 경합으로 32스레드가 순차 대비 +64% 손해(perf-baseline.md 실측) → 순차."""
+    r = str(root).replace("\\", "/").lower()
+    return r.startswith("//") or r.startswith("/mnt/")
+
+
 def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origins=None):
     """자연어 질의 → op 판정(route_intent) → engine 실행 → dict.
     이 디스패치가 op→engine 매핑의 단일 진실원천(cli.cmd_query도 이걸 쓴다).
@@ -223,12 +231,22 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
 
     evidence_manifest = {}                                  # B-1: str(path) → sha256(읽은 jsonl 증거파일 전수)
     _t_parse = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=min(32, max(1, len(tasks)))) as ex:  # OPT-8: 32 동시 파싱
-        for ri, fi, evs, byp, sha in ex.map(_work, tasks):  # 결과는 메인스레드서 수집(results/bypass 경합 없음)
+    remote_tasks = [t for t in tasks if _remote_root(roots[t[0]])]
+    native_tasks = [t for t in tasks if not _remote_root(roots[t[0]])]
+
+    def _collect(res_iter):
+        for ri, fi, evs, byp, sha in res_iter:      # 수집은 메인스레드(경합 없음) — 기존과 동일
             results[(ri, fi)] = evs
-            bypass_by_root[ri] |= byp                       # set union — 순서무관 결정적
-            if sha is not None:                             # 못 연 파일(sha None)은 매니페스트 제외(콘텐츠 미판독)
+            bypass_by_root[ri] |= byp
+            if sha is not None:
                 evidence_manifest[str(tasks_path[(ri, fi)])] = sha
+
+    # O9: 네이티브 root는 순차(GIL 경합 제거 — 실측 12.2s vs 32스레드 19.9s), 원격 root만 스레드풀.
+    # 결과는 (ri,fi) 키로 수집 → 조립 순서는 아래 루프가 결정(실행 순서 무관·결정적, I2 등가성 유지).
+    _collect(map(_work, native_tasks))
+    if remote_tasks:
+        with ThreadPoolExecutor(max_workers=min(32, len(remote_tasks))) as ex:  # OPT-8: UNC 지연 중첩
+            _collect(ex.map(_work, remote_tasks))
     parse_wall = time.perf_counter() - _t_parse
     t_enrich = 0.0
     events = []
