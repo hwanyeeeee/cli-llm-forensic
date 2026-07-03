@@ -109,7 +109,10 @@ def test_delegate_eligible_gates():
 
 def test_build_script_bundles_helper_source():
     # frozen exe에서 helper_source_dir()가 _MEIPASS/clfx_src를 찾음 — 빌드가 소스를 동봉해야 함.
+    # 단일 진실원천 = build-exe.bat(tracked). AgenTrace.spec은 bat가 재생성하는 산출물이라
+    # gitignore(*.spec) — fresh clone엔 없다. 존재할 때만 정합성 검사(이식성).
     bat = (REPO / "packaging" / "build-exe.bat").read_text(encoding="utf-8", errors="ignore")
     assert 'clfx;clfx_src' in bat
-    spec = (REPO / "AgenTrace.spec").read_text(encoding="utf-8", errors="ignore")
-    assert "clfx_src" in spec
+    spec_path = REPO / "AgenTrace.spec"
+    if spec_path.exists():
+        assert "clfx_src" in spec_path.read_text(encoding="utf-8", errors="ignore")
