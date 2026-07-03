@@ -45,12 +45,20 @@ LLM 측: 질의 후 `/api/query` 응답의 `timings`(intent/search/llm/total, ll
 | mcp_s | 0.003 | — |
 | total_s | 1.183 | 100% |
 
-## 환경 A-2 — Windows→WSL UNC (\\wsl.localhost, exe 최악 경로) — 측정 대기
+## 환경 A-2 — Windows→WSL UNC (\\wsl.localhost, exe 최악 경로) — **측정 불가(UNC 고장)**
 
-- 실행: `python scripts\bench.py \\wsl.localhost\Ubuntu\home\best1pjh\.claude --repeat 1` (**WSL 기동 상태에서**)
-- 주의: WSL 꺼진 상태로 UNC 접근 시 무한 대기처럼 보임(1차 시도가 밤새 무출력 — WSL 다운 추정). bench 첫 출력은 run 1 완료 후에 나옴.
+- 측정 시도 결과: 이 기기에서 Windows→WSL 파일공유 자체가 현재 고장 — `\\wsl.localhost\Ubuntu\...`·`\\wsl$\Ubuntu\...` 둘 다 "The specified path is invalid" (2026-07-03, WSL 기동 상태에서도). 6월 실측 당시(exe 42.8s)엔 동작했음 — 그 사이 깨짐.
+- 복구: `wsl --shutdown` 후 WSL 재기동(9P 서버 리셋) 또는 Windows 재부팅. **주의: 개발 세션(tmux/Claude)이 WSL에 살아있어 즉시 실행 금지 — 한가할 때.** exe가 WSL 소스를 스캔하려면 어차피 복구 필요(사용자 액션).
+- 대체 데이터: 2026-06-18 실측 스모크 — exe 코드경로(UNC 포함) 42.8s / 119,520 events. UNC 페널티 = WSL 네이티브 대비 약 1.5배(42.8 vs 28.5) + 콜드 편차.
 
-(표 대기)
+## 실험 — parse 스레드 수 대조 (WSL 네이티브, 같은 root·같은 캐시 상태, 2026-07-03)
+
+| 방식 | parse wall | events |
+|---|---|---|
+| 순차(스레드 1, parse_file 직접 루프) | **12.17s** | 111,601 |
+| 현행 ThreadPoolExecutor 32 | **19.93s** | 111,607 |
+
+**판정: 네이티브 FS에서 32스레드는 순차 대비 +64% 손해 — GIL 경합**(json.loads CPU-bound, 스레드는 GIL 직렬화 + 컨텍스트스위치 비용만 추가). 32워커는 UNC 지연 중첩용 설계라 exe(UNC) 경로엔 유효하나 네이티브에선 역효과. → 백로그 **O9(적응형 파싱 동시성)** 신설: root별 UNC/원격=스레드 다수, 네이티브=순차(또는 O7 ProcessPool). 출력 등가성은 (ri,fi) 키 조립이 이미 보장(test_scan_equivalent_to_sequential).
 
 ## 대시보드 / LLM 체감 (수동 기록 — 대기)
 
@@ -61,14 +69,14 @@ LLM 측: 질의 후 `/api/query` 응답의 `timings`(intent/search/llm/total, ll
 | /api/events 응답 크기 | | [clfx.timing] bytes |
 | 질의 total_ms / llm_ms | | /api/query timings |
 
-## 병목 순위표 (Phase 2 착수 순서 근거 — A-2 확보 시 확정)
+## 병목 순위표 (확정 — Phase 2 착수 순서 근거)
 
 | 순위 | 단계 | 환경B(WSL) | 환경A-1(Win) | 판정 | Phase 2 대응 항목 |
 |---|---|---|---|---|---|
-| 1 | parse | 22.3s (78%) | 0.11s | 데이터량(11.4만 events) 비례 I/O+json.loads. 이벤트 수 113배에 시간 195배 | **케이스 파일**(재실행 재파싱 제거 — §2) + O7(CPU 병렬, WSL서 CPU-bound 여부 A-2와 대조로 판정) |
+| 1 | parse | 22.3s (78%) | 0.11s | CPU-bound 확정(스레드 실험: 순차 12.2s < 32스레드 19.9s — GIL). 데이터량(11.4만 events) 비례 | **케이스 파일**(재실행 재파싱 제거 — §2) + **O9 적응형 동시성**(네이티브=순차, 즉효 ~40%) + O7(ProcessPool, 케이스 이후에도 콜드런 남으면) |
 | 2 | resolve | 2.9s (10%) | 0.001s | 이벤트 수 비례 | O4(resolve 주입 강제) + 케이스 파일 |
 | 3 | enrich | 1.8s (6%) | 0.009s | 이벤트 수 비례 CPU | 케이스 파일(이벤트째 캐시로 소멸) |
 | 4 | hash | 0.9s | 0.8s (68%) | 데이터량 무관 바닥 비용 존재 — Windows서 지배적 | 케이스 파일 해시원장(fs_hashes) 재사용 |
-| — | 서버/대시보드/LLM | 측정 대기 | | | O1(gzip)/O2(인덱스)/O5(스트리밍)는 대시보드 수치 후 |
+| — | 서버/대시보드/LLM | 측정 대기 | | UNC 복구·exe 재빌드 후 수동 기록 | O1(gzip)/O2(인덱스)/O5(스트리밍)는 대시보드 수치 후 |
 
-**중간 결론**: 콜드런 시간의 ~94%(parse+resolve+enrich)가 "이벤트 재구축" 비용 — **케이스 파일(§2)이 1순위 그대로 확정**. 재오픈 시 이 전부가 지문 검증(stat)으로 대체됨. 콜드런 자체 가속(O7 ProcessPool)은 A-2(UNC) 수치로 I/O-bound vs CPU-bound 판정 후 결정.
+**결론**: 콜드런의 ~94%(parse+resolve+enrich)가 "이벤트 재구축" 비용. **Phase 2 착수 순서 = ① 케이스 파일(§2 — 재실행 전체 직격) ② O9 적응형 파싱 동시성(콜드런 즉효, 저위험) ③ O1 gzip ④ O2/O4 ⑤ O5/O6(LLM). O7은 ①② 후 재측정으로 필요성 재판단.**

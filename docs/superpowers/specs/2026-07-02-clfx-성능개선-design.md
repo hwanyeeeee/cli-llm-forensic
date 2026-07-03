@@ -95,6 +95,7 @@ round5-7 무손실 최적화(3e5ad95) 이후에도 스캔·대시보드·LLM 질
 | O6 | 주기 프리웜 | llm.py:437 1회성, keep_alive 30m 만료 후 콜드로드 1~3s | 20분 주기 재프리웜 (daemon, 실패 무시) | 부작용 없음 (증거 경로 무관) |
 | O7 | 파싱 CPU 병렬 | sources/claude.py:47 json.loads GIL-bound (추정 35-40%) | **Phase 1에서 CPU-bound 실증된 경우에만** ProcessPoolExecutor 검토. PyInstaller exe는 `freeze_support` 함정 — exe 경로 검증 필수, 실증 전 착수 금지 | 병렬 결과 == 순차 결과 (기존 I2 등가성 테스트 확장) |
 | O8 | 마이크로 | mcp.py:254 `_norm` 중복, secrets.py:64 8-regex 순차 | `_norm` 캐시 dict, secrets 조기탈출 | 측정에서 유의미할 때만, 각각 등가성 테스트 |
+| O9 | 적응형 파싱 동시성 | Phase 1 실측(perf-baseline.md): 네이티브 FS서 32스레드가 순차 대비 +64% 손해(GIL — json.loads CPU-bound). 32워커는 UNC 지연 중첩용 | root 경로별 워커 수 분기: UNC/원격(\\wsl.localhost 등)=스레드 다수 유지, 네이티브=순차(1). 조립은 (ri,fi) 키라 워커 수 무관 | `test_scan_equivalent_to_sequential` 기존 등가성 테스트가 그대로 증명 |
 
 ## §4 구조 개선 (성능 작업이 건드리는 범위만)
 
