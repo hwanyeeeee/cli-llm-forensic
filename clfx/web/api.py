@@ -231,8 +231,8 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
         _dp = (lambda _r: (lambda d, t: on_progress(d, t, 0, _r)))(r) if on_progress else None
         try:
             delegate_ok[ri] = wsl_delegate.delegate_root(str(r), _origin_label(r), on_progress=_dp)
-        except wsl_delegate.DelegateError as e:
-            delegate_err[ri] = str(e)
+        except Exception as e:                      # DelegateError 포함 — 위임의 어떤 실패도 스캔을 죽이면
+            delegate_err[ri] = f"{type(e).__name__}: {e}"   # 안 된다: 직접(UNC) 경로 폴백 + 사유 표면화(I2)
     direct_ris = [ri for ri in range(len(roots)) if ri not in delegate_ok]
     srcs = {ri: ClaudeSource(roots[ri]) for ri in direct_ris}
     file_lists = {ri: srcs[ri].jsonl_files() for ri in direct_ris}   # [history(존재시), *sorted transcripts]

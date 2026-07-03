@@ -99,6 +99,29 @@ def delegate_root(root, origin_label, on_progress=None, runner=None, workdir=Non
                        on_progress=on_progress, runner=runner, workdir=workdir)
 
 
+def _parse_out_text(text):
+    """헬퍼 out 파일 텍스트 → (meta dict, [event dict...]). 전 실패는 DelegateError(호출자 폴백).
+    반드시 split(\"\\n\") — splitlines()는 U+2028/U+2029/NEL(0x85)에서도 쪼개는데,
+    json.dumps(ensure_ascii=False)는 이 문자들을 이스케이프하지 않아 preview에 있으면
+    JSON 문자열 한가운데가 갈라져 'Unterminated string'이 난다(2026-07-03 실데이터 실사)."""
+    lines = text.split("\n")
+    if not lines or not lines[0].strip():
+        raise DelegateError("헬퍼 출력이 비어있음")
+    try:
+        meta = json.loads(lines[0])
+    except json.JSONDecodeError as e:
+        raise DelegateError(f"meta 파싱 실패: {e}")
+    dicts = []
+    try:
+        for ln in lines[1:]:
+            if not ln.strip():
+                continue
+            dicts.append(json.loads(ln))
+    except ValueError as e:                          # JSONDecodeError 포함
+        raise DelegateError(f"이벤트 파싱 실패: {e}")
+    return meta, dicts
+
+
 def _run_staged(posix_root, target_root, origin_label, distro=None,
                 on_progress=None, runner=None, workdir=None):
     """스테이징→실행→회수→경로재작성 코어. runner=None이면 wsl.exe(-d distro) 경유(distro 필수)."""
@@ -135,22 +158,17 @@ def _run_staged(posix_root, target_root, origin_label, distro=None,
         if rc != 0:
             raise DelegateError(f"헬퍼 rc={rc}: {stderr_tail}")
         try:
-            lines = out_path.read_text(encoding="utf-8").splitlines()
+            text = out_path.read_text(encoding="utf-8")
         except OSError as e:
             raise DelegateError(f"출력 회수 실패: {e}")
-        if not lines:
-            raise DelegateError("헬퍼 출력이 비어있음")
-        try:
-            meta = json.loads(lines[0])
-        except json.JSONDecodeError as e:
-            raise DelegateError(f"meta 파싱 실패: {e}")
+        meta, dicts = _parse_out_text(text)
         events = []
-        for ln in lines[1:]:
-            if not ln.strip():
-                continue
-            d = json.loads(ln)
-            d["source"]["file"] = rewrite_prefix(d["source"]["file"], posix_root, target_root)
-            events.append(Event.from_dict(d))
+        try:
+            for d in dicts:
+                d["source"]["file"] = rewrite_prefix(d["source"]["file"], posix_root, target_root)
+                events.append(Event.from_dict(d))
+        except (KeyError, TypeError) as e:
+            raise DelegateError(f"이벤트 복원 실패: {e!r}")
         if len(events) != meta.get("events"):
             raise DelegateError(f"이벤트 수 불일치: meta={meta.get('events')} 실제={len(events)}")
         manifest = {rewrite_prefix(k, posix_root, target_root): v

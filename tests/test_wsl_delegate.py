@@ -116,3 +116,36 @@ def test_build_script_bundles_helper_source():
     spec_path = REPO / "AgenTrace.spec"
     if spec_path.exists():
         assert "clfx_src" in spec_path.read_text(encoding="utf-8", errors="ignore")
+
+
+# --- 2026-07-03 실데이터 회귀: U+2028/NEL이 preview에 있으면 splitlines()가 JSON을 쪼갬 ---
+
+def test_parse_out_text_survives_unicode_line_separators():
+    import json
+    meta = {"files": 1, "events": 1, "manifest": {}, "timings": {}}
+    ev = {"ts": None, "agent": "claude", "session": "s", "actor": "user", "action": "prompt",
+          "target": "t", "preview": "a b\x85c d", "source": {"file": "/r/x.jsonl", "line": 1},
+          "tags": []}
+    text = json.dumps(meta, ensure_ascii=False) + "\n" + json.dumps(ev, ensure_ascii=False) + "\n"
+    m, dicts = wd._parse_out_text(text)
+    assert m["events"] == 1
+    assert dicts[0]["preview"] == "a b\x85c d"   # 무손실 왕복(줄 쪼개짐 없음)
+
+
+def test_parse_out_text_bad_event_raises_delegate_error():
+    text = '{"files":0,"events":0,"manifest":{},"timings":{}}\n{"broken": "untermina\n'
+    with pytest.raises(wd.DelegateError):
+        wd._parse_out_text(text)
+
+
+def test_scan_to_engine_falls_back_on_any_delegate_exception(monkeypatch):
+    # DelegateError가 아닌 예외(실사: JSONDecodeError)도 스캔을 죽이지 않고 직접 경로 폴백해야 함(I2).
+    direct = scan_to_engine([FIXTURE])
+    monkeypatch.setattr(api, "_delegate_eligible", lambda r: True)
+
+    def _boom(root, label, on_progress=None):
+        raise ValueError("Unterminated string starting at: line 1 column 183 (char 182)")
+    monkeypatch.setattr(api.wsl_delegate, "delegate_root", _boom)
+    eng = scan_to_engine([FIXTURE])
+    assert [e.to_dict() for e in eng.events] == [e.to_dict() for e in direct.events]
+    assert eng.delegate_info["errors"] and "ValueError" in eng.delegate_info["errors"][0]["error"]
