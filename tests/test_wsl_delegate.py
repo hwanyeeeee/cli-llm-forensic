@@ -105,3 +105,11 @@ def test_delegate_eligible_gates():
     # WSL(리눅스)에서는 항상 False(os.name != "nt") — 위임은 Windows 전용.
     assert api._delegate_eligible(r"\\wsl.localhost\Ubuntu\home\u\.claude") is False
     assert api._delegate_eligible("/home/u/.claude") is False
+
+
+def test_build_script_bundles_helper_source():
+    # frozen exe에서 helper_source_dir()가 _MEIPASS/clfx_src를 찾음 — 빌드가 소스를 동봉해야 함.
+    bat = (REPO / "packaging" / "build-exe.bat").read_text(encoding="utf-8", errors="ignore")
+    assert 'clfx;clfx_src' in bat
+    spec = (REPO / "AgenTrace.spec").read_text(encoding="utf-8", errors="ignore")
+    assert "clfx_src" in spec

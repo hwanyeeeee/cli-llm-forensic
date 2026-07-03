@@ -39,7 +39,7 @@ REM 4) Build single exe. --add-data separator on Windows is ; (source;dest).
 REM    --collect-all webview bundles the pywebview GUI backend.
 REM    --noconfirm overwrites prior output without an interactive prompt.
 echo [clfx] Building (--onefile)...
-python -m PyInstaller --noconfirm --onefile --name AgenTrace --icon "packaging\AgenTrace.ico" --collect-all webview --add-data "clfx\web\static;clfx\web\static" packaging\launcher.py
+python -m PyInstaller --noconfirm --onefile --name AgenTrace --icon "packaging\AgenTrace.ico" --collect-all webview --add-data "clfx\web\static;clfx\web\static" --add-data "clfx;clfx_src" packaging\launcher.py
 if errorlevel 1 (
   echo [ERROR] build failed. See log above.
   pause
