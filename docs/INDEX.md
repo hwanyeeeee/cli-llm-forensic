@@ -48,4 +48,5 @@
 | `superpowers/specs/2026-07-02-clfx-성능개선-design.md` | 성능개선 설계 — 계측 우선 2-페이즈 + sqlite3 케이스 파일 + 표적 백로그(gzip·인덱스·LLM 스트리밍), 불변식 I1~I6 |
 | `superpowers/plans/2026-07-02-clfx-성능개선-P1-계측.md` | Phase 1 계측 하네스 구현 플랜(스캔 timings·요청 로그·LLM timings·프런트 marks·bench.py, Task 1~6 TDD) |
 | `perf-baseline.md` | Phase 1 성능 측정 결과(단계별 median·병목 순위표) — Phase 2 착수 순서의 근거 |
+| `superpowers/plans/2026-07-03-clfx-성능개선-P2a-취득계층.md` | Phase 2a 구현 플랜(O9 적응형 동시성·O10 탐지 타임아웃·O11 WSL-side 파싱 위임, Task 1~5 TDD) |
 | `plan.md` / `STATE.md` | 개발 진행판 (개발 시작 후) |
