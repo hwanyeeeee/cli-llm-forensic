@@ -3,6 +3,7 @@
 import glob
 import os
 import subprocess
+import threading
 from pathlib import Path
 from clfx.cli import _origin_label
 
@@ -25,6 +26,47 @@ def _wsl_distros():
     return _parse_wsl_list(out or b"")
 
 
+_TIMEOUT_MSG = "접근 시간 초과 — WSL 파일공유(9P) 응답 없음. wsl --shutdown 후 재시도"
+
+
+def _isdir_t(path, timeout=3.0):
+    """os.path.isdir에 타임아웃 — 9P wedge 시 무한 hang 차단(2026-07-03 실사, O10).
+    반환 (isdir, timed_out). 타임아웃 시 (False, True). 데몬 스레드가 남을 수 있으나
+    프로세스 종료를 막지 않는다(의도적 트레이드오프 — hang보다 낫다)."""
+    res = {}
+
+    def _probe():
+        try:
+            res["v"] = os.path.isdir(path)
+        except OSError:
+            res["v"] = False
+
+    t = threading.Thread(target=_probe, daemon=True)
+    t.start()
+    t.join(timeout)
+    if "v" not in res:
+        return False, True
+    return res["v"], False
+
+
+def _listdir_t(path, timeout=3.0):
+    """디렉터리 나열에 타임아웃(WSL home 사용자 열거용). (이름 리스트, timed_out)."""
+    res = {}
+
+    def _probe():
+        try:
+            res["v"] = sorted(os.listdir(path))
+        except OSError:
+            res["v"] = []
+
+    t = threading.Thread(target=_probe, daemon=True)
+    t.start()
+    t.join(timeout)
+    if "v" not in res:
+        return [], True
+    return res["v"], False
+
+
 def _default_candidates():
     """현재 OS home + Windows %USERPROFILE% + WSL distro home들의 .claude 후보(중복제거, 순서보존)."""
     cands = []
@@ -40,13 +82,10 @@ def _default_candidates():
     # 각 distro의 home/<user>/.claude 전체경로를 후보로(전체경로는 isdir 동작).
     for distro in _wsl_distros():
         base = Path(r"\\wsl.localhost") / distro
-        home_dir = base / "home"
-        try:
-            if home_dir.is_dir():
-                for user in home_dir.iterdir():
-                    cands.append(str(user / ".claude"))
-        except OSError:
-            pass
+        names, timed_out = _listdir_t(str(base / "home"))
+        if not timed_out:
+            for user in names:
+                cands.append(str(base / "home" / user / ".claude"))
         cands.append(str(base / "root" / ".claude"))
     # 중복 제거(순서 보존)
     seen, out = set(), []
@@ -57,9 +96,14 @@ def _default_candidates():
 
 
 def discover_sources(candidates=None):
-    """반환: [{"path","label","exists"}] — label=origin(wsl/windows/other), exists=디렉터리 존재."""
+    """반환: [{"path","label","exists"[,"error"]}] — label=origin(wsl/windows/other), exists=디렉터리 존재.
+    O10: 존재확인은 타임아웃 경유 — 원격 경로 hang 시 exists=False + error 사유(조용한 누락 금지)."""
     cands = candidates if candidates is not None else _default_candidates()
     out = []
     for c in cands:
-        out.append({"path": c, "label": _origin_label(c), "exists": os.path.isdir(c)})
+        isdir, timed_out = _isdir_t(c)
+        rec = {"path": c, "label": _origin_label(c), "exists": isdir}
+        if timed_out:
+            rec["error"] = _TIMEOUT_MSG
+        out.append(rec)
     return out

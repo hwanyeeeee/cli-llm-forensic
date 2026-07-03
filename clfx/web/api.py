@@ -424,6 +424,8 @@ def mcp_payload(engine, roots, on_progress=None):
 
 
 def sources_payload():
-    """자동탐지 소스 중 실재(exists)만 — 없는 후보는 화면에 안 보이게. discover_sources는 전체+exists 반환."""
+    """자동탐지 소스 중 실재(exists)만 + O10 경고(타임아웃 등 접근불가 사유) 표면화."""
     from clfx.discover import discover_sources   # 지역 import — discover→cli→web.api 순환 회피
-    return {"sources": [s for s in discover_sources() if s["exists"]]}
+    srcs = discover_sources()
+    warnings = [f'{s["path"]}: {s["error"]}' for s in srcs if s.get("error")]
+    return {"sources": [s for s in srcs if s["exists"]], "warnings": warnings}

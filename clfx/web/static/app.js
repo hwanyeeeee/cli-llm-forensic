@@ -636,15 +636,16 @@ async function showScan(){
   let data;
   try{ data=await jget("/api/sources"); }
   catch(err){ box.innerHTML=`<div class="err">소스 탐지 실패: ${esc(err.message)}</div>`; return; }
-  const srcs=data.sources||[];
-  if(!srcs.length){ box.innerHTML="<div class='muted'>탐지된 .claude 소스가 없습니다.</div>"; return; }
+  const srcs=data.sources||[], warns=data.warnings||[];
+  const warnHtml=warns.map(w=>`<div class="err">⚠ ${esc(w)}</div>`).join("");
+  if(!srcs.length){ box.innerHTML=warnHtml+"<div class='muted'>탐지된 .claude 소스가 없습니다.</div>"; return; }
   box.innerHTML=srcs.map(s=>`
     <label class="scan-src ${s.exists?"":"off"}">
       <input type="checkbox" data-path="${esc(s.path)}" ${s.exists?"checked":"disabled"}>
       <span class="badge ${esc(s.label)}">${esc(s.label)}</span>
       <span class="p">${esc(s.path)}</span>
       ${s.exists?"":'<span class="na">없음</span>'}
-    </label>`).join("");
+    </label>`).join("")+warnHtml;
 }
 
 /* ---------- boot: 서버 연결 시도 → 실데이터, 실패 시 샘플 ---------- */
