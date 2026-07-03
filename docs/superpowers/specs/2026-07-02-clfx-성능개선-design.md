@@ -96,6 +96,8 @@ round5-7 무손실 최적화(3e5ad95) 이후에도 스캔·대시보드·LLM 질
 | O7 | 파싱 CPU 병렬 | sources/claude.py:47 json.loads GIL-bound (추정 35-40%) | **Phase 1에서 CPU-bound 실증된 경우에만** ProcessPoolExecutor 검토. PyInstaller exe는 `freeze_support` 함정 — exe 경로 검증 필수, 실증 전 착수 금지 | 병렬 결과 == 순차 결과 (기존 I2 등가성 테스트 확장) |
 | O8 | 마이크로 | mcp.py:254 `_norm` 중복, secrets.py:64 8-regex 순차 | `_norm` 캐시 dict, secrets 조기탈출 | 측정에서 유의미할 때만, 각각 등가성 테스트 |
 | O9 | 적응형 파싱 동시성 | Phase 1 실측(perf-baseline.md): 네이티브 FS서 32스레드가 순차 대비 +64% 손해(GIL — json.loads CPU-bound). 32워커는 UNC 지연 중첩용 | root 경로별 워커 수 분기: UNC/원격(\\wsl.localhost 등)=스레드 다수 유지, 네이티브=순차(1). 조립은 (ri,fi) 키라 워커 수 무관 | `test_scan_equivalent_to_sequential` 기존 등가성 테스트가 그대로 증명 |
+| O10 | 소스탐지 UNC 견고화 | 2026-07-03 실사: 9P 고장 시 exe 소스탐지가 \\wsl.localhost 접근에서 무한 hang("소스 탐지 중…" 영구) — 조용한 멈춤은 완전성 위반 | discover의 원격 경로 존재확인에 타임아웃(워커 스레드+제한시간) → 실패 시 "WSL 소스 접근 불가(사유)"로 표면화하고 나머지 소스 계속 | 타임아웃 발생 시 errors/사유 표면화 테스트, 정상 경로 회귀 불변 |
+| O11 | WSL-side 파싱 위임 | \\wsl.localhost(9P)는 느리고(UNC 페널티) 깨지기 쉬움(2026-07-03 wedge 실사 — p9rdr·plan9 살아있어도 세션 계층 고장). 반면 wsl.exe interop 채널은 별개라 9P 고장 중에도 동작 실증 | exe가 파싱 헬퍼를 Windows 임시경로에 기록 → `wsl.exe -d <distro> python3 /mnt/c/...` 로 WSL 내부 네이티브 파싱(실측 12s) → 결과 JSONL을 /mnt/c로 회수(WSL→Win 방향은 9P 고장과 무관). wsl.exe/python3 부재·실패 시 기존 UNC 경로 폴백 + errors 표면화 | 위임 결과 == UNC 직접 파싱 결과 등가성 테스트(동일 픽스처), 폴백 경로 테스트 |
 
 ## §4 구조 개선 (성능 작업이 건드리는 범위만)
 
