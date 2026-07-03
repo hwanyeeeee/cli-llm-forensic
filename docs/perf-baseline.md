@@ -45,11 +45,22 @@ LLM 측: 질의 후 `/api/query` 응답의 `timings`(intent/search/llm/total, ll
 | mcp_s | 0.003 | — |
 | total_s | 1.183 | 100% |
 
-## 환경 A-2 — Windows→WSL UNC (\\wsl.localhost, exe 최악 경로) — **측정 불가(UNC 고장)**
+## 환경 A-2 — Windows→WSL, 같은 WSL root 정면 대조 (2026-07-03, Phase 2a 완료 후 실측)
 
-- 측정 시도 결과: 이 기기에서 Windows→WSL 파일공유 자체가 현재 고장 — `\\wsl.localhost\Ubuntu\...`·`\\wsl$\Ubuntu\...` 둘 다 "The specified path is invalid" (2026-07-03, WSL 기동 상태에서도). 6월 실측 당시(exe 42.8s)엔 동작했음 — 그 사이 깨짐.
-- 복구: `wsl --shutdown` 후 WSL 재기동(9P 서버 리셋) 또는 Windows 재부팅. **주의: 개발 세션(tmux/Claude)이 WSL에 살아있어 즉시 실행 금지 — 한가할 때.** exe가 WSL 소스를 스캔하려면 어차피 복구 필요(사용자 액션).
-- 대체 데이터: 2026-06-18 실측 스모크 — exe 코드경로(UNC 포함) 42.8s / 119,520 events. UNC 페널티 = WSL 네이티브 대비 약 1.5배(42.8 vs 28.5) + 콜드 편차.
+경위: 9P(\\wsl.localhost)가 wedge로 완전 고장(wsl --shutdown으로도 불복 — Windows 커널 p9rdr 상태, **재부팅으로만 복구**). 복구 직후 같은 root로 위임 vs UNC직접 1회씩.
+
+| 경로 | parse_wall | enrich | hash | walk_tmp | total | 규모 |
+|---|---|---|---|---|---|---|
+| UNC 직접 (`CLFX_NO_DELEGATE=1`) | 29.423 | 2.610 | 10.502 | 1.363 | **41.661** | events=112,722 |
+| **O11 위임 (wsl.exe interop)** | **18.161**(enrich 포함) | 0 | 10.490 | 1.832 | **30.862** | events=112,609 |
+
+- 이벤트 구축(parse+enrich) **1.76배**, 전체 **1.35배**. 단 이 UNC 수치는 "재부팅 직후·캐시 warm·9P 건강" **최상 컨디션** — 9P wedge 시 UNC는 스캔 자체가 불가(전날 실사)하므로 위임의 본상은 신뢰성.
+- 위임 잔여 오버헤드(~6s vs 순수 네이티브 12s): wsl.exe 기동·스테이징 + out.jsonl 왕복(11만 건 직렬화/복원·drvfs 쓰기).
+- 실데이터가 잡은 버그: preview의 U+2028/NEL로 splitlines()가 JSON을 쪼갬 → split("\n") 수정 + 위임 임의 예외 폴백(0065fba).
+
+## 환경 A-3 — Windows exe 실스캔 (양 소스, 위임 경로, 2026-07-03)
+
+`[clfx.timing] scan {"parse_wall_s": 22.535, "enrich_s": 0.009, "walk_tmp_s": 2.574, "resolve_s": 0.378, "hash_s": 11.74, "attribution_s": 0.023, "retention_s": 0.033, "mcp_s": 0.064}` — POST /api/scan 37.4s (6/18 UNC직접 실측 42.8s 대비 개선, 소스 2개 포함).
 
 ## 실험 — parse 스레드 수 대조 (WSL 네이티브, 같은 root·같은 캐시 상태, 2026-07-03)
 
@@ -80,3 +91,5 @@ LLM 측: 질의 후 `/api/query` 응답의 `timings`(intent/search/llm/total, ll
 | — | 서버/대시보드/LLM | 측정 대기 | | UNC 복구·exe 재빌드 후 수동 기록 | O1(gzip)/O2(인덱스)/O5(스트리밍)는 대시보드 수치 후 |
 
 **결론**: 콜드런의 ~94%(parse+resolve+enrich)가 "이벤트 재구축" 비용. **Phase 2 착수 순서 = ① 케이스 파일(§2 — 재실행 전체 직격) ② O9 적응형 파싱 동시성(콜드런 즉효, 저위험) ③ O1 gzip ④ O2/O4 ⑤ O5/O6(LLM). O7은 ①② 후 재측정으로 필요성 재판단.**
+
+**Phase 2a 완료 후 갱신(2026-07-03)**: O9·O10·O11 반영 실측 = A-2 표. Windows 경로의 잔여 비용 = ① 위임 왕복 오버헤드 ~6s ② **hash 10.5s(UNC — 위임 무관, 양 경로 동일)** ③ walk_tmp ~2s(UNC). **Phase 2b = 케이스 파일(sqlite3, parse·hash 재사용 둘 다 직격) + O12(탐지 interop화 — 9P 완전고장 시 end-to-end) + O1 gzip.** 해싱 WSL 위임(가칭 O13)은 케이스 파일 효과 실측 후 재판단.
