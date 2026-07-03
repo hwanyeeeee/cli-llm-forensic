@@ -294,9 +294,13 @@ def make_handler(state):
                         state.artifacts = {"scanned": 0, "missing": 0, "tmp_scanned": 0,
                                            "tmp_roots": [], "errors": [], "hashes": [], "attribution": []}
                     try:                                     # B-1/B-2: attestation 실패해도 스캔은 성공(빈 계약 유지)
-                        state.attestation = attestation_payload(
+                        att = attestation_payload(
                             acquired_manifest,
                             {"acquired_hashes": acquired_hashes, "stat_only": stat_only})
+                        di = getattr(eng, "delegate_info", None)
+                        if di and (di["delegated"] or di["errors"]):
+                            att["delegate"] = di             # O11: 위임 내역+헬퍼 SHA-256(도구 무결성) 표면화
+                        state.attestation = att
                     except Exception:
                         state.attestation = dict(_ATTEST_EMPTY)
                     mcp_s = 0.0

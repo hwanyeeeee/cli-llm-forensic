@@ -3,6 +3,8 @@
 import csv
 import io
 import json
+import os
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -13,6 +15,7 @@ from clfx.event import norm_ts
 from clfx.sources.claude import ClaudeSource
 from clfx.analyze.attribution import enrich
 from clfx.query.engine import QueryEngine
+from clfx import wsl_delegate
 # parse_roots(cli)·discover_sources(discover)는 함수-지역 import — cli↔web.api 순환 회피.
 
 _DEFAULT_LLM = object()   # query_payload llm 미지정 센티넬 — 웹은 make_llm(), CLI/테스트는 llm=None로 ollama 비호출.
@@ -65,6 +68,18 @@ def _remote_root(root):
     네이티브 FS는 GIL 경합으로 32스레드가 순차 대비 +64% 손해(perf-baseline.md 실측) → 순차."""
     r = str(root).replace("\\", "/").lower()
     return r.startswith("//") or r.startswith("/mnt/")
+
+
+def _delegate_eligible(root):
+    """O11 위임 대상 판정: Windows에서 실행 + WSL UNC root + wsl.exe 존재 + 킬스위치 아님.
+    CLFX_NO_DELEGATE=1 로 강제 비활성(디버그/비교측정용)."""
+    if os.environ.get("CLFX_NO_DELEGATE"):
+        return False
+    if os.name != "nt":
+        return False
+    if wsl_delegate.parse_wsl_unc(root) is None:
+        return False
+    return shutil.which("wsl.exe") is not None
 
 
 def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origins=None):
@@ -204,15 +219,29 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
             on_progress(0, 0, 0, None)
         eng0 = QueryEngine([])
         eng0.parse_timings = {"parse_wall_s": 0.0, "enrich_s": 0.0}   # Phase1 계측(속성 부착 — arity 불변)
+        eng0.delegate_info = {"delegated": [], "helper_sha256": [], "errors": []}   # O11: 위임 없음
         return (eng0, [], {}, {}) if collect_artifacts else eng0
-    srcs = [ClaudeSource(r) for r in roots]
-    file_lists = [s.jsonl_files() for s in srcs]            # [history(존재시), *sorted transcripts]
-    hists = [s.root / "history.jsonl" for s in srcs]
-    total_files = sum(len(fl) for fl in file_lists)         # 단일패스 → 정확(기존 중복카운트보다 작음)
+    _t_parse_total = time.perf_counter()
+    # O11: WSL UNC root는 wsl.exe interop으로 WSL 내부 네이티브 파싱(9P 우회 — 신뢰성+속도).
+    # 실패는 DelegateError → 그 root만 기존 UNC 직접 경로로 폴백(데이터 무손실) + 사유 표면화(I2).
+    delegate_ok, delegate_err = {}, {}
+    for ri, r in enumerate(roots):
+        if not _delegate_eligible(r):
+            continue
+        _dp = (lambda _r: (lambda d, t: on_progress(d, t, 0, _r)))(r) if on_progress else None
+        try:
+            delegate_ok[ri] = wsl_delegate.delegate_root(str(r), _origin_label(r), on_progress=_dp)
+        except wsl_delegate.DelegateError as e:
+            delegate_err[ri] = str(e)
+    direct_ris = [ri for ri in range(len(roots)) if ri not in delegate_ok]
+    srcs = {ri: ClaudeSource(roots[ri]) for ri in direct_ris}
+    file_lists = {ri: srcs[ri].jsonl_files() for ri in direct_ris}   # [history(존재시), *sorted transcripts]
+    hists = {ri: srcs[ri].root / "history.jsonl" for ri in direct_ris}
+    total_files = sum(len(fl) for fl in file_lists.values())         # 단일패스 → 정확(기존 중복카운트보다 작음)
     if on_progress:
         on_progress(0, total_files, 0, None)
     tasks = [(ri, fi, p, (p == hists[ri]))
-             for ri, fl in enumerate(file_lists) for fi, p in enumerate(fl)]
+             for ri, fl in file_lists.items() for fi, p in enumerate(fl)]
     tasks_path = {(ri, fi): p for ri, fi, p, _ in tasks}    # B-1: (ri,fi) → 읽은 파일 경로(매니페스트 키)
     lock = threading.Lock()
     prog = {"files": 0}
@@ -230,7 +259,6 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
         return ri, fi, evs, byp, sha
 
     evidence_manifest = {}                                  # B-1: str(path) → sha256(읽은 jsonl 증거파일 전수)
-    _t_parse = time.perf_counter()
     remote_tasks = [t for t in tasks if _remote_root(roots[t[0]])]
     native_tasks = [t for t in tasks if not _remote_root(roots[t[0]])]
 
@@ -247,7 +275,6 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     if remote_tasks:
         with ThreadPoolExecutor(max_workers=min(32, len(remote_tasks))) as ex:  # OPT-8: UNC 지연 중첩
             _collect(ex.map(_work, remote_tasks))
-    parse_wall = time.perf_counter() - _t_parse
     t_enrich = 0.0
     events = []
     ev_root = []                                            # collect_artifacts=True일 때만 채워 반환
@@ -255,15 +282,19 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     for ri, root in enumerate(roots):                       # 입력 루트 순서(I2)
         label = _origin_label(root)
         tag = f"origin:{label}"
-        root_evs = []
-        for fi in range(len(file_lists[ri])):               # 파일 순서(history먼저→sorted transcripts)
-            for e in results[(ri, fi)]:                     # 파일내 line 순서
-                if tag not in e.tags:
-                    e.tags.append(tag)                      # origin 태그 먼저(parse_source_tagged와 동일 순서)
-                root_evs.append(e)
-        _t = time.perf_counter()
-        enrich(root_evs, srcs[ri], bypass=bypass_by_root[ri])   # 수집된 bypass로 태깅(재읽기 X)
-        t_enrich += time.perf_counter() - _t
+        if ri in delegate_ok:
+            root_evs = delegate_ok[ri]["events"]            # 헬퍼가 같은 코드로 태그+enrich 완료(등가성 테스트 보증)
+            evidence_manifest.update(delegate_ok[ri]["manifest"])
+        else:
+            root_evs = []
+            for fi in range(len(file_lists[ri])):           # 파일 순서(history먼저→sorted transcripts)
+                for e in results[(ri, fi)]:                 # 파일내 line 순서
+                    if tag not in e.tags:
+                        e.tags.append(tag)                  # origin 태그 먼저(parse_source_tagged와 동일 순서)
+                    root_evs.append(e)
+            _t = time.perf_counter()
+            enrich(root_evs, srcs[ri], bypass=bypass_by_root[ri])   # 수집된 bypass로 태깅(재읽기 X)
+            t_enrich += time.perf_counter() - _t
         events.extend(root_evs)
         if collect_artifacts:
             ev_root.extend((e, str(root)) for e in root_evs)    # enrich 끝난 최종 상태 객체 + root 문자열
@@ -277,10 +308,18 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
         on_progress(total_files, total_files, len(events), None)
     engine = QueryEngine(events)
     # Phase1 계측(I6): 속성 부착(evidence_manifest와 같은 패턴 — 반환 arity·이벤트 불변).
-    engine.parse_timings = {"parse_wall_s": round(parse_wall, 3), "enrich_s": round(t_enrich, 3)}
+    #   parse_wall_s는 위임 시작(_t_parse_total)부터 — O11 위임 시간도 포함(취득계층 총 벽시계).
+    engine.parse_timings = {"parse_wall_s": round(time.perf_counter() - _t_parse_total, 3),
+                            "enrich_s": round(t_enrich, 3)}
     # B-1 acquisition manifest(증거 jsonl 파일 전수): str(path)→sha256(정렬). 추가 읽기 없이
     #   parse 단계서 누적한 raw-바이트 해시. 튜플 arity는 불변 — 엔진 속성으로 부착(회귀 안전).
     engine.evidence_manifest = {p: evidence_manifest[p] for p in sorted(evidence_manifest)}
+    # O11 표면화: 위임 사용 내역·헬퍼 무결성 해시·실패 사유(폴백됨) — attestation으로 전달(I2).
+    engine.delegate_info = {
+        "delegated": sorted(str(roots[ri]) for ri in delegate_ok),
+        "helper_sha256": sorted({delegate_ok[ri]["helper_sha256"] for ri in delegate_ok}),
+        "errors": [{"root": str(roots[ri]), "error": delegate_err[ri]} for ri in sorted(delegate_err)],
+    }
     # B-1: collect_artifacts=True면 4번째로 jsonl 증거 매니페스트(엔진 부착본과 동일 dict) 반환.
     return (engine, ev_root, by_origin, engine.evidence_manifest) if collect_artifacts else engine
 

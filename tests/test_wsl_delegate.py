@@ -62,3 +62,46 @@ def test_delegate_helper_failure_raises(tmp_path):
     with pytest.raises(wd.DelegateError):
         wd._run_staged("/nonexistent-root-zzz", "/nonexistent-root-zzz", "other",
                        runner=LOCAL_RUNNER, workdir=str(tmp_path))
+
+
+import clfx.web.api as api
+
+
+def _fresh_delegate_result(tmp_path):
+    """실제 헬퍼(로컬 러너)로 만든 진짜 위임 결과 — 통합 테스트 입력."""
+    from clfx.cli import _origin_label
+    return wd._run_staged(FIXTURE, FIXTURE, _origin_label(FIXTURE),
+                          runner=LOCAL_RUNNER, workdir=str(tmp_path))
+
+
+def test_scan_to_engine_with_delegate_equals_direct(tmp_path, monkeypatch):
+    direct = scan_to_engine([FIXTURE])
+    res = _fresh_delegate_result(tmp_path)
+    monkeypatch.setattr(api, "_delegate_eligible", lambda r: True)
+    monkeypatch.setattr(api.wsl_delegate, "delegate_root",
+                        lambda root, label, on_progress=None: res)
+    eng = scan_to_engine([FIXTURE])
+    assert [e.to_dict() for e in eng.events] == [e.to_dict() for e in direct.events]   # I1
+    assert eng.evidence_manifest == direct.evidence_manifest
+    assert eng.delegate_info["delegated"] == [FIXTURE]
+    assert eng.delegate_info["helper_sha256"] == [res["helper_sha256"]]
+    assert eng.delegate_info["errors"] == []
+
+
+def test_scan_to_engine_delegate_failure_falls_back(monkeypatch):
+    direct = scan_to_engine([FIXTURE])
+    monkeypatch.setattr(api, "_delegate_eligible", lambda r: True)
+
+    def _boom(root, label, on_progress=None):
+        raise wd.DelegateError("simulated 9P/interop failure")
+    monkeypatch.setattr(api.wsl_delegate, "delegate_root", _boom)
+    eng = scan_to_engine([FIXTURE])
+    assert [e.to_dict() for e in eng.events] == [e.to_dict() for e in direct.events]   # 폴백 무손실(I2)
+    assert eng.delegate_info["delegated"] == []
+    assert eng.delegate_info["errors"] and "simulated" in eng.delegate_info["errors"][0]["error"]
+
+
+def test_delegate_eligible_gates():
+    # WSL(리눅스)에서는 항상 False(os.name != "nt") — 위임은 Windows 전용.
+    assert api._delegate_eligible(r"\\wsl.localhost\Ubuntu\home\u\.claude") is False
+    assert api._delegate_eligible("/home/u/.claude") is False
