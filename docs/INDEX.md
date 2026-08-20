@@ -37,6 +37,8 @@
 | `사용법.md` | clfx 데모·시연 사용법 (parse→analyze→query→serve + A/B 흐름) |
 | `교수님-피드백.md` | 교수님 피드백 9건(원본복구·해시대조·주체왜곡·월별그래프·키워드파이·프롬프트요약·MCP·범용화) |
 | `실측-temp-원본보존-원리.md` | Claude 원본보존(uploads/file-history)·temp 경로(/tmp·claude-1000)·30일 소실 실측 |
+| `codex-지원-엔진스펙.md` | Codex 아티팩트 지원 엔진 스펙 — era 분기·3계층 이름·행위자 판별·Event 확장 확정안 (R1~R4 교차검증 근거) |
+| `패널-구성안.md` | 경진대회 A1 패널 확정 구성 — 제약·그림 4개·수치 표기 규칙·글자량 상한 |
 | `exe-패키징-UI-가이드.md` | 팀원 전달 — PyInstaller 단일exe+내장서버, UI는 web/static/ HTML, UI↔엔진 계약 |
 | `UI-변경사항.md` | 팀원 UI 개편 내역(3컬럼·히트맵·도넛·코파일럿·시크릿 표시 제외 정책) |
 | `superpowers/specs/2026-06-17-clfx-피드백확장-design.md` | 교수님 피드백 8건 확장 설계(수집·분석·시각화·exe, brainstorming+UI 통합) |

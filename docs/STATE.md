@@ -1,20 +1,23 @@
 # 개발 상황
 
 ## 프로젝트
-clfx(AgenTrace) — 성능개선 Phase 2a: 취득계층 재설계(O9·O10·O11). 무손실·완전성·read-only 절대.
+clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔진스펙.md`(R1~R7 교차검증 확정). read-only·무손실 절대.
 
 ## 플랜 단계
-- [x] 1단계: O9 + O10 (Task 1~2) ✓ 11c3819+fa0cd88
-- [x] 2단계: O11 코어 (Task 3) ✓ db052ff
-- [x] 3단계: O11 통합 + 패키징 (Task 4~5) ✓ 4f4de02+ab55a99
+- [x] 1단계: actor 정합성 선결(폴백 5곳 → actor_bucket 3버킷) ✓ 420 passed(+7), 리뷰 BLOCK 0
+- [x] 2단계: UI unknown 노출(app.js 12지점) ✓ 421 passed, 리뷰 BLOCK 0
+- [ ] 3단계: CodexSource + discovery + source registry ← 현재
+- [ ] 4단계: 파서 — structural sniffing + legacy/item 2 era
+- [ ] 5단계: actor·confidence 귀속 + Event.meta
+- [ ] 6단계: SQLite 보조 + attestation
+- [ ] 7단계: Codex temp/config + UI 소스 필터
+- [ ] 8단계: fixture + 회귀 + real-run
 
 ## 현재 작업
-- 도구: claude
-- 위치: 완료 (전 단계)
-- 수행 중: —
+- 도구: codex (panel1)
+- 위치: 3단계
+- 수행 중: 4라운드 BLOCK 3건 해결 확인(439 green). panel0 수동 리뷰 2건 전달
+- 비고: 1~2단계 미commit(누적). 리뷰 NIT는 매 라운드 동일(panel0 문서가 diff에 섞임) — 오탐, 무시
+- 순서 결정: 1~5단계 → 패널(마감 8/23 23:00) → 6~8단계
 - 재시도: 0
-- 리뷰라운드: 0
-
-## 완료
-- 시각: 2026-07-03 13:10
-- 비고: 413 passed(+17). 킬스위치(CLFX_NO_DELEGATE=1) green. 리뷰=폴백 서브에이전트 BLOCK 0 (NIT 1: _listdir_t 타임아웃 무경고 skip — root/.claude 항상 추가라 영향 미미, 기록만). final-verify real-run OK. panel0 추가커밋 4d5d484(spec 단언 이식성 — *.spec gitignore). **미push** (Phase1+2a 누적 ~19커밋). **사용자 지시로 후속 지시 전송 안 함** — 사용자 wsl --shutdown → WSL 재기동 → 9P 복구 확인(dir "\\wsl.localhost\Ubuntu\home\best1pjh\.claude") → exe 재빌드(packaging\build-exe.bat) → WSL 소스 스캔으로 위임 경로 실측 + A-2 UNC bench → perf-baseline.md 갱신 → Phase 2b(케이스 파일+O1 gzip 등) 플랜.
+- 리뷰라운드: 5 (codex-review.sh rc=126 'Argument list too long' — 누적 미commit diff가 ARG_MAX 초과. panel0 수동 리뷰로 대체)
