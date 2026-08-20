@@ -111,26 +111,41 @@ let TL_GROUPS={};         // 마지막 렌더의 날짜→이벤트인덱스[] (
 let TL_AUTOOPENED=false;  // 데이터 로드당 1회 최근 날 자동 펼침(boot서 재무장).
 let TARGET_IDX=null;      // target→첫 등장 EVENTS 인덱스 Map(renderFiles O(1) 상세연결).
 let srcActive=null;   // 활성 소스(origin) 집합. null/미설정이면 전체 통과.
+let agentActive=null; // 활성 CLI agent(claude/codex) 집합. null/빈/전부면 전체.
 
-/* ---------- source(origin) filter — 단일 PC의 WSL/Windows 출처 구분 ---------- */
+/* ---------- source filters — agent 종류 + WSL/Windows origin ---------- */
 const SRC_LABEL={wsl:"WSL",windows:"Windows",other:"기타"};
+const AGENT_LABEL={claude:"Claude",codex:"Codex"};
 function originOf(e){const t=(e.tags||[]).find(x=>x.startsWith("origin:"));return t?t.slice(7):null;}
 function originLabels(){return [...new Set(EVENTS.map(originOf).filter(Boolean))].sort();}
-function inSrc(e){const o=originOf(e);if(o===null)return true;return !srcActive||srcActive.has(o);}  // origin 없는 이벤트(MOCK)는 항상 표시
+function agentLabels(){return [...new Set(EVENTS.map(e=>e.agent).filter(Boolean))].sort();}
+function inSrc(e){
+  const o=originOf(e);
+  const originOk=o===null||!srcActive||srcActive.size===0||srcActive.has(o);
+  const agentOk=!e.agent||!agentActive||agentActive.size===0||agentActive.has(e.agent);
+  return originOk&&agentOk;
+}
 /* 서버집계 fetch에 붙일 ?sources= 조각. 전체선택(또는 null/빈) → ""(백엔드는 origins=None 동일경로·무손실회귀).
    일부선택 → sep+"sources=a,b"(백엔드 _by_origins로 그 origin만 집계). sep는 그 URL의 첫 파라미터면 "?", 아니면 "&". */
 function srcParam(sep){
-  if(!srcActive||srcActive.size===0)return "";          // 미설정/빈 → 전체(서버 기본)
-  const all=originLabels();
-  if(all.length && srcActive.size>=all.length && all.every(l=>srcActive.has(l)))return "";  // 전부선택=전체(동일경로)
-  return sep+"sources="+encodeURIComponent([...srcActive].join(","));
+  const params=[];
+  const origins=originLabels(),agents=agentLabels();
+  const originScoped=srcActive&&srcActive.size>0&&
+    !(origins.length&&srcActive.size>=origins.length&&origins.every(l=>srcActive.has(l)));
+  const agentScoped=agentActive&&agentActive.size>0&&
+    !(agents.length&&agentActive.size>=agents.length&&agents.every(l=>agentActive.has(l)));
+  if(originScoped)params.push("sources="+encodeURIComponent([...srcActive].join(",")));
+  if(agentScoped)params.push("agents="+encodeURIComponent([...agentActive].join(",")));
+  return params.length?sep+params.join("&"):"";
 }
 function showTags(tags){return (tags||[]).filter(t=>!t.startsWith("origin:"));}  // origin: 태그는 배지서 숨김(필터·상세에만 사용)
 function renderSrcFilters(){
-  const labels=originLabels(),box=$("#srcfilters");
-  if(labels.length<=1){box.innerHTML="";return;}   // 단일/무 origin → 토글 불필요
-  box.innerHTML='<span style="font-size:11px;color:var(--faint);margin-right:4px;align-self:center">소스</span>'+
-    labels.map(l=>`<span class="fchip src" data-src="${l}" aria-pressed="${srcActive.has(l)}">${SRC_LABEL[l]||l}</span>`).join("");
+  const origins=originLabels(),agents=agentLabels(),box=$("#srcfilters");
+  const agentHtml=agents.length>1?'<span style="font-size:11px;color:var(--faint);align-self:center">에이전트</span>'+
+    agents.map(a=>`<span class="fchip src" data-axis="agent" data-agent="${a}" aria-pressed="${agentActive.has(a)}">${AGENT_LABEL[a]||a}</span>`).join(""):"";
+  const originHtml=origins.length>1?'<span style="font-size:11px;color:var(--faint);margin-left:5px;align-self:center">출처</span>'+
+    origins.map(o=>`<span class="fchip src" data-axis="origin" data-src="${o}" aria-pressed="${srcActive.has(o)}">${SRC_LABEL[o]||o}</span>`).join(""):"";
+  box.innerHTML=agentHtml+originHtml;
 }
 
 /* ---------- stats ---------- */
@@ -397,10 +412,12 @@ $("#filters").addEventListener("click",ev=>{
   const f=c.dataset.f;active[f]=!active[f];c.setAttribute("aria-pressed",active[f]);renderTimeline();
 });
 $("#srcfilters").addEventListener("click",async ev=>{
-  const c=ev.target.closest(".fchip.src");if(!c||!srcActive)return;
-  const l=c.dataset.src;
-  if(srcActive.has(l))srcActive.delete(l);else srcActive.add(l);
-  c.setAttribute("aria-pressed",srcActive.has(l));
+  const c=ev.target.closest(".fchip.src");if(!c)return;
+  const isAgent=c.dataset.axis==="agent",set=isAgent?agentActive:srcActive;
+  if(!set)return;
+  const value=isAgent?c.dataset.agent:c.dataset.src;
+  if(set.has(value))set.delete(value);else set.add(value);
+  c.setAttribute("aria-pressed",set.has(value));
   // 소스 토글 → 선택 origin으로 서버집계 재요청(JS 재집계 금지·증거 단일진실). 캐시 SRV_* 재사용 금지(범위 변경).
   // LIVE만 의미(MOCK은 srcActive=전체라 srcParam=""·재요청 무해). 재요청 후 전 패널 재렌더(타임라인은 inSrc 즉시반응).
   if(LIVE) await loadAggregates();
@@ -555,8 +572,10 @@ async function ask(q){
     try{
       // 체크된 소스(origin)만 답변 근거로 동봉. 전부 체크=전체 답변, 일부=그 플랫폼만.
       const src=(typeof srcActive!=="undefined" && srcActive)?[...srcActive].join(","):"";
+      const agents=(typeof agentActive!=="undefined" && agentActive)?[...agentActive].join(","):"";
       let url="/api/query?q="+encodeURIComponent(q);
       if(src) url+="&sources="+encodeURIComponent(src);
+      if(agents) url+="&agents="+encodeURIComponent(agents);
       const r=await fetch(url);
       const d=await r.json();
       if(d.error)throw new Error(d.error);
@@ -859,7 +878,7 @@ async function boot(){
     // 1단계(즉시): 타일 + 집계패널(히트맵/도넛/파일/날짜점프) — EVENTS 불요. 타임라인만 로딩표시.
     await loadAggregates();                  // activity/files/keywords(작은 출력)
     EVENTS=[]; TARGET_IDX=new Map();          // 아직 이벤트 없음(타임라인 백그라운드 로드)
-    srcActive=null;                           // 집계는 전체 기준(소스필터는 EVENTS 로드 후 활성)
+    srcActive=null; agentActive=null;         // 집계는 전체 기준(필터는 EVENTS 로드 후 활성)
     renderStats();renderHeatmap();renderDonut();renderDateJump();renderFiles();
     mountFileHashSearch();                     // Issue-1: 온디맨드 해시검색 박스 1회 마운트(#filehash — renderFiles 영향 밖)
     loadArtifacts();                          // 아티팩트 패널(점진 — EVENTS 무관, await 안 함)
@@ -876,7 +895,7 @@ async function boot(){
     // 오프라인 MOCK(기존 경로)
     EVENTS=MOCK.map(normalize);
     TARGET_IDX=new Map(); EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
-    TL_AUTOOPENED=false; srcActive=new Set(originLabels()); renderSrcFilters(); renderAll(); renderSuggest();
+    TL_AUTOOPENED=false; srcActive=new Set(originLabels()); agentActive=new Set(agentLabels()); renderSrcFilters(); renderAll(); renderSuggest();
     $("#rescan").hidden=true; setCaseChip(false);
     addMsg("ai",`샘플 데이터 표시 중(서버 미연결). 총 <b>${EVENTS.length}</b>건. <code>clfx serve</code> 또는 exe 실행 시 실데이터가 로드됩니다.`);
   }
@@ -889,7 +908,7 @@ async function loadEventsInBackground(){
   EVENTS=live.map(normalize);
   TARGET_IDX=new Map(); EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
   TL_AUTOOPENED=false;
-  srcActive=new Set(originLabels()); renderSrcFilters();
+  srcActive=new Set(originLabels()); agentActive=new Set(agentLabels()); renderSrcFilters();
   renderStats();        // EVENTS 기반 재계산 — 값은 SRV_STATS.total과 동일해야(무손실 확인점)
   renderDateJump();     // EVENTS 로드 후에도 LIVE면 SRV_ACTIVITY 유지(동일)
   renderFiles();        // TARGET_IDX 채워진 뒤 재렌더 → 파일행 상세연결(idx) 활성
@@ -934,6 +953,7 @@ if(typeof module!=="undefined" && module.exports){
     FETCH_TIMINGS, perfReport,
     __getScanWarnings:()=>SCAN_WARNINGS,
     __setSrcActive:v=>{srcActive=v;},
+    __setAgentActive:v=>{agentActive=v;},
     __setEvents:v=>{EVENTS=v;},
     __setLive:v=>{LIVE=v;},
   };

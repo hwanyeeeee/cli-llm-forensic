@@ -485,6 +485,22 @@ def test_empty_set_treated_as_full():
     assert files_payload(eng, origins=set()) == files_payload(eng, origins=None)
 
 
+def test_agent_and_origin_scopes_are_orthogonal():
+    events = [
+        Event("2026-06-15T01:00:00Z", "claude", "c", "agent", "read", "c-wsl", "",
+              Source("c", 1), ["origin:wsl"]),
+        Event("2026-06-15T02:00:00Z", "codex", "x", "agent", "write", "x-wsl", "",
+              Source("x", 1), ["origin:wsl"]),
+        Event("2026-06-15T03:00:00Z", "codex", "x", "agent", "write", "x-win", "",
+              Source("x", 2), ["origin:windows"]),
+    ]
+    eng = QueryEngine(events)
+
+    assert stats_payload(eng, agents={"codex"})["total"] == 2
+    assert stats_payload(eng, origins={"wsl"}, agents={"codex"})["total"] == 1
+    assert files_payload(eng, agents={"claude"})["files"][0]["target"] == "c-wsl"
+
+
 def test_forensic_scan_retention_rows_have_attribution_fields(tmp_path, monkeypatch):
     # (e) forensic_scan retention 행에 origin/retention_policy/attributed/actor/
     #     transcript_action/source 포함 + transcript가 참조한 tmp 파일은 attributed.

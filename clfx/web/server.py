@@ -143,10 +143,13 @@ def make_handler(state):
             if u.path == "/api/scan/progress":
                 self._json(state.scan); return
             if u.path == "/api/stats":               # 경량 타일 집계(events 직렬화 전 즉시 표시)
-                src = (parse_qs(u.query).get("sources") or [""])[0]
+                qs = parse_qs(u.query)
+                src = (qs.get("sources") or [""])[0]
                 origins = set(s for s in src.split(",") if s) or None   # 체크된 플랫폼만(없으면 전체)
+                agents_raw = (qs.get("agents") or [""])[0]
+                agents = set(s for s in agents_raw.split(",") if s) or None
                 try:
-                    self._json(stats_payload(state.engine, origins=origins))
+                    self._json(stats_payload(state.engine, origins=origins, agents=agents))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
@@ -165,8 +168,10 @@ def make_handler(state):
                     return
                 src = (qs.get("sources") or [""])[0]
                 origins = set(s for s in src.split(",") if s) or None   # 체크된 플랫폼만(없으면 전체)
+                agents_raw = (qs.get("agents") or [""])[0]
+                agents = set(s for s in agents_raw.split(",") if s) or None
                 try:
-                    self._json(query_payload(state.engine, q, origins=origins))
+                    self._json(query_payload(state.engine, q, origins=origins, agents=agents))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
@@ -175,24 +180,32 @@ def make_handler(state):
                 by = (qs.get("by") or ["day"])[0]
                 src = (qs.get("sources") or [""])[0]
                 origins = set(s for s in src.split(",") if s) or None   # 체크된 플랫폼만(없으면 전체)
+                agents_raw = (qs.get("agents") or [""])[0]
+                agents = set(s for s in agents_raw.split(",") if s) or None
                 try:
-                    self._json(activity_payload(state.engine, by=by, origins=origins))
+                    self._json(activity_payload(state.engine, by=by, origins=origins, agents=agents))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
             if u.path == "/api/files":
-                src = (parse_qs(u.query).get("sources") or [""])[0]
+                qs = parse_qs(u.query)
+                src = (qs.get("sources") or [""])[0]
                 origins = set(s for s in src.split(",") if s) or None   # 체크된 플랫폼만(없으면 전체)
+                agents_raw = (qs.get("agents") or [""])[0]
+                agents = set(s for s in agents_raw.split(",") if s) or None
                 try:
-                    self._json(files_payload(state.engine, origins=origins))
+                    self._json(files_payload(state.engine, origins=origins, agents=agents))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
             if u.path == "/api/keywords":
-                src = (parse_qs(u.query).get("sources") or [""])[0]
+                qs = parse_qs(u.query)
+                src = (qs.get("sources") or [""])[0]
                 origins = set(s for s in src.split(",") if s) or None   # 체크된 플랫폼만(없으면 전체)
+                agents_raw = (qs.get("agents") or [""])[0]
+                agents = set(s for s in agents_raw.split(",") if s) or None
                 try:
-                    self._json(keywords_payload(state.engine, origins=origins))
+                    self._json(keywords_payload(state.engine, origins=origins, agents=agents))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return

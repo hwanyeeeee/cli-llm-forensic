@@ -60,14 +60,15 @@ function eq(actual, expected, msg) {
   if (a !== e) { console.error(`FAIL ${msg}\n  expected: ${e}\n  actual:   ${a}`); failed = true; }
 }
 
-const { srcParam, loadAggregates, __setSrcActive, __setEvents, __setLive } = app;
-for (const [n, f] of Object.entries({ srcParam, loadAggregates, __setSrcActive, __setEvents, __setLive })) {
+const { srcParam, loadAggregates, __setSrcActive, __setAgentActive, __setEvents, __setLive } = app;
+for (const [n, f] of Object.entries({ srcParam, loadAggregates, __setSrcActive, __setAgentActive, __setEvents, __setLive })) {
   if (typeof f !== "function") { console.error(`FAIL ${n} not exported`); process.exit(1); }
 }
 
 // Events tagged with origins so originLabels() => ["windows","wsl"] (sorted).
-function evWith(origin) { return { tags: ["origin:" + origin], actor: "user", action: "read", ts: "2026-06-11 01:00:00", target: "x" }; }
-__setEvents([evWith("wsl"), evWith("windows"), evWith("wsl")]);
+function evWith(origin, agent) { return { tags: ["origin:" + origin], agent, actor: "user", action: "read", ts: "2026-06-11 01:00:00", target: "x" }; }
+__setEvents([evWith("wsl","claude"), evWith("windows","codex"), evWith("wsl","codex")]);
+__setAgentActive(null);
 
 // ---- 1) srcParam: lossless when null / empty / full set ----
 __setSrcActive(null);
@@ -89,6 +90,13 @@ eq(srcParam("&"), "&sources=wsl", "srcParam {wsl} & -> &sources=wsl");
 __setSrcActive(new Set(["windows"]));
 eq(srcParam("?"), "?sources=windows", "srcParam {windows} -> ?sources=windows");
 
+__setSrcActive(null);
+__setAgentActive(new Set(["codex"]));
+eq(srcParam("?"), "?agents=codex", "srcParam agent subset -> ?agents=codex");
+__setSrcActive(new Set(["wsl"]));
+eq(srcParam("?"), "?sources=wsl&agents=codex", "combined source+agent scope");
+__setAgentActive(null);
+
 // subset of a larger origin set (3 labels, pick 2) -> still narrows, sorted-joined
 __setEvents([evWith("wsl"), evWith("windows"), evWith("other")]);
 __setSrcActive(new Set(["windows", "wsl"]));
@@ -103,15 +111,16 @@ __setSrcActive(new Set(["windows", "wsl"]));
 // captureURLs re-asserts EVENTS+srcActive itself: boot() ran at require() time and its
 // MOCK fallback (fetch rejected) resolves on a later microtask, clobbering module state.
 // Setting state INSIDE the spy (after the await tick) makes each scenario independent.
-async function captureURLs(srcActive) {
+async function captureURLs(srcActive, agentActive=null) {
   const urls = [];
   global.fetch = (u) => {
     urls.push(u);
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   };
   __setLive(true);
-  __setEvents([evWith("wsl"), evWith("windows")]);
+  __setEvents([evWith("wsl","claude"), evWith("windows","codex")]);
   __setSrcActive(srcActive);
+  __setAgentActive(agentActive);
   await loadAggregates();
   urls.sort();
   return urls;
@@ -140,6 +149,14 @@ async function captureURLs(srcActive) {
     "/api/keywords?sources=wsl",
     "/api/stats?sources=wsl",
   ].sort(), "loadAggregates subset -> all four scoped, correct sep");
+
+  urls = await captureURLs(new Set(["wsl"]), new Set(["codex"]));
+  eq(urls, [
+    "/api/activity?by=day&sources=wsl&agents=codex",
+    "/api/files?sources=wsl&agents=codex",
+    "/api/keywords?sources=wsl&agents=codex",
+    "/api/stats?sources=wsl&agents=codex",
+  ].sort(), "loadAggregates combined source+agent scope");
 
   if (failed) { console.error("HARNESS FAILED"); process.exit(1); }
   else { console.log("HARNESS OK"); }

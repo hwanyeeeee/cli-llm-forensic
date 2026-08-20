@@ -58,9 +58,18 @@ def _by_origins(events, origins):
     return [e for e in events if (_origin_of(e) is None or _origin_of(e) in origins)]
 
 
+def _by_scope(events, origins=None, agents=None):
+    scoped = _by_origins(events, origins)
+    return scoped if not agents else [event for event in scoped if event.agent in agents]
+
+
 def _origins_key(origins):
     """메모이즈 키 접미사. origins 없음(None/빈) → "all", 아니면 정렬-조인(셋 순서 무관 결정적)."""
     return "all" if not origins else ",".join(sorted(origins))
+
+
+def _scope_key(origins, agents):
+    return _origins_key(origins) + ":agents=" + ",".join(sorted(agents))
 
 
 def _remote_root(root):
@@ -83,7 +92,8 @@ def _delegate_eligible(root):
     return shutil.which("wsl.exe") is not None
 
 
-def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origins=None):
+def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origins=None,
+                  agents=None):
     """자연어 질의 → op 판정(route_intent) → engine 실행 → dict.
     이 디스패치가 op→engine 매핑의 단일 진실원천(cli.cmd_query도 이걸 쓴다).
     llm 미지정=make_llm()(웹 copilot, 항상 LLM 답). llm=None=digest(테스트, ollama 비호출).
@@ -118,7 +128,7 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origin
                     res = hit
                     break
             # 전부 0건이거나 과매치뿐 → res 빈 채 아래 overview 폴백(순수 개요질문 의도된 분기)
-    res = _by_origins(res, origins)               # ← 체크된 플랫폼만(답변 범위)
+    res = _by_scope(res, origins, agents)         # ← 체크된 플랫폼·에이전트만(답변 범위)
     _t_search = time.perf_counter()
     use_llm = None
     if answer_only_summary and not intent.get("summarize"):
@@ -130,7 +140,7 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origin
             summary = answer_timeline(q, res, llm=use_llm)
         elif op == "search" and not res:
             # 막연한 대화형 질문(특정 키워드 매칭 0건) → 전체 행위 개요로 답(소스 필터된 집계 근거).
-            summary = answer_overview(q, _by_origins(engine.events, origins), llm=use_llm)
+            summary = answer_overview(q, _by_scope(engine.events, origins, agents), llm=use_llm)
         else:
             summary = answer(q, res, llm=use_llm) # 검색된 res만 근거. ollama 없으면 digest.
     _t_end = time.perf_counter()
@@ -160,46 +170,51 @@ def _stats_build(events):
     return {"total": total, **actors, "actor_warnings": actor_warnings, "bypass": bypass}
 
 
-def stats_payload(engine, origins=None):
+def stats_payload(engine, origins=None, agents=None):
     """요약 타일용 경량 집계(총건수·A/B·bypass). 엔진 메모이즈 — 초기 즉시 표시용.
     origins(set) 주어지면 체크된 플랫폼(origin)만 집계 — 파싱은 전량, 집계 범위만 좁힘(무손실).
     None/빈=전체(키 "stats" 불변 — 회귀 동일). 비None=키 "stats:<정렬조인>"(충돌 없음)."""
-    if not origins:
+    if not origins and not agents:
         return engine._memo("stats", lambda: _stats_build(engine.events))
-    return engine._memo("stats:" + _origins_key(origins),
-                        lambda: _stats_build(_by_origins(engine.events, origins)))
+    key = ("stats:" + _origins_key(origins) if not agents else
+           "stats:" + _scope_key(origins, agents))
+    return engine._memo(key, lambda: _stats_build(_by_scope(engine.events, origins, agents)))
 
 
-def activity_payload(engine, by="day", origins=None):
+def activity_payload(engine, by="day", origins=None, agents=None):
     """활동량 집계 — UI 히트맵용. actor 분리(④).
     origins 주어지면 체크된 플랫폼만(스코핑 sub-QueryEngine이 SAME _activity 로직 재사용 — JS 재구현 아님).
     None/빈=전체(현행 불변). 결과는 메인 엔진에 origins별로 메모이즈."""
     by = by if by in ("day", "month") else "day"
-    if not origins:
+    if not origins and not agents:
         return {"by": by, "rows": engine.activity(by=by)}
+    key = (_origins_key(origins) if not agents else _scope_key(origins, agents))
     return engine._memo(
-        "activity_payload:" + by + ":" + _origins_key(origins),
-        lambda: {"by": by, "rows": QueryEngine(_by_origins(engine.events, origins)).activity(by=by)})
+        "activity_payload:" + by + ":" + key,
+        lambda: {"by": by, "rows": QueryEngine(
+            _by_scope(engine.events, origins, agents)).activity(by=by)})
 
 
-def files_payload(engine, origins=None):
+def files_payload(engine, origins=None, agents=None):
     """접근파일 목록 — UI 파일패널용. actor 분리(③④).
     origins 주어지면 체크된 플랫폼만(스코핑 sub-QueryEngine이 SAME files() 로직 재사용).
     None/빈=전체(현행 불변)."""
-    if not origins:
+    if not origins and not agents:
         return {"files": engine.files()}
+    key = (_origins_key(origins) if not agents else _scope_key(origins, agents))
     return engine._memo(
-        "files:" + _origins_key(origins),
-        lambda: {"files": QueryEngine(_by_origins(engine.events, origins)).files()})
+        "files:" + key,
+        lambda: {"files": QueryEngine(_by_scope(engine.events, origins, agents)).files()})
 
 
-def keywords_payload(engine, origins=None):
+def keywords_payload(engine, origins=None, agents=None):
     """키워드 빈도 집계 — UI 도넛용(⑥). 결정적, 수사사전·패턴 포함. 엔진 메모이즈(재요청 풀스캔 회피).
     origins 주어지면 체크된 플랫폼만 집계. None/빈=전체(키 "keywords" 불변 — 회귀 동일)."""
-    if not origins:
+    if not origins and not agents:
         return engine._memo("keywords", lambda: keyword_stats(engine.events))
-    return engine._memo("keywords:" + _origins_key(origins),
-                        lambda: keyword_stats(_by_origins(engine.events, origins)))
+    key = (_origins_key(origins) if not agents else _scope_key(origins, agents))
+    return engine._memo("keywords:" + key,
+                        lambda: keyword_stats(_by_scope(engine.events, origins, agents)))
 
 
 def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
@@ -428,6 +443,11 @@ def forensic_scan(events_with_root, roots=None, tmp_dirs=None, on_progress=None)
     out["tmp_inventory"] = inventory["files"]
     # Phase1 계측(I6): 비결정 타이밍은 별도 키 — server가 pop해 /api/artifacts 미노출.
     out["timings"] = timings
+    codex_roots = [root for root in roots or []
+                   if str(root).replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].lower() == ".codex"]
+    if codex_roots:
+        from clfx.analyze.codex_artifacts import codex_temp_summary
+        out["codex_temp"] = codex_temp_summary(codex_roots)
     return out
 
 

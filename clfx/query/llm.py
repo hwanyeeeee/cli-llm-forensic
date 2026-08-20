@@ -133,6 +133,16 @@ def route_intent(q):
     # who_did/secrets로 새지 않게 read·secrets 분기보다 먼저 매칭.
     if "bypass" in ql:
         return {"op": "bypass", "actor": actor, "summarize": summarize}
+    action = None
+    if any(word in ql for word in ("서브에이전트", "서브 에이전트", "위임", "subagent", "delegate")):
+        action = "spawn"
+    elif any(word in ql for word in ("수정", "작성", "생성", "modify", "wrote", "write", "create")):
+        action = "write"
+    elif any(word in ql for word in ("검색", "찾아봤", "찾아 봤", "searched", "web search")):
+        action = "search"
+    if action:
+        return {"op": "who_did", "action": action, "target": tgt,
+                "actor": actor, "summarize": summarize}
     # read 동사가 명시되면 who_did 우선 — 파일명에 secret이 들어가도("누가 .secret.key 읽었어?") read 의도 보존.
     # tgt는 위에서 이미 추출함(재추출 금지·일관).
     if any(w in ql for w in ("읽", "read", "접근", "access")):

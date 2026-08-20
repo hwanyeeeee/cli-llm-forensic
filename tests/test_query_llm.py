@@ -82,6 +82,15 @@ def test_route_read_without_target_no_broad_match():
     assert intent["op"] == "search"
     assert intent.get("target", "") == ""
 
+
+def test_route_codex_write_search_spawn_actions():
+    assert route_intent("에이전트가 수정한 파일 보여줘") == {
+        "op": "who_did", "action": "write", "target": "", "actor": "agent",
+        "summarize": False}
+    assert route_intent("에이전트가 검색해서 찾아봤어?")["action"] == "search"
+    spawn = route_intent("서브에이전트에게 위임한 작업 보여줘")
+    assert spawn["op"] == "who_did" and spawn["action"] == "spawn"
+
 def test_route_filler_not_picked_as_filename():
     # 영어 filler/의문사(did/anyone) 가 파일명으로 오인되지 않음
     assert route_intent("did anyone read id_rsa?")["target"] == "id_rsa"

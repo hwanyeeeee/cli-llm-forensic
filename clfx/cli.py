@@ -52,6 +52,13 @@ def parse_source_tagged(src, root):
         if tag not in e.tags:
             e.tags.append(tag)
         evs.append(e)
+    if src.agent == "codex":
+        from clfx.codex_sqlite import augment_events, collect_sqlite_support
+        support = collect_sqlite_support(src.sqlite_root, src.jsonl_files())
+        if support["databases"]:
+            augment_events(evs, support)
+            src.sqlite_warnings = support["warnings"]
+            src.sqlite_support = support
     return evs
 
 

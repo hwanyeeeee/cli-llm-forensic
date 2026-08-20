@@ -48,6 +48,7 @@ def source_warnings(source):
                        ("unsupported_schema", "schema_warnings"),
                        ("capability_mismatch", "capability_warnings")):
         out.extend({"kind": kind, **row} for row in getattr(source, attr, ()))
+    out.extend(getattr(source, "sqlite_warnings", ()))
     return sorted(out, key=lambda row: (row.get("file", ""), row.get("line", 0),
                                         row.get("kind", ""), row.get("error", "")))
 

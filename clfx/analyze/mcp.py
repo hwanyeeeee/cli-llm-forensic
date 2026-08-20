@@ -124,6 +124,9 @@ def find_mcp_configs(roots):
 
     configs = []
     errors = []
+    hooks = set()
+    plugins = set()
+    web_search = set()
     plugin_prefixes = set()                 # plugin_<plugin> prefix 집합(서버명 매칭용)
     seen = set()                            # (source_file, scope, project, server) 중복제거(결정성)
 
@@ -143,6 +146,15 @@ def find_mcp_configs(roots):
         configs.append(row)
 
     for root in roots or []:
+        if os.path.isfile(os.path.join(str(root), "config.toml")):
+            from clfx.analyze.codex_artifacts import codex_config_summary
+            codex = codex_config_summary(root)
+            for row in codex["mcp_configs"]:
+                _add_row(row)
+            errors.extend(codex["errors"])
+            hooks.update(codex["hooks"])
+            plugins.update(codex["plugins"])
+            web_search.update(codex["web_search"])
         claude_json = os.path.join(os.path.dirname(str(root)), ".claude.json")
         if not os.path.isfile(claude_json):
             continue
@@ -199,6 +211,9 @@ def find_mcp_configs(roots):
         "configs": configs,
         "errors": errors,
         "plugin_prefixes": sorted(plugin_prefixes),
+        "hooks": sorted(hooks),
+        "plugins": sorted(plugins),
+        "web_search": sorted(web_search),
     }
 
 
@@ -273,4 +288,7 @@ def mcp_summary(roots, events):
         "used_unconfigured": sorted(s for s in used if not _is_configured(s)),
         "errors": errors,
         "plugin_prefixes": prefixes,
+        "hooks": cfg["hooks"],
+        "plugins": cfg["plugins"],
+        "web_search": cfg["web_search"],
     }

@@ -77,6 +77,17 @@ def test_srcparam_omits_sources_when_full_or_empty_for_lossless_regression():
     assert "HARNESS OK" in r.stdout, (r.stdout + r.stderr)
 
 
+def test_agent_and_origin_filter_contract_and_neutral_target_copy():
+    src = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    for fragment in ("let agentActive=null", "function agentLabels()", 'data-axis="agent"',
+                     'data-axis="origin"', 'agents="+encodeURIComponent',
+                     "agentActive=new Set(agentLabels())"):
+        assert fragment in src
+    assert "~/.claude · ~/.codex" in html
+    assert "Claude Code·Codex CLI 기록" in html
+
+
 def test_source_toggle_refetches_then_renders():
     """The bug fix: the source-chip toggle re-fetches the BACKEND aggregates
     (await loadAggregates) before re-rendering, instead of only renderAll(). Guard

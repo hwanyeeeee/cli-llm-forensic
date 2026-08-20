@@ -258,3 +258,25 @@ def test_mcp_summary_normalizes_connector_name_vs_usage(tmp_path):
     # configured_unused도 정규화 매칭 → 사용됨으로 인식되어 비어 있음 (표시는 원본 커넥터명)
     assert "claude.ai Notion" not in out["configured_unused"]
     assert out["configured_unused"] == []
+
+
+def test_mcp_summary_includes_key_only_codex_config_without_web_search_as_mcp(tmp_path):
+    root = tmp_path / ".codex"
+    root.mkdir()
+    (root / "config.toml").write_text("""
+[mcp_servers.codex-safe]
+env = { TOKEN = "hidden" }
+[hooks]
+notify = "hidden-hook"
+[plugins.memo]
+enabled = true
+[web]
+search = true
+""", encoding="utf-8")
+
+    out = mcp_summary([str(root)], [])
+
+    assert {row["server"] for row in out["configs"]} == {"codex-safe"}
+    assert out["hooks"] == ["notify"] and out["plugins"] == ["memo"]
+    assert out["web_search"] == ["web.search"]
+    assert "web.search" not in out["configured_unused"]
