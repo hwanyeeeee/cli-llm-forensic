@@ -182,6 +182,7 @@ def _run_staged(posix_root, target_root, origin_label, distro=None,
         return {"events": events,
                 "manifest": {k: manifest[k] for k in sorted(manifest)},
                 "warnings": warnings,
+                "sqlite_support": meta.get("sqlite_support") or {},
                 "timings": meta.get("timings") or {},
                 "helper_sha256": helper_sha}
     finally:

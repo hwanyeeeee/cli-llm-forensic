@@ -42,9 +42,20 @@ def run(root, origin_tag, out_path):
     _t = time.perf_counter()
     enrich(events, src, bypass=bypass)              # 수집된 bypass로 태깅(재읽기 X) — 직접 경로와 동일
     enrich_s = time.perf_counter() - _t
+    sqlite_support = {}
+    sqlite_warnings = []
+    if src.agent == "codex":
+        from clfx.codex_sqlite import augment_events, collect_sqlite_support
+        support = collect_sqlite_support(src.sqlite_root, files)
+        if support["databases"]:
+            augment_events(events, support)
+            manifest.update(support["manifest"])
+            sqlite_warnings = support["warnings"]
+            sqlite_support = support
     meta = {"files": len(files), "events": len(events),
             "manifest": {k: manifest[k] for k in sorted(manifest)},
-            "warnings": source_warnings(src),
+            "warnings": source_warnings(src) + sqlite_warnings,
+            "sqlite_support": sqlite_support,
             "timings": {"parse_wall_s": round(parse_s, 3), "enrich_s": round(enrich_s, 3)}}
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(json.dumps(meta, ensure_ascii=False) + "\n")

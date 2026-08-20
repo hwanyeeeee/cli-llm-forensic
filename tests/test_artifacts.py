@@ -408,12 +408,15 @@ def test_attestation_payload_contract_shape():
     from clfx.web.api import attestation_payload
     out = attestation_payload({}, {"acquired_hashes": {}, "stat_only": []})
     assert set(out) == {"acquired", "acquired_count", "stat_only_count",
-                        "all_read_only", "modes_seen", "write_delete_rename_ops", "note"}
+                        "all_read_only", "modes_seen", "write_delete_rename_ops",
+                        "collection_started_at", "collection_finished_at", "note"}
     assert out["acquired"] == []
     assert out["acquired_count"] == 0
     assert out["stat_only_count"] == 0
     assert out["all_read_only"] is True
     assert out["write_delete_rename_ops"] == 0
+    assert out["collection_started_at"] is None
+    assert out["collection_finished_at"] is None
     assert out["note"] == _ATTEST_NOTE
     assert isinstance(out["modes_seen"], list)
 

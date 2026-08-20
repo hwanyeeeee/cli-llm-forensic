@@ -283,6 +283,8 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
             _collect(ex.map(_work, remote_tasks))
     t_enrich = 0.0
     events = []
+    sqlite_results = []
+    sqlite_warnings = []
     ev_root = []                                            # collect_artifacts=True일 때만 채워 반환
     by_origin = {}                                          # OPT-8: origin별 카운트(조립 루프서 동시 누적)
     for ri, root in enumerate(roots):                       # 입력 루트 순서(I2)
@@ -291,6 +293,8 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
         if ri in delegate_ok:
             root_evs = delegate_ok[ri]["events"]            # 헬퍼가 같은 코드로 태그+enrich 완료(등가성 테스트 보증)
             evidence_manifest.update(delegate_ok[ri]["manifest"])
+            if delegate_ok[ri].get("sqlite_support"):
+                sqlite_results.append(delegate_ok[ri]["sqlite_support"])
         else:
             root_evs = []
             for fi in range(len(file_lists[ri])):           # 파일 순서(history먼저→sorted transcripts)
@@ -301,6 +305,19 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
             _t = time.perf_counter()
             enrich(root_evs, srcs[ri], bypass=bypass_by_root[ri])   # 수집된 bypass로 태깅(재읽기 X)
             t_enrich += time.perf_counter() - _t
+            if srcs[ri].agent == "codex":
+                try:
+                    from clfx.codex_sqlite import augment_events, collect_sqlite_support
+                    support = collect_sqlite_support(srcs[ri].sqlite_root, file_lists[ri])
+                    if support["databases"]:
+                        augment_events(root_evs, support)
+                        evidence_manifest.update(support["manifest"])
+                        sqlite_warnings.extend(support["warnings"])
+                        sqlite_results.append(support)
+                except Exception as error:
+                    sqlite_warnings.append({"kind": "sqlite_acquisition",
+                                            "file": str(srcs[ri].sqlite_root),
+                                            "error": type(error).__name__})
         events.extend(root_evs)
         if collect_artifacts:
             ev_root.extend((e, str(root)) for e in root_evs)    # enrich 끝난 최종 상태 객체 + root 문자열
@@ -314,6 +331,7 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
         on_progress(total_files, total_files, len(events), None)
     engine = QueryEngine(events)
     warnings = [warning for src in srcs.values() for warning in source_warnings(src)]
+    warnings.extend(sqlite_warnings)
     for result in delegate_ok.values():
         warnings.extend(result.get("warnings") or [])
     engine.source_warnings = sorted(
@@ -326,6 +344,8 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     # B-1 acquisition manifest(증거 jsonl 파일 전수): str(path)→sha256(정렬). 추가 읽기 없이
     #   parse 단계서 누적한 raw-바이트 해시. 튜플 arity는 불변 — 엔진 속성으로 부착(회귀 안전).
     engine.evidence_manifest = {p: evidence_manifest[p] for p in sorted(evidence_manifest)}
+    engine.sqlite_support = (sqlite_results[0] if len(sqlite_results) == 1 else
+                             {"sources": sqlite_results})
     # O11 표면화: 위임 사용 내역·헬퍼 무결성 해시·실패 사유(폴백됨) — attestation으로 전달(I2).
     engine.delegate_info = {
         "delegated": sorted(str(roots[ri]) for ri in delegate_ok),
@@ -416,7 +436,7 @@ ATTEST_NOTE = ("라이브 제자리 분석(Claude OFF·증거 정적). 취득 �
                "(전후 재해싱은 round5 성능 위해 미수행, 필요 시 재검증 옵션).")
 
 
-def attestation_payload(parse_manifest, forensic_out):
+def attestation_payload(parse_manifest, forensic_out, started_at=None, finished_at=None):
     """B-1/B-2: chain-of-custody attestation 계약 dict 조립(HTTP 무관, 순수).
 
     acquired = 콘텐츠를 실제로 읽은 파일의 {path, sha256} 정렬 목록 —
@@ -440,6 +460,8 @@ def attestation_payload(parse_manifest, forensic_out):
         "all_read_only": all(m in ("r", "rb") for m in modes),
         "modes_seen": modes,
         "write_delete_rename_ops": roio.write_delete_rename_ops(),
+        "collection_started_at": started_at,
+        "collection_finished_at": finished_at,
         "note": ATTEST_NOTE,
     }
 

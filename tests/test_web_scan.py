@@ -253,6 +253,7 @@ def test_events_route_sends_cached_bytes(tmp_path):
 # ── B-1/B-2: chain-of-custody attestation (ServerState + /api/attestation) ──
 _ATTEST_EMPTY = {"acquired": [], "acquired_count": 0, "stat_only_count": 0,
                  "all_read_only": True, "modes_seen": [], "write_delete_rename_ops": 0,
+                 "collection_started_at": None, "collection_finished_at": None,
                  "note": "(스캔 전)"}
 
 
@@ -316,6 +317,7 @@ def test_scan_populates_attestation(tmp_path):
         assert att["acquired_count"] > 0
         assert att["all_read_only"] is True
         assert att["write_delete_rename_ops"] == 0
+        assert att["collection_started_at"] <= att["collection_finished_at"]
         assert set(att["modes_seen"]).issubset({"r", "rb"})
         # jsonl 증거파일이 acquired에 들어감(sha 64-hex).
         paths = [a["path"] for a in att["acquired"]]

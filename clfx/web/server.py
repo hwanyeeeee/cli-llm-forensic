@@ -5,6 +5,7 @@ import os
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -19,7 +20,12 @@ from clfx.web.api import (events_payload, events_payload_bytes, query_payload, s
 # B-1/B-2: ServerState 초기 attestation — empty-but-valid 계약(스캔 전 GET /api/attestation 안전).
 _ATTEST_EMPTY = {"acquired": [], "acquired_count": 0, "stat_only_count": 0,
                  "all_read_only": True, "modes_seen": [], "write_delete_rename_ops": 0,
+                 "collection_started_at": None, "collection_finished_at": None,
                  "note": "(스캔 전)"}
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 def _static_dir():
     """정적 파일 디렉터리. PyInstaller onefile은 sys._MEIPASS에 추출되므로 그 경로 우선."""
@@ -239,6 +245,7 @@ def make_handler(state):
                     n = int(self.headers.get("Content-Length", 0))
                     body = json.loads(self.rfile.read(n) or b"{}")
                     roots = body.get("roots") or []
+                    collection_started_at = _utc_now()
                     roio.reset_audit()           # B-2: 스캔 시작마다 in-memory audit 초기화(per-scan attestation)
                     # 진행상황 초기화 → on_progress가 단계마다 갱신 → 폴링 GET이 읽음(동기 POST 유지).
                     # OPT-7: 파이프라인 단계별 가중 overall_percent.
@@ -296,7 +303,8 @@ def make_handler(state):
                     try:                                     # B-1/B-2: attestation 실패해도 스캔은 성공(빈 계약 유지)
                         att = attestation_payload(
                             acquired_manifest,
-                            {"acquired_hashes": acquired_hashes, "stat_only": stat_only})
+                            {"acquired_hashes": acquired_hashes, "stat_only": stat_only},
+                            started_at=collection_started_at, finished_at=_utc_now())
                         di = getattr(eng, "delegate_info", None)
                         if di and (di["delegated"] or di["errors"]):
                             att["delegate"] = di             # O11: 위임 내역+헬퍼 SHA-256(도구 무결성) 표면화
