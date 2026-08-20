@@ -18,6 +18,8 @@ class CodexSource:
         self.parse_errors = []
         self.config_errors = []
         self.acquisition_errors = []
+        self.schema_warnings = []
+        self.capability_warnings = []
         self.sqlite_root = self._sqlite_root()
 
     def _sqlite_root(self):

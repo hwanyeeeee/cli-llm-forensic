@@ -1,0 +1,18 @@
+{"timestamp":"2026-08-21T00:00:00Z","type":"session_meta","payload":{"id":"synthetic-legacy","cli_version":"0.146.0","base_instructions":"synthetic injected instructions"}}
+{"timestamp":"2026-08-21T00:00:01Z","type":"turn_context","payload":{"user_instructions":"synthetic injected context"}}
+{"timestamp":"2026-08-21T00:00:02Z","type":"event_msg","payload":{"type":"user_message","message":"inspect synthetic input","local_images":["/case/input.png"]}}
+{"timestamp":"2026-08-21T00:00:03Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"duplicate model input"}]}}
+{"timestamp":"2026-08-21T00:00:04Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"injected developer input"}]}}
+{"timestamp":"2026-08-21T00:00:05Z","type":"response_item","payload":{"type":"function_call","id":"response-call-view","name":"exec_command","arguments":"{\"cmd\":\"printf synthetic\"}","call_id":"call-1"}}
+{"timestamp":"2026-08-21T00:00:06Z","type":"response_item","payload":{"type":"function_call_output","id":"response-output-view","call_id":"call-1","output":[{"type":"output_text","text":"synthetic output"}]}}
+{"timestamp":"2026-08-21T00:00:07Z","type":"event_msg","payload":{"type":"exec_command_end","call_id":"call-1","exit_code":0,"stdout":"synthetic output"}}
+{"timestamp":"2026-08-21T00:00:08Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"printf unmatched\"}","call_id":"call-missing"}}
+{"timestamp":"2026-08-21T00:00:09Z","type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"await tools.exec_command({cmd: 'printf orchestration'})","call_id":"custom-exec"}}
+{"timestamp":"2026-08-21T00:00:10Z","type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","input":"*** Begin Patch\n*** Add File: /case/new.txt\n+synthetic\n*** End Patch","call_id":"custom-patch"}}
+{"timestamp":"2026-08-21T00:00:11Z","type":"event_msg","payload":{"type":"patch_apply_end","call_id":"custom-patch","status":"completed"}}
+{"timestamp":"2026-08-21T00:00:12Z","type":"event_msg","payload":{"type":"agent_message","message":"synthetic complete"}}
+{"timestamp":"2026-08-21T00:00:13Z","type":"event_msg","payload":{"type":"mcp_tool_call_end","call_id":"mcp-1","invocation":{"server":"synthetic","tool":"lookup","arguments":{"q":"fixture"}},"result":{"ok":true}}}
+{"timestamp":"2026-08-21T00:00:14Z","type":"event_msg","payload":{"type":"web_search_end","query":"synthetic query","call_id":"search-1"}}
+{"timestamp":"2026-08-21T00:00:15Z","type":"event_msg","payload":{"type":"future_event","mystery":1}}
+{"timestamp":"2026-08-21T00:00:16Z","type":"event_msg","payload":{"type":"future_event","mystery":2}}
+{"timestamp":"2026-08-21T00:00:17Z","type":"response_item","payload":{"type":"custom_tool_call_output","id":"patch-output-view","call_id":"custom-patch","output":[{"type":"output_text","text":"Done"}]}}

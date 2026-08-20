@@ -5,6 +5,7 @@ per the MAPPING CONTRACT in the project spec.
 """
 import re
 
+from clfx.codex_parser import CodexFileParser
 from clfx.event import Event, Source, norm_ts
 from clfx.paste import resolve_paste
 
@@ -198,6 +199,13 @@ def _transcript_events_from(records, agent):
 
 
 def _transcript_events(src):
+    if src.agent == "codex":
+        for path in src.transcript_files():
+            parser = CodexFileParser(src)
+            for rec in src._iter_jsonl(path):
+                parser.feed(rec)
+            yield from parser.finish()
+        return
     yield from _transcript_events_from(src.transcript_records(), src.agent)
 
 
@@ -214,13 +222,18 @@ def parse_file(src, path, is_history):
     파일을 못 열어 yield가 없으면 sha=None. RawRecord는 파일 전체를 보관하지 않는다."""
     sha_holder = {}                             # 호출자 소유 → src 공유상태 없이 스레드 분리(병렬 안전)
     events, bypass = [], set()
+    codex = CodexFileParser(src) if src.agent == "codex" and not is_history else None
     for rec in src._iter_jsonl(path, sha_out=sha_holder):
         if is_history:
             events.extend(_history_events_from(iter((rec,)), src))
+        elif codex is not None:
+            codex.feed(rec)
         else:
             events.extend(_transcript_events_from(iter((rec,)), src.agent))
             if _is_bypass_record(rec.obj):
                 bypass.add(rec.obj["sessionId"])
+    if codex is not None:
+        events.extend(codex.finish())
     sha = sha_holder.get("sha")
     return events, bypass, sha
 

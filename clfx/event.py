@@ -59,14 +59,17 @@ class Event:
     agent: str          # claude | codex | gemini
     session: str
     actor: str          # user | agent | unknown
-    action: str         # prompt | read | bash | write | paste | response | mcp
+    action: str         # prompt | read | bash | write | paste | response | mcp | search | spawn
     target: str
     preview: str
     source: Source
     tags: list = field(default_factory=list)
+    meta: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d = asdict(self)              # source -> {"file","line"} 자동
+        if not d["meta"]:
+            del d["meta"]
         return d
 
     def to_json(self) -> str:
@@ -79,4 +82,6 @@ class Event:
         d["source"] = Source(**d["source"])
         if d.get("tags") is None:          # 누락 키 + JSON null 둘 다 정규화
             d["tags"] = []
+        if d.get("meta") is None:
+            d["meta"] = {}
         return cls(**d)

@@ -1,0 +1,19 @@
+{"timestamp":"2026-08-21T01:00:00Z","type":"session_meta","ordinal":1,"payload":{"id":"synthetic-item","cli_version":"0.147.0","base_instructions":"synthetic injected instructions"}}
+{"timestamp":"2026-08-21T01:00:01Z","type":"turn_context","ordinal":2,"payload":{"user_instructions":"synthetic injected context"}}
+{"timestamp":"2026-08-21T01:00:02Z","type":"response_item","ordinal":3,"payload":{"type":"function_call","id":"response-call-view","name":"exec_command","arguments":"{\"cmd\":\"printf synthetic\"}","call_id":"cmd-1"}}
+{"timestamp":"2026-08-21T01:00:03Z","type":"response_item","ordinal":4,"payload":{"type":"function_call_output","id":"response-output-view","call_id":"cmd-1","output":[{"type":"output_text","text":"synthetic output"}]}}
+{"timestamp":"2026-08-21T01:00:04Z","type":"event_msg","ordinal":5,"payload":{"type":"item_completed","item":{"type":"UserMessage","id":"user-1","content":[{"type":"text","text":"inspect [image]","text_elements":[{"byte_range":{"start":8,"end":15},"placeholder":"[image]"}]},{"type":"local_image","path":"/case/input image.png"}]}}}
+{"timestamp":"2026-08-21T01:00:05Z","type":"event_msg","ordinal":6,"payload":{"type":"item_completed","item":{"type":"AgentMessage","id":"agent-1","text":"synthetic response"}}}
+{"timestamp":"2026-08-21T01:00:06Z","type":"event_msg","ordinal":7,"payload":{"type":"item_completed","item":{"type":"CommandExecution","id":"cmd-1","command":["/bin/bash","-lc","printf synthetic"],"cwd":"file:///case/synthetic%20dir","status":"completed","aggregated_output":"synthetic output","exit_code":0}}}
+{"timestamp":"2026-08-21T01:00:07Z","type":"event_msg","ordinal":8,"payload":{"type":"item_completed","item":{"type":"FileChange","id":"file-1","status":"completed","changes":{"/case/new.txt":{"type":"add","content":"synthetic\n"},"/case/old.txt":{"type":"update","move_path":"/case/moved.txt","unified_diff":"@@ synthetic @@"}}}}}
+{"timestamp":"2026-08-21T01:00:08Z","type":"event_msg","ordinal":9,"payload":{"type":"item_completed","item":{"type":"Extension","id":"search-1","kind":"web.search","query":"item synthetic query"}}}
+{"timestamp":"2026-08-21T01:00:09Z","type":"event_msg","ordinal":10,"payload":{"type":"item_completed","item":{"type":"SubAgentActivity","id":"sub-1","agent_thread_id":"synthetic-agent","kind":"started"}}}
+{"timestamp":"2026-08-21T01:00:10Z","type":"event_msg","ordinal":11,"payload":{"type":"item_completed","item":{"type":"CollabAgentToolCall","id":"collab-1","tool":"spawn_agent","agent_id":"synthetic-collaborator"}}}
+{"timestamp":"2026-08-21T01:00:11Z","type":"event_msg","ordinal":12,"payload":{"type":"item_completed","item":{"type":"ImageView","id":"image-1","path":"/case/view.png"}}}
+{"timestamp":"2026-08-21T01:00:12Z","type":"event_msg","ordinal":13,"payload":{"type":"item_completed","item":{"type":"Reasoning","id":"reason-1","text":"synthetic reasoning"}}}
+{"timestamp":"2026-08-21T01:00:13Z","type":"event_msg","ordinal":14,"payload":{"type":"item_completed","item":{"type":"ContextCompaction","id":"compact-1"}}}
+{"timestamp":"2026-08-21T01:00:14Z","type":"response_item","ordinal":15,"payload":{"type":"custom_tool_call","name":"exec","input":"await tools.exec_command({cmd: 'printf item orchestration'})","call_id":"custom-item-exec"}}
+{"timestamp":"2026-08-21T01:00:15Z","type":"response_item","ordinal":16,"payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"duplicate item model input"}]}}
+{"timestamp":"2026-08-21T01:00:16Z","type":"event_msg","ordinal":17,"payload":{"type":"item_completed","item":{"type":"Extension","id":"extension-future","kind":"future.extension","value":1}}}
+{"timestamp":"2026-08-21T01:00:17Z","type":"event_msg","ordinal":18,"payload":{"type":"item_completed","item":{"type":"FutureItem","id":"future-item","value":1}}}
+{"timestamp":"2026-08-21T01:00:18Z","type":"future_envelope","ordinal":19,"payload":{"value":1}}

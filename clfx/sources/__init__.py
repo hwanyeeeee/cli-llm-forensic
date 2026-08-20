@@ -44,7 +44,9 @@ def source_for(root, on_file=None):
 def source_warnings(source):
     out = []
     for kind, attr in (("acquisition", "acquisition_errors"),
-                       ("config", "config_errors"), ("parse", "parse_errors")):
+                       ("config", "config_errors"), ("parse", "parse_errors"),
+                       ("unsupported_schema", "schema_warnings"),
+                       ("capability_mismatch", "capability_warnings")):
         out.extend({"kind": kind, **row} for row in getattr(source, attr, ()))
     return sorted(out, key=lambda row: (row.get("file", ""), row.get("line", 0),
                                         row.get("kind", ""), row.get("error", "")))
