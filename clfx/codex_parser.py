@@ -1,5 +1,6 @@
 """Codex rollout records -> Event, selected by structure rather than cli_version."""
 import json
+import posixpath
 import re
 import shlex
 from urllib.parse import unquote, urlparse
@@ -10,6 +11,11 @@ from clfx.event import Event, Source, norm_ts
 _PREVIEW_MAX = 4000
 _IMAGE_PLACEHOLDER = re.compile(r"^\s*\[Image #[1-9]\d*\]\s*$")
 _PATCH_PATH = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.MULTILINE)
+_WRITE_REDIRECT = re.compile(
+    r"(?:^|\s)(?:\d*>>?|&>)\s*(?:['\"]([^'\"]+)['\"]|([^\s;&|]+))")
+_PATH_MARKER = re.compile(
+    r"(?:^|[\s'\"=])(?:/[^\s;'\"|&]+|[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,8})"
+    r"(?=$|[\s'\";|&])")
 _ITEM_TYPES = {"Reasoning", "CommandExecution", "AgentMessage", "Extension",
                "UserMessage", "SubAgentActivity", "FileChange", "CollabAgentToolCall",
                "ContextCompaction", "ImageView"}
@@ -105,6 +111,16 @@ def _command(value):
     return _clip(value)
 
 
+def _command_text(value):
+    if isinstance(value, list):
+        args = [str(arg) for arg in value]
+        for flag in ("-lc", "-c"):
+            if flag in args and args.index(flag) + 1 < len(args):
+                return args[args.index(flag) + 1]
+        return shlex.join(args)
+    return _clip(value)
+
+
 def _identity(payload):
     if not isinstance(payload, dict):
         return ""
@@ -125,6 +141,10 @@ class CodexFileParser:
         self.orchestration_events = []
         self.active_orchestrations = []
         self.capabilities = set()
+        self.turn_policies = {}
+        self.current_turn_id = ""
+        self.record_context = {}
+        self.subagent_meta = {}
         self.file = ""
         self.session = ""
         self.cli_version = ""
@@ -149,7 +169,10 @@ class CodexFileParser:
             self.session = str(payload.get("id") or self.session)
             self.cli_version = str(payload.get("cli_version") or "")
             self.originator = str(payload.get("originator") or "")
+            self._session_context(payload)
             self.meta_line = rec.line
+        elif envelope == "turn_context":
+            self._turn_context(rec, obj)
         elif envelope == "event_msg":
             self._event_msg(rec, obj)
         elif envelope == "response_item":
@@ -167,6 +190,13 @@ class CodexFileParser:
         for event in self.events:
             if not event.session:
                 event.session = self.session
+            policy = self.turn_policies.get(event.meta.get("turn_id"))
+            if policy:
+                event.meta.update(policy)
+            if self.subagent_meta:
+                event.meta.update(self.subagent_meta)
+                event.actor = "agent"
+        self._apply_confidence()
         for row in self.unsupported.values():
             self.source.schema_warnings.append(row)
         self._check_version()
@@ -181,11 +211,53 @@ class CodexFileParser:
         self.unsupported[key] = {"file": rec.file, "line": rec.line, "layer": layer,
                                  "name": name, "keyset": keys, "count": 1}
 
+    def _session_context(self, payload):
+        source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+        subagent = source.get("subagent") if isinstance(source.get("subagent"), dict) else {}
+        spawn = subagent.get("thread_spawn") if isinstance(subagent.get("thread_spawn"), dict) else {}
+        if payload.get("thread_source") != "subagent" and not spawn:
+            return
+        self.subagent_meta = {"agent_kind": "subagent"}
+        fields = {
+            "parent_thread_id": spawn.get("parent_thread_id") or payload.get("parent_thread_id"),
+            "depth": spawn.get("depth"),
+            "agent_path": spawn.get("agent_path"),
+            "agent_nickname": spawn.get("agent_nickname") or payload.get("agent_nickname"),
+        }
+        self.subagent_meta.update({key: value for key, value in fields.items()
+                                   if value is not None})
+
+    def _turn_context(self, rec, obj):
+        payload = obj.get("payload") or {}
+        if not isinstance(payload, dict):
+            self._warn(rec, "turn_context", type(payload).__name__, payload)
+            return
+        turn_id = str(payload.get("turn_id") or "")
+        if not turn_id:
+            return
+        self.current_turn_id = turn_id
+        self.turn_policies[turn_id] = {key: payload[key] for key in (
+            "approval_policy", "sandbox_policy", "approvals_reviewer") if key in payload}
+
     def _meta(self, rec, payload, **extra):
         ident = _identity(payload)
         meta = {"id": ident} if ident else {}
         if "ordinal" in rec.obj:
             meta["ordinal"] = rec.obj["ordinal"]
+        context = self.record_context if isinstance(self.record_context, dict) else {}
+        passthrough = payload.get("internal_chat_message_metadata_passthrough")
+        passthrough = passthrough if isinstance(passthrough, dict) else {}
+        turn_id = (context.get("turn_id") or payload.get("turn_id") or
+                   passthrough.get("turn_id") or rec.obj.get("turn_id") or
+                   self.current_turn_id)
+        thread_id = context.get("thread_id") or payload.get("thread_id")
+        if turn_id:
+            meta["turn_id"] = turn_id
+        if thread_id:
+            meta["thread_id"] = thread_id
+        for key in ("started_at_ms", "completed_at_ms"):
+            if key in context:
+                meta[key] = context[key]
         meta.update({key: value for key, value in extra.items() if value is not None})
         return meta
 
@@ -239,7 +311,12 @@ class CodexFileParser:
         kind = payload.get("type")
         if kind == "item_completed":
             self.capabilities.add("item")
-            self._item(rec, payload.get("item"))
+            previous = self.record_context
+            self.record_context = payload
+            try:
+                self._item(rec, payload.get("item"))
+            finally:
+                self.record_context = previous
         elif kind == "user_message":
             self.capabilities.add("legacy")
             self._legacy_user(rec, payload)
@@ -258,9 +335,11 @@ class CodexFileParser:
             preview = payload.get("stdout") or payload.get("output") or payload.get("stderr")
             status = payload.get("status") or ("completed" if payload.get("exit_code") is not None else "unknown")
             if ident not in self.by_id:
-                self._emit(rec, "agent", "bash", target=_command(payload.get("command")),
+                actor = "user" if payload.get("source") in {"user_shell", "userShell"} else "unknown"
+                self._emit(rec, actor, "bash", target=_command(payload.get("command")),
                            preview=preview, payload=payload, merge=True, status=status,
-                           exit_code=payload.get("exit_code"))
+                           exit_code=payload.get("exit_code"),
+                           command_source=payload.get("source"), record_type="command_execution")
             self._update(ident, preview, status=status, exit_code=payload.get("exit_code"))
         elif kind == "patch_apply_end":
             ident = _identity(payload)
@@ -327,7 +406,9 @@ class CodexFileParser:
             if name in {"exec_command", "shell_command", "run"}:
                 target = args.get("cmd") or args.get("command") or args.get("script") or ""
                 self._emit(rec, "agent", "bash", target=target, payload=payload, merge=True,
-                           status=payload.get("status") or "unknown", function_name=name)
+                           status=payload.get("status") or "unknown", function_name=name,
+                           cwd=args.get("cwd") or args.get("workdir"),
+                           record_type="command_execution")
             elif name == "write_stdin":
                 session_id = args.get("session_id")
                 self._emit(rec, "agent", "bash", target=f"session:{session_id}",
@@ -384,7 +465,8 @@ class CodexFileParser:
                 match = _PATCH_PATH.search(text)
                 self._emit(rec, "agent", "write", target=match.group(1) if match else "",
                            preview=text, payload=payload, merge=True,
-                           status=payload.get("status") or "unknown")
+                           status=payload.get("status") or "unknown",
+                           record_type="apply_patch")
             else:
                 self._warn(rec, "custom_tool_call.name", str(name), payload)
         elif kind == "custom_tool_call_output":
@@ -417,8 +499,15 @@ class CodexFileParser:
         elif kind == "AgentMessage":
             self._emit(rec, "agent", "response", preview=_text(item), payload=item)
         elif kind == "CommandExecution":
+            ident = _identity(item)
+            linked = ident in self.by_id or bool(self.active_orchestrations)
+            command_source = item.get("source")
+            actor = ("user" if command_source in {"user_shell", "userShell"} else
+                     "agent" if linked else "unknown")
             meta = {"status": item.get("status") or "unknown",
-                    "cwd": _file_url(item.get("cwd")), "exit_code": item.get("exit_code")}
+                    "cwd": _file_url(item.get("cwd")), "exit_code": item.get("exit_code"),
+                    "command_source": command_source, "record_type": "command_execution",
+                    "command_text": _command_text(item.get("command"))}
             if self.active_orchestrations:
                 orchestration = self.orchestrations[self.active_orchestrations[-1]]
                 child = _identity(item)
@@ -426,8 +515,9 @@ class CodexFileParser:
                     orchestration["children"].append(child)
                 meta["orchestration"] = orchestration
             preview = item.get("aggregated_output") or item.get("output") or ""
-            self._emit(rec, "agent", "bash", _command(item.get("command")), preview,
-                       payload=item, merge=True, **meta)
+            event = self._emit(rec, actor, "bash", _command(item.get("command")), preview,
+                               payload=item, merge=True, **meta)
+            event.actor = actor
         elif kind == "FileChange":
             changes = item.get("changes")
             if not isinstance(changes, dict):
@@ -438,7 +528,8 @@ class CodexFileParser:
                 preview = change.get("content") or change.get("unified_diff") or ""
                 self._emit(rec, "agent", "write", path, preview, payload=item,
                            status=item.get("status") or "unknown",
-                           change_type=change.get("type"), move_path=change.get("move_path"))
+                           change_type=change.get("type"), move_path=change.get("move_path"),
+                           record_type="file_change")
         elif kind == "Extension":
             extension = item.get("kind")
             if extension != "web.search":
@@ -458,7 +549,43 @@ class CodexFileParser:
                        payload=item, status=item.get("status"))
         elif kind == "ImageView":
             self._emit(rec, "agent", "read", item.get("path") or item.get("image_path") or "",
-                       payload=item, status=item.get("status") or "completed")
+                       payload=item, status=item.get("status") or "completed", media="image")
+
+    def _apply_confidence(self):
+        file_change_turns = {
+            (event.session, event.meta.get("turn_id"), event.meta.get("thread_id"))
+            for event in self.events
+            if event.action == "write" and event.meta.get("record_type") == "file_change"
+        }
+        for event in self.events:
+            record_type = event.meta.get("record_type")
+            if event.action == "write":
+                complete = event.meta.get("status") == "completed"
+                same_turn = event.meta.get("turn_id") and event.meta.get("thread_id")
+                event.meta["confidence"] = "medium" if complete and same_turn else "unknown"
+                continue
+            if event.action != "bash" or record_type != "command_execution":
+                continue
+            command = event.meta.get("command_text") or event.target or ""
+            output = event.preview or ""
+            match = _WRITE_REDIRECT.search(command)
+            target = (match.group(1) or match.group(2)) if match else ""
+            target = target.strip("'\"")
+            if target and event.meta.get("cwd") and not target.startswith(("/", "~", "$")):
+                target = posixpath.normpath(posixpath.join(event.meta["cwd"], target))
+            turn_key = (event.session, event.meta.get("turn_id"), event.meta.get("thread_id"))
+            complete = (event.meta.get("status") == "completed" and
+                        event.meta.get("exit_code") == 0)
+            if target and complete and event.meta.get("cwd") and event.meta.get("turn_id") \
+                    and turn_key not in file_change_turns:
+                event.meta["confidence"] = "medium"
+                event.meta["write_target"] = target
+            elif _PATH_MARKER.search(command) or _PATH_MARKER.search(output):
+                event.meta["confidence"] = "low"
+                if target:
+                    event.meta["write_target"] = target
+            else:
+                event.meta["confidence"] = "unknown"
 
     def _item_user(self, rec, item):
         content = item.get("content")

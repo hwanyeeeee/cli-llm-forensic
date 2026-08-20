@@ -69,7 +69,9 @@ def test_item_rollout_parses_all_pascal_types_and_merges_duplicate_view():
     assert command.target.endswith("printf synthetic'")
     assert command.meta == {"id": "cmd-1", "status": "completed", "ordinal": 7,
                             "cwd": "/case/synthetic dir", "exit_code": 0,
-                            "function_name": "exec_command"}
+                            "function_name": "exec_command",
+                            "record_type": "command_execution",
+                            "command_text": "printf synthetic", "confidence": "unknown"}
     assert command.preview == "synthetic output"
     assert {event.target for event in events if event.action == "write"} == {
         "/case/new.txt", "/case/old.txt"}
