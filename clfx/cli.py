@@ -4,7 +4,7 @@ import os
 import re
 import sys
 
-from clfx.sources.claude import ClaudeSource
+from clfx.sources import source_for, source_warnings
 from clfx.parser import parse_source
 from clfx.event import Event
 from clfx.analyze.attribution import enrich
@@ -44,7 +44,7 @@ def _origin_label(root):
 
 
 def parse_source_tagged(src, root):
-    """주어진 ClaudeSource로 parse + origin 태깅. scan이 on_file 소스를 주입하려고 src를 받음.
+    """주어진 source로 parse + origin 태깅. scan이 on_file 소스를 주입하려고 src를 받음.
     출처 태그(스키마 불변 — tags[] 사용). source.file과 함께 머신 보존."""
     tag = f"origin:{_origin_label(root)}"
     evs = []
@@ -55,19 +55,33 @@ def parse_source_tagged(src, root):
     return evs
 
 
-def parse_roots(roots):
-    """여러 .claude 루트 → origin 태깅된 Event 리스트(병합). parse/scan 공용. enrich는 호출자 책임.
+def parse_roots(roots, sources_out=None):
+    """여러 에이전트 루트 → origin 태깅된 Event 리스트(병합). enrich는 호출자 책임.
     WSL/Windows는 별 세션이라 dedup 불요."""
     evs = []
     for root in roots:                       # nargs="+" → 항상 list. 여러 루트(WSL+Windows .claude)를 한 번에.
-        evs.extend(parse_source_tagged(ClaudeSource(root), root))
+        src = source_for(root)
+        if sources_out is not None:
+            sources_out.append(src)
+        evs.extend(parse_source_tagged(src, root))
     return evs
+
+
+def _report_source_warnings(sources):
+    warnings = [warning for src in sources for warning in source_warnings(src)]
+    for warning in warnings:
+        print("clfx source warning: " + json.dumps(warning, ensure_ascii=False, sort_keys=True),
+              file=sys.stderr)
+    return warnings
 
 
 def cmd_parse(args):
     try:
-        evs = parse_roots(args.root)
+        sources = []
+        evs = parse_roots(args.root, sources)
         _write_events(evs, args.out)
+        if _report_source_warnings(sources):
+            return 1
     except Exception as e:
         print(f"clfx parse: {e}", file=sys.stderr)
         return 1
@@ -81,7 +95,9 @@ def _read_events(path):
 
 class _NullSource:
     """--root 미지정 시 bypass 판정용 빈 소스(transcript 없음)."""
-    agent = "claude"
+
+    def __init__(self, agent):
+        self.agent = agent
 
     def transcript_records(self):
         return iter(())
@@ -90,8 +106,12 @@ class _NullSource:
 def cmd_analyze(args):
     try:
         events = _read_events(args.events)
-        src = ClaudeSource(args.root) if args.root else _NullSource()
+        agents = {e.agent for e in events}
+        src = source_for(args.root) if args.root else _NullSource(
+            next(iter(agents)) if len(agents) == 1 else "unknown")
         _write_events(enrich(events, src), args.out)
+        if _report_source_warnings([src]):
+            return 1
     except Exception as e:
         print(f"clfx analyze: {e}", file=sys.stderr)
         return 1
@@ -137,14 +157,14 @@ def build_parser():
     sub = p.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("parse", help="에이전트 기록 → events.jsonl")
     sp.add_argument("root", nargs="+",
-                    help="~/.claude 루트(들) — 여러 개 가능(예: Windows + \\\\wsl.localhost\\... )")
+                    help=".claude/.codex 루트(들) — 여러 개 가능")
     sp.add_argument("-o", "--out", required=True)
     sp.set_defaults(func=cmd_parse)
 
     ap = sub.add_parser("analyze", help="events.jsonl → analyzed.jsonl (tags·mask·귀속)")
     ap.add_argument("events")
     ap.add_argument("-o", "--out", required=True)
-    ap.add_argument("--root", default=None, help="bypass 판정용 ~/.claude 루트(선택)")
+    ap.add_argument("--root", default=None, help="분석용 .claude/.codex 루트(선택)")
     ap.set_defaults(func=cmd_analyze)
 
     qp = sub.add_parser("query", help="analyzed.jsonl 에 자연어 질의")

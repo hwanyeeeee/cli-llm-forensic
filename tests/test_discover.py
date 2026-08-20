@@ -46,6 +46,48 @@ def test_default_candidates_includes_windows_mount(monkeypatch):
     assert "/mnt/c/Users/alice/.claude" in cands
 
 
+def test_default_candidates_puts_codex_home_first_and_deduplicates_normalized_path(
+        tmp_path, monkeypatch):
+    import clfx.discover as d
+    home = tmp_path / "Evidence" / "User"
+    home.mkdir(parents=True)
+    codex_home = "~/.CODEX/"
+
+    def expanduser(path):
+        if path == "~":
+            return str(home)
+        if path.startswith("~/"):
+            return str(home / path[2:])
+        return path
+
+    monkeypatch.setenv("CODEX_HOME", codex_home)
+    monkeypatch.setattr(d.os.path, "expanduser", expanduser)
+    monkeypatch.setattr(d.os.path, "normcase", lambda path: path.lower())
+    monkeypatch.setattr(d.glob, "glob", lambda _pat: [])
+    monkeypatch.setattr(d, "_wsl_distros", lambda: [])
+    cands = d._default_candidates()
+    key = lambda path: d.os.path.normcase(d.os.path.normpath(d.os.path.expanduser(path)))
+    assert cands[0] == codex_home
+    assert sum(key(path) == key(codex_home) for path in cands) == 1
+
+
+def test_default_candidates_adds_codex_to_all_four_families(monkeypatch):
+    import clfx.discover as d
+    monkeypatch.setattr(d.os.path, "expanduser",
+                        lambda path: "/home/me" if path == "~" else path)
+    monkeypatch.setenv("USERPROFILE", r"C:\Users\me")
+    monkeypatch.setattr(d.glob, "glob", lambda pat: [
+        "/mnt/c/Users/alice/.codex" if pat.endswith(".codex") else "/mnt/c/Users/alice/.claude"])
+    monkeypatch.setattr(d, "_wsl_distros", lambda: ["Ubuntu"])
+    monkeypatch.setattr(d, "_listdir_t", lambda _p: (["u"], False))
+
+    cands = d._default_candidates()
+    assert "/home/me/.codex" in cands
+    assert r"C:\Users\me/.codex" in [p.replace("\\.codex", "/.codex") for p in cands]
+    assert "/mnt/c/Users/alice/.codex" in cands
+    assert any("wsl.localhost" in p and p.endswith(".codex") for p in cands)
+
+
 def test_parse_wsl_list_utf16():
     from clfx.discover import _parse_wsl_list
     # wsl.exe -l -q 출력은 UTF-16LE (+ CRLF, 가끔 BOM/널)

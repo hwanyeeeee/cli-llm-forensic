@@ -11,8 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from clfx.query.llm import route_intent, summarize, answer, answer_overview, answer_timeline, make_llm, search_terms
 from clfx.analyze.keywords import keyword_stats
-from clfx.event import norm_ts
-from clfx.sources.claude import ClaudeSource
+from clfx.event import actor_bucket, norm_ts
+from clfx.sources import source_for, source_warnings
 from clfx.analyze.attribution import enrich
 from clfx.query.engine import QueryEngine
 from clfx import wsl_delegate
@@ -31,7 +31,8 @@ def events_payload(engine):
             d = e.to_dict()
             d["ts"] = norm_ts(d.get("ts"))
             out.append(d)
-        return {"events": out, "count": len(out)}
+        return {"events": out, "count": len(out),
+                "warnings": getattr(engine, "source_warnings", [])}
     return engine._memo("events_payload", _build)
 
 
@@ -147,12 +148,16 @@ def query_payload(engine, q, llm=_DEFAULT_LLM, answer_only_summary=False, origin
 
 
 def _stats_build(events):
-    """이벤트 리스트 위 경량 집계(총건수·A/B·bypass). 스코핑/전체 공용(DRY)."""
+    """이벤트 리스트 위 경량 집계(총건수·actor·bypass). 스코핑/전체 공용(DRY)."""
     total = len(events)
-    user = sum(1 for e in events if e.actor == "user")
-    agent = sum(1 for e in events if e.actor == "agent")
+    actors = {"user": 0, "agent": 0, "unknown": 0}
+    actor_warnings = 0
+    for e in events:
+        actor = actor_bucket(e.actor)
+        actors[actor] += 1
+        actor_warnings += e.actor != actor
     bypass = sum(1 for e in events if "bypass-mode" in (e.tags or []))
-    return {"total": total, "user": user, "agent": agent, "bypass": bypass}
+    return {"total": total, **actors, "actor_warnings": actor_warnings, "bypass": bypass}
 
 
 def stats_payload(engine, origins=None):
@@ -218,6 +223,7 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
         if on_progress:
             on_progress(0, 0, 0, None)
         eng0 = QueryEngine([])
+        eng0.source_warnings = []
         eng0.parse_timings = {"parse_wall_s": 0.0, "enrich_s": 0.0}   # Phase1 계측(속성 부착 — arity 불변)
         eng0.delegate_info = {"delegated": [], "helper_sha256": [], "errors": []}   # O11: 위임 없음
         return (eng0, [], {}, {}) if collect_artifacts else eng0
@@ -234,7 +240,7 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
         except Exception as e:                      # DelegateError 포함 — 위임의 어떤 실패도 스캔을 죽이면
             delegate_err[ri] = f"{type(e).__name__}: {e}"   # 안 된다: 직접(UNC) 경로 폴백 + 사유 표면화(I2)
     direct_ris = [ri for ri in range(len(roots)) if ri not in delegate_ok]
-    srcs = {ri: ClaudeSource(roots[ri]) for ri in direct_ris}
+    srcs = {ri: source_for(roots[ri]) for ri in direct_ris}
     file_lists = {ri: srcs[ri].jsonl_files() for ri in direct_ris}   # [history(존재시), *sorted transcripts]
     hists = {ri: srcs[ri].root / "history.jsonl" for ri in direct_ris}
     total_files = sum(len(fl) for fl in file_lists.values())         # 단일패스 → 정확(기존 중복카운트보다 작음)
@@ -307,6 +313,12 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     if on_progress:
         on_progress(total_files, total_files, len(events), None)
     engine = QueryEngine(events)
+    warnings = [warning for src in srcs.values() for warning in source_warnings(src)]
+    for result in delegate_ok.values():
+        warnings.extend(result.get("warnings") or [])
+    engine.source_warnings = sorted(
+        warnings, key=lambda w: (w.get("file", ""), w.get("line", 0),
+                                 w.get("kind", ""), w.get("error", "")))
     # Phase1 계측(I6): 속성 부착(evidence_manifest와 같은 패턴 — 반환 arity·이벤트 불변).
     #   parse_wall_s는 위임 시작(_t_parse_total)부터 — O11 위임 시간도 포함(취득계층 총 벽시계).
     engine.parse_timings = {"parse_wall_s": round(time.perf_counter() - _t_parse_total, 3),

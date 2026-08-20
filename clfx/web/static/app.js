@@ -52,6 +52,7 @@ let LIVE=false;  // 서버 연결 여부
 // LIVE 시 엔진 집계 payload(JS 재집계 금지 — 그리기만). 각 null이면 해당 패널만 파생 fallback.
 let SRV_ACTIVITY=null, SRV_FILES=null, SRV_KEYWORDS=null;
 let SRV_STATS=null;   // 경량 타일 집계(/api/stats) — 점진부팅서 EVENTS 로드 전 타일 즉시 표시.
+let SCAN_WARNINGS=[]; // 마지막 /api/scan acquisition/config/parse 경고 — boot 뒤에도 유지.
 
 /* 키워드 파생(서버가 kw 미제공 시) — UI측 placeholder, /api/keywords 로 대체 예정 */
 const KW_DICT=["AWS","Stripe","GitHub","OpenAI","npm","SSH","id_rsa",".env",".npmrc","config",
@@ -88,8 +89,21 @@ function kwCounts(){const m={};EVENTS.forEach(e=>(e.kw||[]).forEach(k=>m[k]=(m[k
 
 /* ---------- state ---------- */
 const $=s=>document.querySelector(s);
+const ACTORS=["user","agent","unknown"];
+const ACTOR_LABEL={user:"A 사용자",agent:"B 에이전트",unknown:"주체 미상"};
+const ACTOR_SHORT={user:"u",agent:"a",unknown:"x"};
+function actorKey(actor){return ACTORS.includes(actor)?actor:"unknown";}
+function actorLabel(actor){return ACTOR_LABEL[actorKey(actor)];}
+function warningCount(actorWarnings,sourceWarnings=SCAN_WARNINGS){
+  return Number(actorWarnings||0)+(Array.isArray(sourceWarnings)?sourceWarnings.length:0);
+}
+function restoreScanWarnings(payload){
+  if(payload&&Array.isArray(payload.warnings))SCAN_WARNINGS=payload.warnings;
+  return SCAN_WARNINGS;
+}
+function scanWarningText(){return SCAN_WARNINGS.length?`스캔 경고 ${SCAN_WARNINGS.length}건`:"";}
 let SEL=null;
-const active={user:true,agent:true,"bypass-mode":true};
+const active={user:true,agent:true,unknown:true,"bypass-mode":true};
 const openDays={};        // 날짜→펼침 여부(true만 펼침, 기본 접힘). 카드는 펼친 날만 생성(가상화·무손실).
 const dayShown={};        // 날짜→현재 렌더한 카드 수(페이지네이션, TL_PAGE 단위 '더 보기'). 전 이벤트 도달 가능.
 const TL_PAGE=300;        // 한 날 1회 렌더 카드 수(나머지는 '더 보기'로 점진 — 이벤트 절대 안 버림).
@@ -126,20 +140,25 @@ function renderStats(){
   if(LIVE && SRV_STATS){
     $("#st-total").textContent=SRV_STATS.total; $("#st-bypass").textContent=SRV_STATS.bypass;
     $("#st-user").textContent=SRV_STATS.user;   $("#st-agent").textContent=SRV_STATS.agent;
+    $("#st-unknown").textContent=SRV_STATS.unknown||0;
+    $("#st-actor-warnings").textContent=warningCount(SRV_STATS.actor_warnings);
     return;
   }
   // !LIVE(MOCK/offline) 전용: 서버 없음 → EVENTS 기반 파생(소스 토글 inSrc 반영, 전량 1패스).
-  let total=0,byp=0,u=0,a=0;
+  let total=0,byp=0,u=0,a=0,x=0,w=0;
   for(const e of EVENTS){
     if(!inSrc(e))continue;
     total++;
     if(e.tags.includes("bypass-mode"))byp++;
-    if(e.actor==="user")u++; else if(e.actor==="agent")a++;
+    const actor=actorKey(e.actor);if(actor==="user")u++;else if(actor==="agent")a++;else x++;
+    if(actor!==e.actor)w++;
   }
   $("#st-total").textContent=total;
   $("#st-bypass").textContent=byp;
   $("#st-user").textContent=u;
   $("#st-agent").textContent=a;
+  $("#st-unknown").textContent=x;
+  $("#st-actor-warnings").textContent=warningCount(w);
 }
 
 /* ---------- date helpers ---------- */
@@ -155,25 +174,25 @@ function renderHeatmap(){
     if(!(SRV_ACTIVITY&&Array.isArray(SRV_ACTIVITY.rows))){
       $("#bars").innerHTML='<div class="empty">활동량 집계 불러오기 실패 (/api/activity)</div>';return;
     }
-    SRV_ACTIVITY.rows.forEach(r=>{if(r.bucket!=="unknown")cnt[r.bucket]={u:r.user,a:r.agent};});
+    SRV_ACTIVITY.rows.forEach(r=>{if(r.bucket!=="unknown")cnt[r.bucket]={u:r.user,a:r.agent,x:r.unknown||0};});
   }else{       // !LIVE(MOCK/offline) 전용 JS 파생
-    EVENTS.forEach(e=>{const d=dayOf(e.ts);cnt[d]=cnt[d]||{u:0,a:0};cnt[d][e.actor==="user"?"u":"a"]++;});
+    EVENTS.forEach(e=>{const d=dayOf(e.ts);cnt[d]=cnt[d]||{u:0,a:0,x:0};cnt[d][ACTOR_SHORT[actorKey(e.actor)]]++;});
   }
   const dates=Object.keys(cnt).sort();
   if(!dates.length){$("#bars").innerHTML='<div class="empty">데이터 없음</div>';return;}
   const maxD=new Date(dates[dates.length-1]+"T00:00:00");
   let start=new Date(maxD);start.setDate(start.getDate()-7*13);start.setDate(start.getDate()-start.getDay());
   let end=new Date(maxD);end.setDate(end.getDate()+(6-end.getDay()));
-  const mx=Math.max(...Object.values(cnt).map(v=>v.u+v.a),1);
+  const mx=Math.max(...Object.values(cnt).map(v=>v.u+v.a+v.x),1);
   const lvl=n=>!n?0:(n/mx>.75?4:n/mx>.5?3:n/mx>.25?2:1);
   const cells=[];const monthCols=[];const seenM=new Set();let col=0,lastM=-1;
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
-    const iso=ymd(d),c=cnt[iso],n=c?c.u+c.a:0,m=d.getMonth()+1;
+    const iso=ymd(d),c=cnt[iso],n=c?c.u+c.a+c.x:0,m=d.getMonth()+1;
     if(d.getDay()===0){if(d.getMonth()!==lastM){monthCols.push({col,m});lastM=d.getMonth();}col++;}
     seenM.add(m);
     const cls=["hcell"];if(n)cls.push("has");
     const bg=n?monthFill(m,lvl(n)):monthTint(m);
-    const title=c?`${iso} (${weekday(iso)}) · ${m}월  사용자 ${c.u} · 에이전트 ${c.a}`:`${iso}  활동 없음`;
+    const title=c?`${iso} (${weekday(iso)}) · ${m}월  사용자 ${c.u} · 에이전트 ${c.a} · 미상 ${c.x}`:`${iso}  활동 없음`;
     cells.push(`<div class="${cls.join(' ')}" data-d="${iso}" style="background:${bg}" title="${title}"></div>`);
   }
   const months=monthCols.map(({col,m})=>`<span style="flex:0 0 auto;margin-left:${col?7:0}px;color:hsl(${MONTH_HUE[(m-1)%12]} 50% 42%);font-weight:700">${m}월</span>`).join("");
@@ -231,9 +250,9 @@ function renderDonut(){
     <text x="60" y="72" text-anchor="middle" fill="#5c6675" font-size="9">키워드 언급</text>`;
   $("#legend").innerHTML=data.map(([k,c,ba],i)=>{
     const col=KWCOLORS[i%KWCOLORS.length];
-    // actor 분리(④): by_actor 있으면 사용자/에이전트 둘 다. MOCK(ba undefined)이면 생략.
-    const split=(ba&&(ba.user!=null||ba.agent!=null))
-      ?`<span class="ksplit" style="color:var(--faint);font-size:10px;margin-left:6px">사용자 ${ba.user||0} · 에이전트 ${ba.agent||0}</span>`:"";
+    // actor 분리(④): by_actor 있으면 세 주체 모두. MOCK(ba undefined)이면 생략.
+    const split=(ba&&(ba.user!=null||ba.agent!=null||ba.unknown!=null))
+      ?`<span class="ksplit" style="color:var(--faint);font-size:10px;margin-left:6px">사용자 ${ba.user||0} · 에이전트 ${ba.agent||0} · 미상 ${ba.unknown||0}</span>`:"";
     return `<div class="li" data-kw="${esc(k)}" data-col="${col}">
      <span class="sw" style="background:${col}"></span>
      <span class="kw">${esc(k)}</span><span class="ct">${c}</span>${split}</div>`;
@@ -242,7 +261,7 @@ function renderDonut(){
 
 /* ---------- file list ---------- */
 function renderFiles(){
-  // 행 형태 통일: [path,{u,a,tags[],idx}]. u/a=actor별 접근수(④ 분리 — 둘 다 표시, 단일화 금지).
+  // 행 형태 통일: [path,{u,a,x,w,tags[],idx}]. actor별 접근수·형식경고를 분리한다.
   // tags는 표시단계서 secret/pii 제거(엔진 데이터는 유지). idx=상세 연결용 표시 이벤트 인덱스.
   const cleanTags=ts=>(ts||[]).filter(t=>t!=="secret"&&t!=="pii"&&!t.startsWith("origin:"));
   let rows;
@@ -254,14 +273,14 @@ function renderFiles(){
     rows=SRV_FILES.files.map(f=>{
       const ba=f.by_actor||{};
       const idx=(TARGET_IDX&&TARGET_IDX.has(f.target))?TARGET_IDX.get(f.target):-1;   // 상세 연결 O(1)(첫 등장 인덱스)
-      return [f.target,{u:ba.user||0,a:ba.agent||0,tags:cleanTags(f.tags),idx}];
+      return [f.target,{u:ba.user||0,a:ba.agent||0,x:ba.unknown||0,w:f.actor_warnings||0,tags:cleanTags(f.tags),idx}];
     });
   }else{       // !LIVE(MOCK/offline) 전용 JS 파생
     const m={};
     EVENTS.forEach((e,i)=>{
       if(!["read","write","paste"].includes(e.action))return;
-      const f=m[e.target]=m[e.target]||{u:0,a:0,tags:[],idx:i};
-      f[e.actor==="user"?"u":"a"]++;
+      const f=m[e.target]=m[e.target]||{u:0,a:0,x:0,w:0,tags:[],idx:i};
+      const actor=actorKey(e.actor);f[ACTOR_SHORT[actor]]++;if(actor!==e.actor)f.w++;
       cleanTags(e.tags).forEach(t=>{if(!f.tags.includes(t))f.tags.push(t);});
     });
     rows=Object.entries(m);
@@ -269,15 +288,16 @@ function renderFiles(){
   $("#fcount").textContent=rows.length+"건";
   if(!rows.length){$("#files").innerHTML='<div class="empty">접근 파일 없음</div>';return;}
   $("#files").innerHTML=rows.map(([path,f])=>{
-    const primaryU=f.u>=f.a,tg=f.tags[0];   // 아이콘은 다수 주체(장식). 카운트는 user/agent 둘 다 노출.
+    const primary=f.x>Math.max(f.u,f.a)?"x":(f.u>=f.a?"u":"a"),tg=f.tags[0];
     const bcol=tg==="pii"?"var(--pii)":"var(--bypass)";
     const bg=tg?`<span class="fbadge" style="background:rgba(16,24,40,.04);color:${bcol};border:1px solid ${bcol}">${tg}</span>`:"";
+    const warn=f.w?`<span class="fbadge warn">형식경고 ${f.w}</span>`:"";
     // 에이전트(B) 작성 표식: 첫 등장 이벤트(idx)가 agent/write이면 작은 B 뱃지(사람 생성과 시각 구분). EVENTS 로드 전 idx -1 → 뱃지 없음(무해).
     const bw=(f.idx>=0&&EVENTS[f.idx]&&EVENTS[f.idx].actor==="agent"&&EVENTS[f.idx].action==="write")?`<span class="fbw" title="에이전트(B) 작성">B</span>`:"";
     return `<div class="frow ${SEL===f.idx?'sel':''}" data-i="${f.idx}">
-      <div class="fic ${primaryU?'u':'a'}">${primaryU?'👤':'🤖'}</div>
+      <div class="fic ${primary}">${primary==="u"?'👤':primary==="a"?'🤖':'?'}</div>
       <div class="fmeta"><div class="fpath">${esc(path)}${bw}</div>
-        <div class="fsub">사용자 ${f.u} · 에이전트 ${f.a} · 총 ${f.u+f.a}회</div></div>${bg}</div>`;
+        <div class="fsub">사용자 ${f.u} · 에이전트 ${f.a} · 미상 ${f.x} · 총 ${f.u+f.a+f.x}회</div></div>${warn}${bg}</div>`;
   }).join("");
 }
 
@@ -285,16 +305,17 @@ function renderFiles(){
 function badge(t){return `<span class="badge ${t}">${t}</span>`;}
 function passFilter(e){
   if(!inSrc(e))return false;               // 소스(origin) 필터
-  if(!active[e.actor])return false;
+  if(!active[actorKey(e.actor)])return false;
   if(!active["bypass-mode"]&&e.tags.includes("bypass-mode"))return false;
   return true;
 }
 function evCard(e,i){
-  return `<div class="ev ${e.actor} ${SEL===i?'sel':''}" data-i="${i}">
+  const actor=actorKey(e.actor);
+  return `<div class="ev ${actor} ${SEL===i?'sel':''}" data-i="${i}">
     <div class="card">
       <div class="cmeta">
         <span class="ts">${timeStr(e.ts)}</span>
-        <span class="who ${e.actor}">${e.actor==="user"?"A 사용자":"B 에이전트"}</span>
+        <span class="who ${actor}">${actorLabel(e.actor)}</span>
         <span class="act">/${e.action}</span>
         ${showTags(e.tags).map(badge).join("")}
       </div>
@@ -332,9 +353,8 @@ function renderTimeline(){
   // 모든 날 헤더+건수는 전체 데이터 기준 항상 렌더(무손실). 카드는 펼친 날만 생성(가상화).
   $("#tlscroll").innerHTML=dates.map(d=>{
     const idxs=groups[d];
-    let u=0,byp=0;
-    for(const i of idxs){if(EVENTS[i].actor==="user")u++; if(EVENTS[i].tags.includes("bypass-mode"))byp++;}
-    const a=idxs.length-u;
+    let u=0,a=0,x=0,byp=0;
+    for(const i of idxs){const k=actorKey(EVENTS[i].actor);if(k==="user")u++;else if(k==="agent")a++;else x++;if(EVENTS[i].tags.includes("bypass-mode"))byp++;}
     const open=openDays[d]===true;
     return `<div class="daygrp ${open?'open':''}" data-day="${d}">
       <div class="dayhdr">
@@ -342,7 +362,7 @@ function renderTimeline(){
         <span class="daydate">${d}</span><span class="dayweek">(${weekday(d)})</span>
         <span class="daymeta">
           ${byp?`<span class="pill s">bypass ${byp}</span>`:""}
-          <span class="pill u">A ${u}</span><span class="pill a">B ${a}</span>
+          <span class="pill u">A ${u}</span><span class="pill a">B ${a}</span><span class="pill x">? ${x}</span>
           <span class="pill">${idxs.length}건</span>
         </span>
       </div>
@@ -354,9 +374,10 @@ function renderTimeline(){
 /* ---------- detail ---------- */
 function renderDetail(i){
   SEL=i;const e=EVENTS[i];
+  const actor=actorKey(e.actor);
   $("#detail").innerHTML=`
     <div class="row"><span class="k">시각</span><span class="v">${tsFull(e.ts)}</span></div>
-    <div class="row"><span class="k">주체</span><span class="v"><span class="who ${e.actor}">${e.actor==="user"?"A 사용자(직접 입력)":"B 에이전트(자율)"}</span></span></div>
+    <div class="row"><span class="k">주체</span><span class="v"><span class="who ${actor}">${actorLabel(e.actor)}${actor==="user"?"(직접 입력)":actor==="agent"?"(자율)":"(확정 불가)"}</span></span></div>
     <div class="row"><span class="k">동작</span><span class="v">${e.action}</span></div>
     ${e.actor==="agent"&&e.action==="write"?`<div class="row"><span class="k">작성 주체</span><span class="v">${esc("B 에이전트")} <span class="muted">(디스크상 소유자는 A 사용자로 표시되나 transcript상 B가 작성)</span></span></div>`:""}
     <div class="row"><span class="k">대상</span><span class="v">${esc(e.target)}</span></div>
@@ -444,8 +465,8 @@ function showKwPop(kw,col,x,y){
       :`<span class="verdict sustain">↔ 지속형 — ${winDays}일에 걸쳐 ${total}회 반복</span>`;
   }
   const ba=srvK?srvK.by_actor:null;   // 키워드 actor 분리(④) — LIVE만(MOCK은 생략)
-  const actorLine=(ba&&(ba.user!=null||ba.agent!=null))
-    ?`<div class="ksub">주체 — 사용자 ${ba.user||0} · 에이전트 ${ba.agent||0}</div>`:"";
+  const actorLine=(ba&&(ba.user!=null||ba.agent!=null||ba.unknown!=null))
+    ?`<div class="ksub">주체 — 사용자 ${ba.user||0} · 에이전트 ${ba.agent||0} · 미상 ${ba.unknown||0}</div>`:"";
   if(!validEntries.length){    // 전부 날짜미상 → 스파크 없이 라벨만(NaN 위치 회피)
     pop.innerHTML=`<div class="kt"><span class="sw" style="background:${col}"></span>${esc(kw)}</div>
       <div class="ksub">총 ${total}회${uknote}</div>
@@ -505,7 +526,8 @@ function mockAnswer(q){
   if(/누가|who/.test(q)){
     const m=EVENTS.filter(e=>e.action==="read"&&q.replace(/[?？]/g,"").split(/\s+/).some(w=>w.length>2&&e.target.includes(w)));
     if(m.length){const e=m[0];
-      return `<b>${e.actor==="agent"?"B 에이전트":"A 사용자"}</b>가 <b>${esc(e.target.split('/').pop())}</b>를 읽었습니다 (${e.tags.includes("bypass-mode")?"bypassPermissions 모드":"일반"}). <b>에이전트 자율 행위</b>.<span class="cite">↳ ${esc(e.src)} · ${tsFull(e.ts)}</span>`;}
+      const actor=actorKey(e.actor);
+      return `<b>${actorLabel(e.actor)}</b>가 <b>${esc(e.target.split('/').pop())}</b>를 읽었습니다 (${e.tags.includes("bypass-mode")?"bypassPermissions 모드":"일반"}). <b>${actor==="agent"?"에이전트 행위":actor==="user"?"사용자 행위":"주체 확정 불가"}</b>.<span class="cite">↳ ${esc(e.src)} · ${tsFull(e.ts)}</span>`;}
   }
   if(/bypass|권한|자율|위험/.test(lo)){
     const b=EVENTS.filter(e=>e.tags.includes("bypass-mode"));
@@ -516,8 +538,8 @@ function mockAnswer(q){
     return p.length?`PII 태그 <b>${p.length}건</b>: ${[...new Set(p.map(e=>e.target.split('/').pop()))].join(", ")}.<span class="cite">↳ ${p.map(e=>e.src).slice(0,2).join(" / ")}</span>`:"PII 태그 이벤트 없음.";
   }
   if(/요약|정리|타임라인/.test(q)){
-    const u=EVENTS.filter(e=>e.actor==="user").length,a=EVENTS.filter(e=>e.actor==="agent").length;
-    return `요약 — 총 ${EVENTS.length}건(사용자 ${u} · 에이전트 ${a}). 흐름: 사용자가 파일/키 붙여넣기 → 에이전트가 관련 파일 자율 열람 → 외부 전송 시도.<span class="cite">↳ 요약은 LLM 어댑터, 증거는 결정적 엔진</span>`;
+    const u=EVENTS.filter(e=>actorKey(e.actor)==="user").length,a=EVENTS.filter(e=>actorKey(e.actor)==="agent").length,x=EVENTS.length-u-a;
+    return `요약 — 총 ${EVENTS.length}건(사용자 ${u} · 에이전트 ${a} · 미상 ${x}). 흐름: 사용자가 파일/키 붙여넣기 → 에이전트가 관련 파일 자율 열람 → 외부 전송 시도.<span class="cite">↳ 요약은 LLM 어댑터, 증거는 결정적 엔진</span>`;
   }
   const m=EVENTS.filter(e=>(e.target+e.preview).toLowerCase().includes(lo));
   return m.length?`검색 결과 <b>${m.length}건</b>: ${m.slice(0,3).map(e=>esc(e.target.split('/').pop())).join(", ")}…`
@@ -557,6 +579,7 @@ $("#scan-go").addEventListener("click",async()=>{
   const roots=[...document.querySelectorAll("#scan-sources input:checked")].map(c=>c.dataset.path);
   if(!roots.length){$("#scan-status").textContent="소스를 1개 이상 선택하세요.";return;}
   $("#scan-go").disabled=true;
+  SCAN_WARNINGS=[];
   const t0=Date.now();
   showProgress(0,"스캔 준비…",true);
   let polling=true;
@@ -576,8 +599,9 @@ $("#scan-go").addEventListener("click",async()=>{
     const d=await r.json();
     polling=false;
     if(!d.ok)throw new Error(d.error||"스캔 실패");
+    restoreScanWarnings(d);
     const sec=Math.round((Date.now()-t0)/1000);
-    showProgress(100, `완료: ${d.count}건 · ${sec}초`, false);
+    showProgress(100, `완료: ${d.count}건 · ${sec}초${SCAN_WARNINGS.length?` · 경고 ${SCAN_WARNINGS.length}`:""}`, false);
     $("#chatlog").innerHTML="";       // 재로드 시 코파일럿 인사 중복 방지
     await boot();                     // 채워진 엔진으로 대시보드 재로드
   }catch(err){
@@ -632,13 +656,13 @@ async function showScan(){
   hideProgress();
   const scr=$("#scan-screen"); scr.hidden=false;
   const box=$("#scan-sources"); box.innerHTML="<div class='muted'>소스 탐지 중…</div>";
-  $("#scan-status").textContent="";
+  $("#scan-status").textContent=scanWarningText();
   let data;
   try{ data=await jget("/api/sources"); }
   catch(err){ box.innerHTML=`<div class="err">소스 탐지 실패: ${esc(err.message)}</div>`; return; }
   const srcs=data.sources||[], warns=data.warnings||[];
   const warnHtml=warns.map(w=>`<div class="err">⚠ ${esc(w)}</div>`).join("");
-  if(!srcs.length){ box.innerHTML=warnHtml+"<div class='muted'>탐지된 .claude 소스가 없습니다.</div>"; return; }
+  if(!srcs.length){ box.innerHTML=warnHtml+"<div class='muted'>탐지된 .claude/.codex 소스가 없습니다.</div>"; return; }
   box.innerHTML=srcs.map(s=>`
     <label class="scan-src ${s.exists?"":"off"}">
       <input type="checkbox" data-path="${esc(s.path)}" ${s.exists?"checked":"disabled"}>
@@ -819,13 +843,16 @@ function setCaseChip(live){
 async function boot(){
   try{performance.mark("clfx-boot-start");}catch(_){}
   // 즉시 로딩 표시(await 전 — 빈 0화면 방지). 데이터 도착 시 각 패널이 차례로 덮어씀.
-  ["#st-total","#st-bypass","#st-user","#st-agent"].forEach(s=>{const el=$(s); if(el) el.textContent="…";});
+  ["#st-total","#st-bypass","#st-user","#st-agent","#st-unknown","#st-actor-warnings"].forEach(s=>{const el=$(s); if(el) el.textContent="…";});
   ["#bars","#donut","#files","#tlscroll"].forEach(s=>{const el=$(s); if(el) el.innerHTML='<div class="empty">분석 데이터 불러오는 중…</div>';});
   // 점진부팅: 가벼운 /api/stats로 연결판정+타일 즉시(11.7만 events 직렬화 대기 안 함 → 20초 0 화면 제거).
   let reachable=false;
   try{ SRV_STATS=await jget("/api/stats"); reachable=true; }catch(_){ SRV_STATS=null; }
   // 연결 + 데이터 0건 → 스캔 화면(아직 스캔 전). 미연결 → MOCK 대시보드.
-  if(reachable && SRV_STATS && SRV_STATS.total===0){ showScan(); return; }
+  if(reachable && SRV_STATS && SRV_STATS.total===0){
+    try{const d=await jget("/api/events");restoreScanWarnings(d);}catch(_){}
+    await showScan(); return;
+  }
   $("#scan-screen").hidden=true; $(".wrap").style.display="";   // 대시보드 복귀
   LIVE=reachable;
   if(LIVE){
@@ -857,7 +884,7 @@ async function boot(){
 
 async function loadEventsInBackground(){
   let live=[];
-  try{ const d=await jget("/api/events"); if(d&&Array.isArray(d.events)) live=d.events; }
+  try{ const d=await jget("/api/events"); restoreScanWarnings(d); if(d&&Array.isArray(d.events)) live=d.events; }
   catch(_){ $("#tlscroll").innerHTML='<div class="empty">이벤트 로드 실패 (/api/events)</div>'; return; }
   EVENTS=live.map(normalize);
   TARGET_IDX=new Map(); EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
@@ -902,8 +929,10 @@ boot();
    srcParam/loadAggregates의 실제 URL 빌드를 fetch 스파이로 검증하기 위함. 브라우저 동작엔 무영향. */
 if(typeof module!=="undefined" && module.exports){
   module.exports={
-    progressInfo, STAGE_LABELS, srcParam, loadAggregates,
+    progressInfo, STAGE_LABELS, actorKey, actorLabel, warningCount, restoreScanWarnings,
+    scanWarningText, srcParam, loadAggregates,
     FETCH_TIMINGS, perfReport,
+    __getScanWarnings:()=>SCAN_WARNINGS,
     __setSrcActive:v=>{srcActive=v;},
     __setEvents:v=>{EVENTS=v;},
     __setLive:v=>{LIVE=v;},

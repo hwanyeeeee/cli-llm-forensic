@@ -4,6 +4,8 @@ import time
 import urllib.request
 from urllib.parse import urlparse
 
+from clfx.event import actor_bucket
+
 # 로컬 전용(증거 외부전송 하드제약) — ollama host는 이 호스트만 허용.
 _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
@@ -192,14 +194,17 @@ def _prompt_context(events):
     n = len(events)
     if n <= _MAX_LLM_EVENTS:
         return _digest(events, with_preview=True)        # ← 실제 내용(마스킹 preview) 포함
-    actors = {"user": 0, "agent": 0}
+    actors = {"user": 0, "agent": 0, "unknown": 0}
+    actor_warnings = 0
     actions = {}
     for e in events:
-        a = e.actor if e.actor in ("user", "agent") else "user"
+        a = actor_bucket(e.actor)
         actors[a] += 1
+        actor_warnings += e.actor != a
         actions[e.action] = actions.get(e.action, 0) + 1
     top = sorted(actions.items(), key=lambda x: (-x[1], x[0]))[:6]
-    head = (f"[집계] 총 {n}건 (A 사용자 {actors['user']} / B 에이전트 {actors['agent']}). "
+    head = (f"[집계] 총 {n}건 (A 사용자 {actors['user']} / B 에이전트 {actors['agent']} / "
+            f"주체미상 {actors['unknown']}; actor 경고 {actor_warnings}). "
             "행위: " + ", ".join(f"{a}×{c}" for a, c in top) +
             f"\n[표본 앞 {_MAX_LLM_EVENTS}건]\n")
     return head + _digest(events[:_MAX_LLM_EVENTS], with_preview=True)   # ← 내용 포함
@@ -267,22 +272,24 @@ def _overview_context(events):
     모든 수치는 집계(추적 가능) — LLM은 문장화만, 날조 없음."""
     from clfx.event import norm_ts
     FILE_ACTIONS = ("read", "write", "paste", "upload")
-    actors = {"user": 0, "agent": 0}
+    actors = {"user": 0, "agent": 0, "unknown": 0}
+    actor_warnings = 0
     actions = {}
     fcount = {}
     fact = {}
     fsrc = {}      # target -> "source.file:source.line" 대표(첫 등장) — citations용(P0: target명 아님)
     times = []
     for e in events:
-        a = e.actor if e.actor in ("user", "agent") else "user"
+        a = actor_bucket(e.actor)
         actors[a] += 1
+        actor_warnings += e.actor != a
         actions[e.action] = actions.get(e.action, 0) + 1
         nt = norm_ts(e.ts)
         if nt:
             times.append(nt)
         if e.action in FILE_ACTIONS and e.target:
             fcount[e.target] = fcount.get(e.target, 0) + 1
-            d = fact.setdefault(e.target, {"user": 0, "agent": 0})
+            d = fact.setdefault(e.target, {"user": 0, "agent": 0, "unknown": 0})
             d[a] += 1
             if e.target not in fsrc and getattr(e, "source", None):
                 fsrc[e.target] = f"{e.source.file}:{e.source.line}"
@@ -290,11 +297,13 @@ def _overview_context(events):
     top_files = sorted(fcount.items(), key=lambda x: (-x[1], x[0]))[:8]
     span = (f"{min(times)} ~ {max(times)}" if times else "?")
     lines = [
-        f"- 총 이벤트: {len(events)} (A 사용자 {actors['user']} / B 에이전트 {actors['agent']})",
+        f"- 총 이벤트: {len(events)} (A 사용자 {actors['user']} / B 에이전트 {actors['agent']} / "
+        f"주체미상 {actors['unknown']}; actor 경고 {actor_warnings})",
         f"- 기간: {span}",
         "- 주요 행위(빈도): " + (", ".join(f"{a}×{n}" for a, n in top_actions) or "없음"),
         "- 자주 접근한 파일:",
-    ] + [f"  · {t} ({c}회, A{fact[t]['user']}/B{fact[t]['agent']})" for t, c in top_files]
+    ] + [f"  · {t} ({c}회, A{fact[t]['user']}/B{fact[t]['agent']}/U{fact[t]['unknown']})"
+         for t, c in top_files]
     # citations = source(file:line) — 파일패널 역추적 계약 충족(top_files 파일명은 본문 근거로만).
     cites = [fsrc[t] for t, _ in top_files if t in fsrc]
     if not cites:        # 파일 행위 없으면(전부 prompt 등) 대표 이벤트 source로 폴백 — 빈 citations 방지

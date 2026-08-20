@@ -285,6 +285,34 @@ def test_parse_file_sha_equals_raw_file_bytes(tmp_path):
     assert [e.action for e in evs] == ["prompt", "response"]
 
 
+def test_parse_file_consumes_source_incrementally(monkeypatch):
+    import clfx.parser as parser
+    from clfx.sources.claude import RawRecord
+
+    class StreamingSource:
+        agent = "claude"
+
+        def _iter_jsonl(self, _path, sha_out=None):
+            yield RawRecord("f", 1, {"type": "permission-mode",
+                                      "permissionMode": "bypassPermissions", "sessionId": "s"})
+            yield RawRecord("f", 2, {"type": "user", "sessionId": "s"})
+            sha_out["sha"] = "digest"
+
+    seen = []
+
+    def one_record_at_a_time(records, _agent):
+        assert not isinstance(records, (list, tuple))
+        records = list(records)
+        assert len(records) == 1
+        seen.append(records[0].line)
+        return iter(())
+
+    monkeypatch.setattr(parser, "_transcript_events_from", one_record_at_a_time)
+    events, bypass, sha = parser.parse_file(StreamingSource(), "f", is_history=False)
+    assert events == [] and bypass == {"s"} and sha == "digest"
+    assert seen == [1, 2]
+
+
 def test_mcp_tool_use_emits_mcp_action(tmp_path):
     from clfx.sources.claude import ClaudeSource
     from clfx.parser import parse_source

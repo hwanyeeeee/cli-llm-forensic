@@ -1,3 +1,4 @@
+from clfx import event
 from clfx.event import Event, Source
 from clfx.query.engine import QueryEngine
 
@@ -25,6 +26,24 @@ def test_activity_by_day_actor_split():
     assert d["unknown"]["user"] == 1
 
 
+def test_actor_bucket_and_unknown_aggregates():
+    assert hasattr(event, "actor_bucket")
+    actor_bucket = event.actor_bucket
+    assert [actor_bucket(x) for x in ("user", "agent", "unknown", "plugin", None)] == [
+        "user", "agent", "unknown", "unknown", "unknown"]
+
+    eng = QueryEngine([
+        _ev("unknown", "read", "2026-06-11T01:00:00Z", target="x"),
+        _ev("plugin", "read", "2026-06-11T02:00:00Z", target="x"),
+    ])
+    day = {row["bucket"]: row for row in eng.activity()}["2026-06-11"]
+    assert day == {"bucket": "2026-06-11", "user": 0, "agent": 0,
+                   "unknown": 2, "actor_warnings": 1, "total": 2}
+    file_row = eng.files()[0]
+    assert file_row["by_actor"] == {"user": 0, "agent": 0, "unknown": 2}
+    assert file_row["actor_warnings"] == 1
+
+
 def test_activity_by_month():
     a = _eng().activity(by="month")
     d = {row["bucket"]: row for row in a}
@@ -43,9 +62,9 @@ def test_files_grouping_actor_split():
     ])
     fs = {row["target"]: row for row in eng.files()}
     assert fs[".env"]["count"] == 2
-    assert fs[".env"]["by_actor"] == {"user": 1, "agent": 1}
+    assert fs[".env"]["by_actor"] == {"user": 1, "agent": 1, "unknown": 0}
     assert fs[".env"]["actions"] == {"paste": 1, "read": 1}
-    assert fs["app.py"]["by_actor"] == {"user": 0, "agent": 1}
+    assert fs["app.py"]["by_actor"] == {"user": 0, "agent": 1, "unknown": 0}
     # 접근 많은 순 정렬
     assert eng.files()[0]["target"] == ".env"
 

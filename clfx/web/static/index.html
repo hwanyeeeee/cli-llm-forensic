@@ -47,6 +47,7 @@
         <div class="stat"><div class="n" id="st-bypass">0</div><div class="l">bypass 모드 읽기</div></div>
         <div class="stat user"><div class="n" id="st-user">0</div><div class="l">사용자(A) 행위</div></div>
         <div class="stat agent"><div class="n" id="st-agent">0</div><div class="l">에이전트(B) 행위</div></div>
+        <div class="stat unknown"><div class="n" id="st-unknown">0</div><div class="l">주체 미상 · 경고 <b id="st-actor-warnings">0</b></div></div>
       </div>
     </div>
 
@@ -80,6 +81,7 @@
         <div class="filters" id="filters">
           <span class="fchip u" data-f="user" aria-pressed="true">A 사용자</span>
           <span class="fchip a" data-f="agent" aria-pressed="true">B 에이전트</span>
+          <span class="fchip x" data-f="unknown" aria-pressed="true">? 주체 미상</span>
           <span class="fchip" data-f="bypass-mode" aria-pressed="true">bypass</span>
         </div>
         <div class="filters" id="srcfilters"></div>   <!-- 소스(WSL/Windows) 토글 — app.js가 origin: 태그서 동적 생성 -->

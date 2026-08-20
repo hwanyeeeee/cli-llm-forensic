@@ -4,7 +4,7 @@ import math
 import re
 from collections import Counter, defaultdict
 
-from clfx.event import norm_ts
+from clfx.event import actor_bucket, norm_ts
 
 # 마스킹 마커 스팬(‹secret›·‹pii› 등) — 토큰화 전 통째 제거. 마커 내부 단어가 키워드로 새면 안 됨(redaction 마커를 데이터로 오인 + secret 강조 금지).
 _MASK_SPAN = re.compile(r"‹[^›]*›")
@@ -71,7 +71,8 @@ def keyword_stats(events, top=50, min_count=2):
     증거(이벤트)는 전량 유지 — 차트 입력/랭킹만 정제(무손실).
     반환: {"keywords": [{term,count,by_actor,investigative,pattern,days,by_day,score}, ...]}"""
     count = Counter()
-    by_actor = defaultdict(lambda: {"user": 0, "agent": 0})
+    by_actor = defaultdict(lambda: {"user": 0, "agent": 0, "unknown": 0})
+    actor_warnings = 0
     by_day = defaultdict(Counter)            # term -> {day: n}
     doc_terms = defaultdict(set)             # session -> set(terms) (df 계산용)
     sessions = set()
@@ -82,10 +83,11 @@ def keyword_stats(events, top=50, min_count=2):
         sessions.add(sess)
         text = _MASK_SPAN.sub(" ", e.preview or "")  # 대화 텍스트=preview(target은 빈문자). ‹secret›·‹pii› 마커 제거.
         day = (norm_ts(e.ts) or "")[:10] or "unknown"   # int epoch-ms도 ISO Z로 통일 → 슬라이스 TypeError 방지
+        actor = actor_bucket(e.actor)
+        actor_warnings += e.actor != actor
         seen = list(dict.fromkeys(_tokens(text)))   # 결정적 dedup(첫 등장 순서 보존, set 순회 비결정성 제거)
         for term in seen:
             count[term] += 1
-            actor = e.actor if e.actor in ("user", "agent") else "user"
             by_actor[term][actor] += 1
             by_day[term][day] += 1
             doc_terms[sess].add(term)
@@ -118,4 +120,4 @@ def keyword_stats(events, top=50, min_count=2):
             "by_day": dict(sorted(days.items())),
             "score": round(_score(term), 3),   # 정렬 근거(디버그) — UI 무시 가능
         })
-    return {"keywords": kws}
+    return {"keywords": kws, "actor_warnings": actor_warnings}

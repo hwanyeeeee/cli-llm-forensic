@@ -21,6 +21,12 @@ def norm_ts(v):
 
 
 _MIN_DT = datetime(1, 1, 1, tzinfo=timezone.utc)
+_ACTOR_BUCKETS = ("user", "agent", "unknown")
+
+
+def actor_bucket(actor):
+    """Actor를 집계용 3값으로 정규화한다. 도메인 밖 값은 unknown이다."""
+    return actor if actor in _ACTOR_BUCKETS else "unknown"
 
 
 def ts_key(v):
@@ -52,7 +58,7 @@ class Event:
     ts: Optional[str]
     agent: str          # claude | codex | gemini
     session: str
-    actor: str          # user | agent
+    actor: str          # user | agent | unknown
     action: str         # prompt | read | bash | write | paste | response | mcp
     target: str
     preview: str

@@ -173,8 +173,15 @@ def _run_staged(posix_root, target_root, origin_label, distro=None,
             raise DelegateError(f"이벤트 수 불일치: meta={meta.get('events')} 실제={len(events)}")
         manifest = {rewrite_prefix(k, posix_root, target_root): v
                     for k, v in (meta.get("manifest") or {}).items()}
+        warnings = []
+        for warning in meta.get("warnings") or []:
+            row = dict(warning)
+            if isinstance(row.get("file"), str):
+                row["file"] = rewrite_prefix(row["file"], posix_root, target_root)
+            warnings.append(row)
         return {"events": events,
                 "manifest": {k: manifest[k] for k in sorted(manifest)},
+                "warnings": warnings,
                 "timings": meta.get("timings") or {},
                 "helper_sha256": helper_sha}
     finally:

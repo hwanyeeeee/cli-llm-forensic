@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from clfx.analyze.timeline import timeline as _sort
-from clfx.event import ts_key, norm_ts
+from clfx.event import actor_bucket, ts_key, norm_ts
 
 
 class QueryEngine:
@@ -78,18 +78,21 @@ class QueryEngine:
 
     def _activity(self, by):
         """활동량 집계(actor 분리). by=day → ts[:10], month → ts[:7].
-        반환: [{"bucket": "2026-06-11", "user": N, "agent": N, "total": N}, ...] (bucket 정렬, unknown 맨뒤)."""
+        반환: [{"bucket", "user", "agent", "unknown", "actor_warnings", "total"}, ...]."""
         n = 10 if by == "day" else 7
-        buckets = defaultdict(lambda: {"user": 0, "agent": 0})
+        buckets = defaultdict(lambda: {"user": 0, "agent": 0, "unknown": 0,
+                                       "actor_warnings": 0})
         for e in self.events:
             # norm_ts로 int epoch-ms도 ISO Z 문자열로 통일 → 슬라이스 균일(raw int 슬라이스 TypeError 방지)
             b = (norm_ts(e.ts) or "")[:n] or "unknown"
-            actor = e.actor if e.actor in ("user", "agent") else "user"
+            actor = actor_bucket(e.actor)
             buckets[b][actor] += 1
+            buckets[b]["actor_warnings"] += e.actor != actor
         known = sorted(b for b in buckets if b != "unknown")
         order = known + (["unknown"] if "unknown" in buckets else [])
-        return [{"bucket": b, "user": buckets[b]["user"], "agent": buckets[b]["agent"],
-                 "total": buckets[b]["user"] + buckets[b]["agent"]} for b in order]
+        return [{"bucket": b, **buckets[b],
+                 "total": buckets[b]["user"] + buckets[b]["agent"] + buckets[b]["unknown"]}
+                for b in order]
 
     _FILE_ACTIONS = ("read", "write", "paste", "upload")
 
@@ -104,11 +107,13 @@ class QueryEngine:
             if e.action not in self._FILE_ACTIONS or not e.target:
                 continue
             r = agg.setdefault(e.target, {"target": e.target, "count": 0,
-                                          "by_actor": {"user": 0, "agent": 0},
+                                          "by_actor": {"user": 0, "agent": 0, "unknown": 0},
+                                          "actor_warnings": 0,
                                           "actions": {}, "tags": set()})
             r["count"] += 1
-            actor = e.actor if e.actor in ("user", "agent") else "user"
+            actor = actor_bucket(e.actor)
             r["by_actor"][actor] += 1
+            r["actor_warnings"] += e.actor != actor
             r["actions"][e.action] = r["actions"].get(e.action, 0) + 1
             for t in (e.tags or []):
                 r["tags"].add(t)

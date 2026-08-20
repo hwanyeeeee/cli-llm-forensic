@@ -17,6 +17,8 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 APP_JS = REPO / "clfx" / "web" / "static" / "app.js"
+INDEX_HTML = REPO / "clfx" / "web" / "static" / "index.html"
+APP_CSS = REPO / "clfx" / "web" / "static" / "app.css"
 HARNESS = Path(__file__).parent / "js" / "app_progress_harness.js"
 SRC_HARNESS = Path(__file__).parent / "js" / "app_srcscope_harness.js"
 
@@ -107,6 +109,53 @@ def test_renderstats_uses_server_stats_when_live():
     # the LIVE branch returns before the EVENTS recompute, so recompute is MOCK-only.
     assert body.index("if(LIVE && SRV_STATS){") < body.index("for(const e of EVENTS)"), \
         "EVENTS recompute must be the !LIVE fallback below the LIVE return"
+
+
+def test_unknown_actor_has_explicit_card_filter_and_render_paths():
+    src = APP_JS.read_text(encoding="utf-8")
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = APP_CSS.read_text(encoding="utf-8")
+
+    for frag in ('id="st-unknown"', 'id="st-actor-warnings"', 'data-f="unknown"'):
+        assert frag in html, f"missing unknown UI element: {frag}"
+    for frag in ("--unknown:", ".stat.unknown", 'data-f="unknown"', ".fic.x",
+                 ".pill.x", ".ev.unknown", ".who.unknown"):
+        assert frag in css, f"missing neutral unknown style: {frag}"
+    for frag in ('const ACTORS=["user","agent","unknown"]',
+                 'active={user:true,agent:true,unknown:true',
+                 'SRV_STATS.unknown', 'SRV_STATS.actor_warnings',
+                 'ba.unknown', 'r.unknown', 'actorKey(e.actor)', 'actorLabel(e.actor)'):
+        assert frag in src, f"missing unknown render contract: {frag}"
+
+    for bad in ('e.actor==="user"?"u":"a"',
+                'e.actor==="user"?"A 사용자":"B 에이전트"',
+                'e.actor==="agent"?"B 에이전트":"A 사용자"',
+                'const a=idxs.length-u;'):
+        assert bad not in src, f"unknown still silently absorbed: {bad}"
+
+
+def test_scan_source_warnings_persist_through_all_lifecycle_paths():
+    src = APP_JS.read_text(encoding="utf-8")
+    scan_handler = src[src.index('$("#scan-go").addEventListener('):src.index("/* ---------- util", src.index('$("#scan-go").addEventListener('))]
+    show_scan = src[src.index("async function showScan("):src.index("/* ---------- boot", src.index("async function showScan("))]
+    boot = src[src.index("async function boot("):src.index("async function loadEventsInBackground(")]
+    load_events = src[src.index("async function loadEventsInBackground("):src.index("\n}", src.index("async function loadEventsInBackground("))]
+    source_toggle = src[src.index('$("#srcfilters").addEventListener('):src.index("});", src.index('$("#srcfilters").addEventListener('))]
+
+    assert "restoreScanWarnings(d)" in scan_handler       # (1) scan completion
+    assert "scanWarningText()" in show_scan               # (2) zero-event scan screen
+    assert '$("#scan-status").textContent=""' not in show_scan
+    zero_branch = boot[boot.index("SRV_STATS.total===0"):boot.index('$("#scan-screen")')]
+    assert 'await jget("/api/events")' in zero_branch
+    assert "restoreScanWarnings(d)" in zero_branch
+    assert "await showScan()" in zero_branch
+    assert "restoreScanWarnings(d)" in load_events         # (3) refresh/reconnect
+    assert load_events.index("restoreScanWarnings(d)") < load_events.index("renderStats()")
+    assert "SCAN_WARNINGS=[]" not in source_toggle         # (4) scope transition
+    assert "renderAll()" in source_toggle
+    assert "warningCount(SRV_STATS.actor_warnings" in src
+    assert 'warningCount(w' in src
+    assert "경고 ${SCAN_WARNINGS.length}" in src
 
 
 def test_no_filesystem_writes_in_app_js():

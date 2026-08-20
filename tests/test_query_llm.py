@@ -256,6 +256,22 @@ def test_prompt_context_bounds_large_sets():
     assert ctx.count("\n- ") <= _MAX_LLM_EVENTS + 1       # 표본만(전량 덤프 아님)
 
 
+def test_llm_contexts_keep_unknown_separate_and_count_invalid_actor():
+    from clfx.query.llm import _overview_context, _prompt_context
+    from clfx.event import Event, Source
+    evs = [Event(f"2026-06-11T00:00:{i%60:02d}Z", "claude", "s", "user", "prompt", "",
+                 "질문", Source("h", i), []) for i in range(59)]
+    evs += [
+        Event("2026-06-11T01:01:00Z", "claude", "s", "unknown", "read", "x", "", Source("h", 60), []),
+        Event("2026-06-11T01:02:00Z", "claude", "s", "plugin", "read", "y", "", Source("h", 61), []),
+    ]
+    prompt = _prompt_context(evs)
+    overview, _ = _overview_context(evs)
+    assert "주체미상 2" in prompt and "actor 경고 1" in prompt
+    assert "주체미상 2" in overview and "actor 경고 1" in overview
+    assert "A0/B0/U1" in overview
+
+
 def test_answer_large_set_calls_llm_with_bounded_prompt():
     # 타임라인 등 대량 결과도 LLM은 경계 프롬프트 받음(요약 정상). 증거 citations는 전량(무손실).
     from clfx.query.llm import answer

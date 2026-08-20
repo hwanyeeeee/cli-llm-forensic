@@ -1,4 +1,4 @@
-"""소스(.claude 루트) 자동탐지. 단일 PC의 Windows + WSL 후보를 나열한다.
+"""에이전트 소스(.claude/.codex) 자동탐지. Windows + WSL 후보를 나열한다.
 판정·라벨은 cli._origin_label 재사용(단일 출처). 환경 비의존 위해 candidates 주입 가능."""
 import glob
 import os
@@ -68,16 +68,19 @@ def _listdir_t(path, timeout=3.0):
 
 
 def _default_candidates():
-    """현재 OS home + Windows %USERPROFILE% + WSL distro home들의 .claude 후보(중복제거, 순서보존)."""
+    """현재 OS/Windows/마운트/WSL home의 .claude·.codex 후보."""
     cands = []
+    codex_home = os.environ.get("CODEX_HOME")
+    if codex_home:
+        cands.append(codex_home)
     home = os.path.expanduser("~")
-    cands.append(os.path.join(home, ".claude"))                  # 현재 OS home
+    cands.extend(os.path.join(home, name) for name in (".claude", ".codex"))
     up = os.environ.get("USERPROFILE")                           # Windows home(있으면)
     if up:
-        cands.append(os.path.join(up, ".claude"))
-    # WSL/리눅스에서 Windows Claude 기록 보기: /mnt/c/Users/*/.claude (Windows에선 /mnt 없음→빈 결과)
-    for c in sorted(glob.glob("/mnt/c/Users/*/.claude")):
-        cands.append(c)
+        cands.extend(os.path.join(up, name) for name in (".claude", ".codex"))
+    # WSL/리눅스에서 Windows 기록 보기(Windows에선 /mnt 없음→빈 결과).
+    for name in (".claude", ".codex"):
+        cands.extend(sorted(glob.glob(f"/mnt/c/Users/*/{name}")))
     # WSL distros (Windows 전용): 바 UNC 루트는 stat/iterdir 불가 → wsl.exe로 distro 목록을 얻어
     # 각 distro의 home/<user>/.claude 전체경로를 후보로(전체경로는 isdir 동작).
     for distro in _wsl_distros():
@@ -85,13 +88,14 @@ def _default_candidates():
         names, timed_out = _listdir_t(str(base / "home"))
         if not timed_out:
             for user in names:
-                cands.append(str(base / "home" / user / ".claude"))
-        cands.append(str(base / "root" / ".claude"))
+                cands.extend(str(base / "home" / user / name) for name in (".claude", ".codex"))
+        cands.extend(str(base / "root" / name) for name in (".claude", ".codex"))
     # 중복 제거(순서 보존)
     seen, out = set(), []
     for c in cands:
-        if c not in seen:
-            seen.add(c); out.append(c)
+        key = os.path.normcase(os.path.normpath(os.path.expanduser(c)))
+        if key not in seen:
+            seen.add(key); out.append(c)
     return out
 
 

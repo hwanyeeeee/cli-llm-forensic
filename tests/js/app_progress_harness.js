@@ -70,11 +70,35 @@ function eq(actual, expected, msg) {
   if (a !== e) { console.error(`FAIL ${msg}\n  expected: ${e}\n  actual:   ${a}`); process.exitCode = 1; }
 }
 
-const { progressInfo, STAGE_LABELS } = app;
+const { progressInfo, STAGE_LABELS, actorKey, actorLabel, warningCount,
+        restoreScanWarnings, scanWarningText, __getScanWarnings } = app;
 
 if (typeof progressInfo !== "function") {
   console.error("FAIL progressInfo not exported"); process.exit(1);
 }
+if (typeof actorKey !== "function" || typeof actorLabel !== "function") {
+  console.error("FAIL actor helpers not exported"); process.exit(1);
+}
+if (typeof warningCount !== "function") {
+  console.error("FAIL warningCount not exported"); process.exit(1);
+}
+if (typeof restoreScanWarnings !== "function" || typeof scanWarningText !== "function" ||
+    typeof __getScanWarnings !== "function") {
+  console.error("FAIL warning lifecycle helpers not exported"); process.exit(1);
+}
+
+eq(["user","agent","unknown","plugin"].map(actorKey),
+   ["user","agent","unknown","unknown"], "actorKey 3 buckets");
+eq(["user","agent","unknown","plugin"].map(actorLabel),
+   ["A 사용자","B 에이전트","주체 미상","주체 미상"], "actor labels");
+eq(warningCount(2,[{kind:"parse"},{kind:"acquisition"}]),4,
+   "actor and source warnings combine");
+const sourceWarnings=[{kind:"parse"},{kind:"acquisition"}];
+restoreScanWarnings({warnings:sourceWarnings});
+eq(__getScanWarnings(),sourceWarnings,"scan completion restores source warnings");
+eq(scanWarningText(),"스캔 경고 2건","zero-event scan warning label");
+restoreScanWarnings({events:[]});
+eq(__getScanWarnings(),sourceWarnings,"payload without warnings preserves lifecycle state");
 
 // 1) Stage map -> Korean labels (exact spec).
 eq(STAGE_LABELS.parse, "파싱", "label parse");

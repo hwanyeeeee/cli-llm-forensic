@@ -2,7 +2,7 @@
 name = "clfx"
 version = "0.0.1"
 description = "CLI LLM agent forensic tool"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]

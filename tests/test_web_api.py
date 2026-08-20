@@ -30,7 +30,17 @@ def test_events_payload_sorted_and_complete():
 
 def test_stats_payload_counts():
     s = stats_payload(_engine())
-    assert s == {"total": 3, "user": 1, "agent": 2, "bypass": 0}
+    assert s == {"total": 3, "user": 1, "agent": 2, "unknown": 0,
+                 "actor_warnings": 0, "bypass": 0}
+
+
+def test_stats_payload_separates_unknown_and_counts_invalid_actor():
+    eng = QueryEngine([
+        _ev("2026-06-11T10:00:00Z", "unknown", "read", "x"),
+        _ev("2026-06-11T11:00:00Z", "plugin", "read", "y"),
+    ])
+    assert stats_payload(eng) == {"total": 2, "user": 0, "agent": 0,
+                                  "unknown": 2, "actor_warnings": 1, "bypass": 0}
 
 
 def test_query_payload_who_read_env(monkeypatch):
@@ -317,7 +327,8 @@ def test_stats_regression_none_equals_default_and_all():
     base = stats_payload(eng)
     assert stats_payload(eng, origins=None) == base
     # 전체 6건: user 2, agent 4, bypass 1
-    assert base == {"total": 6, "user": 2, "agent": 4, "bypass": 1}
+    assert base == {"total": 6, "user": 2, "agent": 4, "unknown": 0,
+                    "actor_warnings": 0, "bypass": 1}
 
 
 def test_files_regression_none_equals_default():
@@ -355,14 +366,16 @@ def test_stats_scoped_to_wsl():
     eng = _origin_engine()
     s = stats_payload(eng, origins={"wsl"})
     # wsl 3건: user 1(prompt), agent 2(read+response), bypass 0
-    assert s == {"total": 3, "user": 1, "agent": 2, "bypass": 0}
+    assert s == {"total": 3, "user": 1, "agent": 2, "unknown": 0,
+                 "actor_warnings": 0, "bypass": 0}
 
 
 def test_stats_scoped_to_windows():
     eng = _origin_engine()
     s = stats_payload(eng, origins={"windows"})
     # windows 3건: user 1(prompt+bypass), agent 2(write+response), bypass 1
-    assert s == {"total": 3, "user": 1, "agent": 2, "bypass": 1}
+    assert s == {"total": 3, "user": 1, "agent": 2, "unknown": 0,
+                 "actor_warnings": 0, "bypass": 1}
 
 
 def test_files_scoped_excludes_other_origin_target():

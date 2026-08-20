@@ -319,9 +319,11 @@ def make_handler(state):
                     state.scan.update(done=state.scan["total"], events=len(evs),
                                       finished=True, current=None,
                                       stage="finalize", stage_done=1, stage_total=1, overall_percent=100,
+                                      warnings=getattr(eng, "source_warnings", []),
                                       timings=all_timings)
                     print("[clfx.timing] scan " + json.dumps(all_timings, sort_keys=True), file=sys.stderr)
-                    self._json({"ok": True, "count": len(evs), "by_origin": by})
+                    self._json({"ok": True, "count": len(evs), "by_origin": by,
+                                "warnings": getattr(eng, "source_warnings", [])})
                 except Exception as e:
                     state.scan.update(finished=True, error=str(e))
                     self._json({"ok": False, "error": str(e)}, 500)

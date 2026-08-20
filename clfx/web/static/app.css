@@ -1,7 +1,7 @@
 :root{
   --bg:#eef1f6; --panel:#ffffff; --panel2:#f5f7fa; --border:#e2e7ee;
   --txt:#1b2433; --muted:#5c6675; --faint:#94a0ae;
-  --user:#2563eb; --agent:#dc2626;
+  --user:#2563eb; --agent:#dc2626; --unknown:#64748b;
   --secret:#dc2626; --pii:#d97706; --bypass:#7c3aed; --ok:#16a34a;
   --accent:#0284c7;
   --mono:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,monospace;
@@ -114,6 +114,8 @@ header{
 .stat.danger .n{color:var(--secret)}
 .stat.agent .n{color:var(--agent)}
 .stat.user .n{color:var(--user)}
+.stat.unknown{grid-column:1/-1;display:flex;align-items:baseline;gap:10px}
+.stat.unknown .n,.stat.unknown .l b{color:var(--unknown)}
 
 /* ---------- calendar heatmap (활동 추이 · 달별 색 구분 — 대용량 대응) ---------- */
 .heat{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow:auto}  /* 패널 높이 채움 */
@@ -168,10 +170,12 @@ header{
 .fic{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:12px;flex:0 0 auto}
 .fic.u{background:rgba(59,130,246,.16);color:#2563eb}
 .fic.a{background:rgba(239,68,68,.16);color:#dc2626}
+.fic.x{background:rgba(100,116,139,.16);color:var(--unknown)}
 .fmeta{min-width:0;flex:1}
 .fpath{font-family:var(--mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fsub{font-size:10.5px;color:var(--muted)}
 .fbadge{font-size:9.5px;padding:1px 6px;border-radius:6px;flex:0 0 auto}
+.fbadge.warn{color:#b45309;border:1px solid rgba(217,119,6,.4);background:rgba(217,119,6,.1)}
 .fbw{display:inline-block;margin-left:5px;font-size:8.5px;font-weight:700;line-height:1;padding:1px 4px;border-radius:5px;background:rgba(239,68,68,.14);color:#dc2626;vertical-align:middle}
 
 /* ---------- timeline (middle, scrolls) ---------- */
@@ -186,6 +190,7 @@ header{
 /* 주체별 on 색(A=파랑·B=빨강·bypass=보라) — 무엇을 켰는지 한눈에 */
 #filters .fchip[data-f="user"][aria-pressed="true"]{border-color:var(--user);color:#fff;background:var(--user)}
 #filters .fchip[data-f="agent"][aria-pressed="true"]{border-color:var(--agent);color:#fff;background:var(--agent)}
+#filters .fchip[data-f="unknown"][aria-pressed="true"]{border-color:var(--unknown);color:#fff;background:var(--unknown)}
 #filters .fchip[data-f="bypass-mode"][aria-pressed="true"]{border-color:var(--bypass);color:#fff;background:var(--bypass)}
 .fchip.src[aria-pressed="true"]{border-color:var(--accent);color:#fff;background:var(--accent)}
 
@@ -205,6 +210,7 @@ header{
 .pill{padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
 .pill.u{color:#2563eb;border-color:rgba(59,130,246,.4)}
 .pill.a{color:#dc2626;border-color:rgba(239,68,68,.4)}
+.pill.x{color:var(--unknown);border-color:rgba(100,116,139,.45)}
 .pill.s{color:#6d28d9;border-color:rgba(124,58,237,.4);background:rgba(124,58,237,.09)}
 .daybody{display:none;border:1px solid var(--border);border-top:0;border-radius:0 0 10px 10px;padding:12px 12px 6px}
 .daygrp.open .daybody{display:block}
@@ -217,16 +223,18 @@ header{
   border:2px solid var(--bg);background:var(--faint)}
 .ev.user::before{background:var(--user);box-shadow:0 0 0 3px rgba(59,130,246,.22)}
 .ev.agent::before{background:var(--agent);box-shadow:0 0 0 3px rgba(239,68,68,.22)}
+.ev.unknown::before{background:var(--unknown);box-shadow:0 0 0 3px rgba(100,116,139,.22)}
 .card{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--faint);
   border-radius:11px;padding:10px 13px;transition:.15s}
 .ev.user .card{border-left-color:var(--user)}
 .ev.agent .card{border-left-color:var(--agent)}
+.ev.unknown .card{border-left-color:var(--unknown)}
 .ev:hover .card{border-color:#c2ccd8;background:var(--panel2)}
 .ev.sel .card{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .cmeta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-bottom:4px;flex-wrap:wrap}
 .ts{font-family:var(--mono)}
 .who{font-weight:700}
-.who.user{color:#2563eb}.who.agent{color:#dc2626}
+.who.user{color:#2563eb}.who.agent{color:#dc2626}.who.unknown{color:var(--unknown)}
 .act{font-family:var(--mono);color:var(--faint)}
 .ctarget{font-family:var(--mono);font-size:12.5px;font-weight:600;word-break:break-all}
 .cprev{font-size:11.5px;color:var(--muted);margin-top:4px;white-space:pre-wrap;

@@ -18,10 +18,21 @@ def test_frequency_and_actor_split():
     kws = {k["term"]: k for k in st["keywords"]}
     # "비밀번호" 3회 등장 안 됨 — 2건(user1/agent1). actor 분리.
     assert kws["비밀번호"]["count"] == 2
-    assert kws["비밀번호"]["by_actor"] == {"user": 1, "agent": 1}
+    assert kws["비밀번호"]["by_actor"] == {"user": 1, "agent": 1, "unknown": 0}
     # 수사 위험키워드 플래그
     assert kws["비밀번호"]["investigative"] is True
     assert kws["유출"]["investigative"] is True
+
+
+def test_unknown_actor_is_separate_and_invalid_actor_warns():
+    evs = [
+        _ev("unknown", "", "증거 미상", "2026-06-11T01:00:00Z"),
+        _ev("plugin", "", "증거 미상", "2026-06-11T02:00:00Z"),
+    ]
+    st = keyword_stats(evs, min_count=1)
+    hit = {k["term"]: k for k in st["keywords"]}["증거"]
+    assert hit["by_actor"] == {"user": 0, "agent": 0, "unknown": 2}
+    assert st["actor_warnings"] == 1
 
 
 def test_concentration_pattern():

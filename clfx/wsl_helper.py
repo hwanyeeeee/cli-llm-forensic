@@ -16,13 +16,13 @@ import time
 
 
 def run(root, origin_tag, out_path):
-    from clfx.sources.claude import ClaudeSource
+    from clfx.sources import source_for, source_warnings
     from clfx.parser import parse_file
     from clfx.analyze.attribution import enrich
     if not os.path.isdir(root):
         print(f"root not a directory: {root}", file=sys.stderr)
         return 2
-    src = ClaudeSource(root)
+    src = source_for(root)
     files = src.jsonl_files()                       # history 먼저 → sorted transcripts (직접 경로와 동일)
     hist = src.root / "history.jsonl"
     print(f"TOTAL {len(files)}", flush=True)
@@ -44,6 +44,7 @@ def run(root, origin_tag, out_path):
     enrich_s = time.perf_counter() - _t
     meta = {"files": len(files), "events": len(events),
             "manifest": {k: manifest[k] for k in sorted(manifest)},
+            "warnings": source_warnings(src),
             "timings": {"parse_wall_s": round(parse_s, 3), "enrich_s": round(enrich_s, 3)}}
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(json.dumps(meta, ensure_ascii=False) + "\n")
