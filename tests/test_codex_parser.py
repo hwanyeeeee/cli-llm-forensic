@@ -43,6 +43,8 @@ def test_legacy_rollout_pairs_calls_and_preserves_unmatched_status():
     assert patch.target == "/case/new.txt"
     assert "*** Add File: /case/new.txt" in patch.preview
     assert patch.meta["output"] == "Done"
+    assert patch.meta["record_type"] == "apply_patch"
+    assert patch.meta["confidence"] == "medium"
     mcp = next(event for event in events if event.action == "mcp")
     assert mcp.target == "mcp__synthetic__lookup"
     assert "fixture" in mcp.preview
@@ -71,7 +73,7 @@ def test_item_rollout_parses_all_pascal_types_and_merges_duplicate_view():
                             "cwd": "/case/synthetic dir", "exit_code": 0,
                             "function_name": "exec_command",
                             "record_type": "command_execution",
-                            "command_text": "printf synthetic", "confidence": "unknown"}
+                            "command_text": "printf synthetic"}
     assert command.preview == "synthetic output"
     assert {event.target for event in events if event.action == "write"} == {
         "/case/new.txt", "/case/old.txt"}

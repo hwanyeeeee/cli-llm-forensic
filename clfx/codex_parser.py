@@ -351,14 +351,16 @@ class CodexFileParser:
             if not current and not changes:
                 current = self._emit(rec, "agent", "write", target=payload.get("path") or "",
                                      preview=payload.get("stdout") or payload.get("stderr") or "",
-                                     payload=payload, merge=True, status=status)
+                                     payload=payload, merge=True, status=status,
+                                     record_type="patch_apply_end")
             for path, change in changes.items():
                 if current and current.target == path:
                     continue
                 change = change if isinstance(change, dict) else {}
                 self._emit(rec, "agent", "write", path,
                            change.get("content") or change.get("unified_diff") or "",
-                           payload=payload, status=status, change_type=change.get("type"))
+                           payload=payload, status=status, change_type=change.get("type"),
+                           record_type="patch_apply_end")
             self._update(ident, payload.get("stdout") or payload.get("stderr"),
                          status=status, success=payload.get("success"))
         elif kind == "mcp_tool_call_end":
@@ -552,17 +554,12 @@ class CodexFileParser:
                        payload=item, status=item.get("status") or "completed", media="image")
 
     def _apply_confidence(self):
-        file_change_turns = {
-            (event.session, event.meta.get("turn_id"), event.meta.get("thread_id"))
-            for event in self.events
-            if event.action == "write" and event.meta.get("record_type") == "file_change"
-        }
         for event in self.events:
             record_type = event.meta.get("record_type")
             if event.action == "write":
                 complete = event.meta.get("status") == "completed"
-                same_turn = event.meta.get("turn_id") and event.meta.get("thread_id")
-                event.meta["confidence"] = "medium" if complete and same_turn else "unknown"
+                event.meta["confidence"] = "medium" if complete and bool(event.target) else "low"
+                # Phase 6: surviving-file stat/hash correlation may promote medium to high.
                 continue
             if event.action != "bash" or record_type != "command_execution":
                 continue
@@ -573,19 +570,13 @@ class CodexFileParser:
             target = target.strip("'\"")
             if target and event.meta.get("cwd") and not target.startswith(("/", "~", "$")):
                 target = posixpath.normpath(posixpath.join(event.meta["cwd"], target))
-            turn_key = (event.session, event.meta.get("turn_id"), event.meta.get("thread_id"))
-            complete = (event.meta.get("status") == "completed" and
-                        event.meta.get("exit_code") == 0)
-            if target and complete and event.meta.get("cwd") and event.meta.get("turn_id") \
-                    and turn_key not in file_change_turns:
-                event.meta["confidence"] = "medium"
+            if target:
+                event.meta["confidence"] = "low"
                 event.meta["write_target"] = target
             elif _PATH_MARKER.search(command) or _PATH_MARKER.search(output):
                 event.meta["confidence"] = "low"
-                if target:
-                    event.meta["write_target"] = target
-            else:
-                event.meta["confidence"] = "unknown"
+            # No confidence field: this command has no transcript-level write evidence.
+            # unknown is reserved for disk-only artifacts without transcript linkage.
 
     def _item_user(self, rec, item):
         content = item.get("content")

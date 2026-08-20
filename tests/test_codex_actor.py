@@ -137,18 +137,38 @@ def test_transcript_only_write_confidence_never_claims_high(tmp_path):
         _turn("turn-unknown"),
         _command(5, "command-unknown", "pwd",
                  "unified_exec_startup", "turn-unknown", exit_code=0),
+        _turn("turn-patch-end"),
+        {"timestamp": "2026-08-21T05:20:06Z", "type": "event_msg",
+         "payload": {"type": "patch_apply_end", "call_id": "patch-end-ok",
+                     "status": "completed", "changes": {
+                         "/case/end.txt": {"type": "add", "content": "x"}}}},
+        _turn("turn-patch-failed"),
+        {"timestamp": "2026-08-21T05:20:07Z", "type": "event_msg",
+         "payload": {"type": "patch_apply_end", "call_id": "patch-end-failed",
+                     "status": "failed", "changes": {
+                         "/case/failed.txt": {"type": "add", "content": "x"}}}},
+        _turn("turn-patch-empty"),
+        {"timestamp": "2026-08-21T05:20:08Z", "type": "response_item",
+         "payload": {"type": "custom_tool_call", "call_id": "patch-empty",
+                     "name": "apply_patch", "status": "completed",
+                     "input": "*** Begin Patch\n*** End Patch"}},
     ]
 
     events = _parse_rows(tmp_path, rows, "confidence")
     by_id = {event.meta["id"]: event for event in events}
 
     assert by_id["file-change"].meta["confidence"] == "medium"
-    assert by_id["command-write"].meta["confidence"] == "medium"
+    assert by_id["command-write"].meta["confidence"] == "low"
     assert by_id["command-write"].meta["write_target"] == "/case/shell.txt"
     assert by_id["command-low"].meta["confidence"] == "low"
-    assert by_id["command-unknown"].meta["confidence"] == "unknown"
-    assert all(event.meta["confidence"] != "high" for event in events
-               if event.action in {"bash", "write"})
+    assert "confidence" not in by_id["command-unknown"].meta
+    assert by_id["patch-end-ok"].meta["record_type"] == "patch_apply_end"
+    assert by_id["patch-end-ok"].meta["confidence"] == "medium"
+    assert by_id["patch-end-failed"].meta["record_type"] == "patch_apply_end"
+    assert by_id["patch-end-failed"].meta["confidence"] == "low"
+    assert by_id["patch-empty"].meta["record_type"] == "apply_patch"
+    assert by_id["patch-empty"].meta["confidence"] == "low"
+    assert all(event.meta.get("confidence") != "high" for event in events)
 
 
 def test_image_view_keeps_read_action_and_image_media(tmp_path):
