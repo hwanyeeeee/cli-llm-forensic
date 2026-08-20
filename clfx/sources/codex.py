@@ -20,6 +20,7 @@ class CodexSource:
         self.acquisition_errors = []
         self.schema_warnings = []
         self.capability_warnings = []
+        self.orchestration_records = []
         self.sqlite_root = self._sqlite_root()
 
     def _sqlite_root(self):

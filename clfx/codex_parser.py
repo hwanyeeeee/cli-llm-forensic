@@ -19,6 +19,10 @@ _RESPONSE_WITHOUT_EVENTS = {"message", "reasoning", "web_search_call", "agent_me
                             "tool_search_call", "tool_search_output", "ghost_snapshot"}
 _EVENTS_WITHOUT_EVENTS = {"token_count", "task_started", "agent_reasoning",
                           "thread_goal_updated", "thread_rolled_back", "error"}
+_SPAWN_FUNCTIONS = {"spawn_agent", "send_message", "wait_agent", "close_agent",
+                    "interrupt_agent", "list_agents", "followup_task"}
+_FUNCTIONS_WITHOUT_EVENTS = {"wait", "update_plan", "create_goal", "update_goal",
+                             "get_goal", "smart_unfold", "smart_search", "smart_outline"}
 
 
 def _clip(value):
@@ -113,7 +117,11 @@ class CodexFileParser:
         self.events = []
         self.by_id = {}
         self.pending = {}
+        self.ignored_calls = set()
         self.unsupported = {}
+        self.orchestrations = {}
+        self.orchestration_events = []
+        self.active_orchestrations = []
         self.capabilities = set()
         self.file = ""
         self.session = ""
@@ -148,6 +156,10 @@ class CodexFileParser:
             self._warn(rec, "envelope", str(envelope), obj)
 
     def finish(self):
+        if "item" in self.capabilities:
+            orchestration_events = {id(event) for event in self.orchestration_events}
+            self.events = [event for event in self.events if id(event) not in orchestration_events]
+            self.source.orchestration_records.extend(self.orchestrations.values())
         for event in self.events:
             if not event.session:
                 event.session = self.session
@@ -283,8 +295,10 @@ class CodexFileParser:
         message = _text(payload.get("message"))
         if message.strip() and not _IMAGE_PLACEHOLDER.match(message):
             self._emit(rec, "user", "prompt", preview=message, payload=payload)
-        images = payload.get("local_images") or []
-        images += payload.get("images") or []
+        local_images = payload.get("local_images")
+        remote_images = payload.get("images")
+        images = list(local_images) if isinstance(local_images, list) else []
+        images += list(remote_images) if isinstance(remote_images, list) else []
         for number, image in enumerate(images, start=1):
             target = image if isinstance(image, str) else _text(image)
             self._emit(rec, "user", "paste", target or f"[Image #{number}]",
@@ -299,22 +313,62 @@ class CodexFileParser:
         if kind == "function_call":
             self.capabilities.add("function_call")
             name = payload.get("name")
-            if name not in {"exec_command", "shell_command", "run"}:
-                self._warn(rec, "function_call.name", str(name), payload)
-                return
             args = _object(payload.get("arguments"))
-            target = args.get("cmd") or args.get("command") or args.get("script") or ""
-            self._emit(rec, "agent", "bash", target=target, payload=payload, merge=True,
-                       status=payload.get("status") or "unknown")
+            if name in {"exec_command", "shell_command", "run"}:
+                target = args.get("cmd") or args.get("command") or args.get("script") or ""
+                self._emit(rec, "agent", "bash", target=target, payload=payload, merge=True,
+                           status=payload.get("status") or "unknown", function_name=name)
+            elif name == "write_stdin":
+                session_id = args.get("session_id")
+                self._emit(rec, "agent", "bash", target=f"session:{session_id}",
+                           preview=args.get("chars") or "", payload=payload, merge=True,
+                           status=payload.get("status") or "unknown", function_name=name,
+                           interaction="stdin")
+            elif name == "view_image":
+                self._emit(rec, "agent", "read", target=args.get("path") or "",
+                           preview=args.get("detail") or "", payload=payload, merge=True,
+                           status=payload.get("status") or "unknown", function_name=name,
+                           media="image")
+            elif name in _SPAWN_FUNCTIONS:
+                target = args.get("target") or args.get("agent_id") or args.get("id")
+                if not target and isinstance(args.get("targets"), list):
+                    target = ",".join(str(value) for value in args["targets"])
+                self._emit(rec, "agent", "spawn", target=target or name,
+                           preview=_json_text(args), payload=payload, merge=True,
+                           status=payload.get("status") or "unknown", function_name=name)
+            elif name == "list_mcp_resources":
+                self._emit(rec, "agent", "mcp", target=args.get("server") or name,
+                           preview=_json_text(args), payload=payload, merge=True,
+                           status=payload.get("status") or "unknown", function_name=name)
+            elif name in _FUNCTIONS_WITHOUT_EVENTS:
+                self.ignored_calls.add(_identity(payload))
+            else:
+                self._warn(rec, "function_call.name", str(name), payload)
+                self.ignored_calls.add(_identity(payload))
         elif kind == "function_call_output":
-            self._update(_identity(payload), _text(payload.get("output")), status="completed")
+            ident = _identity(payload)
+            if ident not in self.ignored_calls:
+                self._update(ident, _text(payload.get("output")), status="completed")
         elif kind == "custom_tool_call":
             self.capabilities.add("custom_tool_call")
             name = payload.get("name")
             raw_input = payload.get("input") or ""
             if name == "exec":
-                self._emit(rec, "agent", "bash", target=_json_text(raw_input), payload=payload,
-                           merge=True, status=payload.get("status") or "unknown")
+                ident = _identity(payload) or f"{rec.file}:{rec.line}"
+                orchestration = {"id": ident,
+                                 "source": {"file": rec.file, "line": rec.line},
+                                 "input": _clip(_json_text(raw_input)),
+                                 "status": payload.get("status") or "unknown",
+                                 "children": []}
+                if "ordinal" in obj:
+                    orchestration["ordinal"] = obj["ordinal"]
+                self.orchestrations[ident] = orchestration
+                self.active_orchestrations.append(ident)
+                event = self._emit(rec, "agent", "bash", target=_json_text(raw_input),
+                                   payload=payload, merge=True,
+                                   status=payload.get("status") or "unknown",
+                                   function_name="exec", record_type="orchestration")
+                self.orchestration_events.append(event)
             elif name == "apply_patch":
                 text = _json_text(raw_input)
                 match = _PATCH_PATH.search(text)
@@ -324,7 +378,15 @@ class CodexFileParser:
             else:
                 self._warn(rec, "custom_tool_call.name", str(name), payload)
         elif kind == "custom_tool_call_output":
-            self._update(_identity(payload), _text(payload.get("output")), status="completed")
+            ident = _identity(payload)
+            output = _text(payload.get("output"))
+            orchestration = self.orchestrations.get(ident)
+            if orchestration is not None:
+                orchestration["status"] = "completed"
+                orchestration["output"] = _clip(output)
+                if ident in self.active_orchestrations:
+                    self.active_orchestrations.remove(ident)
+            self._update(ident, output, status="completed")
         elif kind in _RESPONSE_WITHOUT_EVENTS:
             return
         else:
@@ -347,6 +409,12 @@ class CodexFileParser:
         elif kind == "CommandExecution":
             meta = {"status": item.get("status") or "unknown",
                     "cwd": _file_url(item.get("cwd")), "exit_code": item.get("exit_code")}
+            if self.active_orchestrations:
+                orchestration = self.orchestrations[self.active_orchestrations[-1]]
+                child = _identity(item)
+                if child and child not in orchestration["children"]:
+                    orchestration["children"].append(child)
+                meta["orchestration"] = orchestration
             preview = item.get("aggregated_output") or item.get("output") or ""
             self._emit(rec, "agent", "bash", _command(item.get("command")), preview,
                        payload=item, merge=True, **meta)
