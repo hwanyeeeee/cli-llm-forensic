@@ -1,4 +1,4 @@
-{"timestamp":"2026-08-21T01:00:00Z","type":"session_meta","ordinal":1,"payload":{"id":"synthetic-item","cli_version":"0.147.0","base_instructions":"synthetic injected instructions"}}
+{"timestamp":"2026-08-21T01:00:00Z","type":"session_meta","ordinal":1,"payload":{"id":"synthetic-item","cli_version":"0.147.0","originator":"codex-tui","base_instructions":"synthetic injected instructions"}}
 {"timestamp":"2026-08-21T01:00:01Z","type":"turn_context","ordinal":2,"payload":{"user_instructions":"synthetic injected context"}}
 {"timestamp":"2026-08-21T01:00:02Z","type":"response_item","ordinal":3,"payload":{"type":"function_call","id":"response-call-view","name":"exec_command","arguments":"{\"cmd\":\"printf synthetic\"}","call_id":"cmd-1"}}
 {"timestamp":"2026-08-21T01:00:03Z","type":"response_item","ordinal":4,"payload":{"type":"function_call_output","id":"response-output-view","call_id":"cmd-1","output":[{"type":"output_text","text":"synthetic output"}]}}
@@ -14,6 +14,3 @@
 {"timestamp":"2026-08-21T01:00:13Z","type":"event_msg","ordinal":14,"payload":{"type":"item_completed","item":{"type":"ContextCompaction","id":"compact-1"}}}
 {"timestamp":"2026-08-21T01:00:14Z","type":"response_item","ordinal":15,"payload":{"type":"custom_tool_call","name":"exec","input":"await tools.exec_command({cmd: 'printf item orchestration'})","call_id":"custom-item-exec"}}
 {"timestamp":"2026-08-21T01:00:15Z","type":"response_item","ordinal":16,"payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"duplicate item model input"}]}}
-{"timestamp":"2026-08-21T01:00:16Z","type":"event_msg","ordinal":17,"payload":{"type":"item_completed","item":{"type":"Extension","id":"extension-future","kind":"future.extension","value":1}}}
-{"timestamp":"2026-08-21T01:00:17Z","type":"event_msg","ordinal":18,"payload":{"type":"item_completed","item":{"type":"FutureItem","id":"future-item","value":1}}}
-{"timestamp":"2026-08-21T01:00:18Z","type":"future_envelope","ordinal":19,"payload":{"value":1}}

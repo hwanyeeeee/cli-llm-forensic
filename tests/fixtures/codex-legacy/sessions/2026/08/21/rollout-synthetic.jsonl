@@ -1,4 +1,4 @@
-{"timestamp":"2026-08-21T00:00:00Z","type":"session_meta","payload":{"id":"synthetic-legacy","cli_version":"0.146.0","base_instructions":"synthetic injected instructions"}}
+{"timestamp":"2026-08-21T00:00:00Z","type":"session_meta","payload":{"id":"synthetic-legacy","cli_version":"0.146.0","originator":"codex_cli_rs","base_instructions":"synthetic injected instructions"}}
 {"timestamp":"2026-08-21T00:00:01Z","type":"turn_context","payload":{"user_instructions":"synthetic injected context"}}
 {"timestamp":"2026-08-21T00:00:02Z","type":"event_msg","payload":{"type":"user_message","message":"inspect synthetic input","local_images":["/case/input.png"]}}
 {"timestamp":"2026-08-21T00:00:03Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"duplicate model input"}]}}
@@ -13,6 +13,4 @@
 {"timestamp":"2026-08-21T00:00:12Z","type":"event_msg","payload":{"type":"agent_message","message":"synthetic complete"}}
 {"timestamp":"2026-08-21T00:00:13Z","type":"event_msg","payload":{"type":"mcp_tool_call_end","call_id":"mcp-1","invocation":{"server":"synthetic","tool":"lookup","arguments":{"q":"fixture"}},"result":{"ok":true}}}
 {"timestamp":"2026-08-21T00:00:14Z","type":"event_msg","payload":{"type":"web_search_end","query":"synthetic query","call_id":"search-1"}}
-{"timestamp":"2026-08-21T00:00:15Z","type":"event_msg","payload":{"type":"future_event","mystery":1}}
-{"timestamp":"2026-08-21T00:00:16Z","type":"event_msg","payload":{"type":"future_event","mystery":2}}
 {"timestamp":"2026-08-21T00:00:17Z","type":"response_item","payload":{"type":"custom_tool_call_output","id":"patch-output-view","call_id":"custom-patch","output":[{"type":"output_text","text":"Done"}]}}

@@ -82,12 +82,19 @@ def _report_source_warnings(sources):
     return warnings
 
 
+_ADVISORY_WARNINGS = {"sqlite_coverage", "sqlite_sidecar_missing"}
+
+
+def _has_blocking_warnings(warnings):
+    return any(warning.get("kind") not in _ADVISORY_WARNINGS for warning in warnings)
+
+
 def cmd_parse(args):
     try:
         sources = []
         evs = parse_roots(args.root, sources)
         _write_events(evs, args.out)
-        if _report_source_warnings(sources):
+        if _has_blocking_warnings(_report_source_warnings(sources)):
             return 1
     except Exception as e:
         print(f"clfx parse: {e}", file=sys.stderr)
@@ -117,7 +124,7 @@ def cmd_analyze(args):
         src = source_for(args.root) if args.root else _NullSource(
             next(iter(agents)) if len(agents) == 1 else "unknown")
         _write_events(enrich(events, src), args.out)
-        if _report_source_warnings([src]):
+        if _has_blocking_warnings(_report_source_warnings([src])):
             return 1
     except Exception as e:
         print(f"clfx analyze: {e}", file=sys.stderr)

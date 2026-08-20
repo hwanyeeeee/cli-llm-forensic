@@ -1,0 +1,2 @@
+{"timestamp":"2026-08-21T03:00:00Z","type":"session_meta","ordinal":1,"payload":{"id":"synthetic-unknown","cli_version":"0.147.0","originator":"codex-tui"}}
+{"timestamp":"2026-08-21T03:00:01Z","type":"event_msg","ordinal":2,"payload":{"type":"future_event","synthetic_key":true}}

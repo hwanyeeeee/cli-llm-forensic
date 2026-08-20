@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import clfx.cli as cli
 
@@ -33,3 +34,22 @@ def test_parse_reports_source_errors_and_exits_nonzero(tmp_path, capsys):
     assert out.exists()
     stderr = capsys.readouterr().err
     assert "source warning" in stderr and "JSONDecodeError" in stderr
+
+
+def test_parse_sqlite_advisory_warnings_do_not_fail_real_run(tmp_path, monkeypatch, capsys):
+    source = SimpleNamespace(sqlite_warnings=[
+        {"kind": "sqlite_coverage", "rollout_count": 3, "thread_count": 2,
+         "projection_thread_count": 1},
+        {"kind": "sqlite_sidecar_missing", "file": "/db/queue.sqlite",
+         "missing": ["/db/queue.sqlite-wal"]},
+    ])
+
+    def parse_roots(_roots, sources_out):
+        sources_out.append(source)
+        return []
+
+    monkeypatch.setattr(cli, "parse_roots", parse_roots)
+    args = SimpleNamespace(root=["synthetic"], out=str(tmp_path / "events.jsonl"))
+
+    assert cli.cmd_parse(args) == 0
+    assert capsys.readouterr().err.count("clfx source warning") == 2

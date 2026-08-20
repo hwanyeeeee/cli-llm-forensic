@@ -1,0 +1,7 @@
+{"timestamp":"2026-08-21T02:00:00Z","type":"session_meta","payload":{"id":"synthetic-exec","cli_version":"0.147.0","originator":"codex_exec"}}
+{"timestamp":"2026-08-21T02:00:01Z","type":"event_msg","payload":{"type":"user_message","message":"synthetic headless request"}}
+{"timestamp":"2026-08-21T02:00:02Z","type":"event_msg","payload":{"type":"agent_message","message":"synthetic headless response"}}
+{"timestamp":"2026-08-21T02:00:03Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"printf headless\"}","call_id":"exec-call"}}
+{"timestamp":"2026-08-21T02:00:04Z","type":"response_item","payload":{"type":"function_call_output","call_id":"exec-call","output":[{"type":"output_text","text":"headless"}]}}
+{"timestamp":"2026-08-21T02:00:05Z","type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"await tools.exec_command({cmd: 'printf nested'})","call_id":"exec-custom"}}
+{"timestamp":"2026-08-21T02:00:06Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"exec-custom","output":[{"type":"output_text","text":"nested"}]}}
