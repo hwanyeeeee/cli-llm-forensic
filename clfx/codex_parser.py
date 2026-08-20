@@ -18,7 +18,9 @@ _ENVELOPES_WITHOUT_EVENTS = {"turn_context", "inter_agent_communication_metadata
 _RESPONSE_WITHOUT_EVENTS = {"message", "reasoning", "web_search_call", "agent_message",
                             "tool_search_call", "tool_search_output", "ghost_snapshot"}
 _EVENTS_WITHOUT_EVENTS = {"token_count", "task_started", "agent_reasoning",
-                          "thread_goal_updated", "thread_rolled_back", "error"}
+                          "thread_goal_updated", "thread_rolled_back", "error",
+                          "task_complete", "thread_settings_applied", "turn_aborted",
+                          "context_compacted"}
 _SPAWN_FUNCTIONS = {"spawn_agent", "send_message", "wait_agent", "close_agent",
                     "interrupt_agent", "list_agents", "followup_task"}
 _FUNCTIONS_WITHOUT_EVENTS = {"wait", "update_plan", "create_goal", "update_goal",
@@ -106,7 +108,7 @@ def _command(value):
 def _identity(payload):
     if not isinstance(payload, dict):
         return ""
-    return str(payload.get("call_id") or payload.get("id") or "")
+    return str(payload.get("call_id") or payload.get("id") or payload.get("event_id") or "")
 
 
 class CodexFileParser:
@@ -126,6 +128,7 @@ class CodexFileParser:
         self.file = ""
         self.session = ""
         self.cli_version = ""
+        self.originator = ""
         self.meta_line = 0
 
     def feed(self, rec):
@@ -145,6 +148,7 @@ class CodexFileParser:
                 return
             self.session = str(payload.get("id") or self.session)
             self.cli_version = str(payload.get("cli_version") or "")
+            self.originator = str(payload.get("originator") or "")
             self.meta_line = rec.line
         elif envelope == "event_msg":
             self._event_msg(rec, obj)
@@ -243,6 +247,12 @@ class CodexFileParser:
             self.capabilities.add("legacy")
             self._emit(rec, "agent", "response", preview=_text(payload.get("message")),
                        payload=payload)
+        elif kind == "sub_agent_activity":
+            self._emit(rec, "agent", "spawn",
+                       target=payload.get("agent_thread_id") or payload.get("agent_path") or "",
+                       preview=payload.get("kind") or "", payload=payload,
+                       event_id=payload.get("event_id"),
+                       occurred_at_ms=payload.get("occurred_at_ms"))
         elif kind == "exec_command_end":
             ident = _identity(payload)
             preview = payload.get("stdout") or payload.get("output") or payload.get("stderr")
@@ -479,7 +489,8 @@ class CodexFileParser:
         if not match:
             return
         # Version never selects a parser. It only diagnoses disagreement with observed structure.
-        expected = "item" if tuple(map(int, match.groups())) >= (0, 147, 0) else "legacy"
+        expected = ("legacy" if self.originator.startswith("codex_exec") else
+                    "item" if tuple(map(int, match.groups())) >= (0, 147, 0) else "legacy")
         observed = {cap for cap in self.capabilities if cap in {"item", "legacy", "ordinal"}}
         mismatch = (expected == "legacy" and bool(observed & {"item", "ordinal"})) or (
             expected == "item" and (("item" not in observed and "legacy" in observed)
@@ -489,6 +500,7 @@ class CodexFileParser:
                 "file": self.file,
                 "line": self.meta_line,
                 "cli_version": self.cli_version,
+                "originator": self.originator,
                 "expected": expected,
                 "capabilities": sorted(observed),
             })

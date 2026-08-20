@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from clfx.event import Event
 from clfx.parser import parse_file, parse_source
 from clfx.sources import CodexSource, source_warnings
@@ -95,7 +97,8 @@ def test_cli_version_mismatch_warns_but_does_not_gate_item_event(tmp_path):
     path.parent.mkdir(parents=True)
     rows = [
         {"timestamp": "2026-08-21T02:00:00Z", "type": "session_meta", "ordinal": 1,
-         "payload": {"id": "synthetic-mismatch", "cli_version": "0.146.0"}},
+         "payload": {"id": "synthetic-mismatch", "cli_version": "0.146.0",
+                     "originator": "codex-tui"}},
         {"timestamp": "2026-08-21T02:00:01Z", "type": "event_msg", "ordinal": 2,
          "payload": {"type": "item_completed", "item": {
              "type": "AgentMessage", "id": "agent-mismatch", "text": "still parsed"}}},
@@ -109,7 +112,60 @@ def test_cli_version_mismatch_warns_but_does_not_gate_item_event(tmp_path):
     mismatch = [w for w in source_warnings(src) if w["kind"] == "capability_mismatch"]
     assert mismatch == [{"kind": "capability_mismatch", "file": str(path), "line": 1,
                          "cli_version": "0.146.0", "expected": "legacy",
-                         "capabilities": ["item", "ordinal"]}]
+                         "capabilities": ["item", "ordinal"],
+                         "originator": "codex-tui"}]
+
+
+@pytest.mark.parametrize("originator", ["codex_exec", "codex_exec_automation"])
+def test_codex_exec_originator_accepts_legacy_at_0147(tmp_path, originator):
+    root = tmp_path / ".codex"
+    path = root / "sessions" / "2026" / "08" / "21" / f"rollout-{originator}.jsonl"
+    path.parent.mkdir(parents=True)
+    rows = [
+        {"timestamp": "2026-08-21T02:10:00Z", "type": "session_meta",
+         "payload": {"id": f"synthetic-{originator}", "cli_version": "0.147.0",
+                     "originator": originator}},
+        {"timestamp": "2026-08-21T02:10:01Z", "type": "event_msg",
+         "payload": {"type": "user_message", "message": "headless synthetic"}},
+    ]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    src = CodexSource(root)
+
+    events, _, _ = parse_file(src, path, False)
+
+    assert [(event.action, event.preview) for event in events] == [
+        ("prompt", "headless synthetic")]
+    assert not [warning for warning in source_warnings(src)
+                if warning["kind"] == "capability_mismatch"]
+
+
+def test_known_event_lifecycle_is_quiet_and_subagent_activity_emits_spawn(tmp_path):
+    root = tmp_path / ".codex"
+    path = root / "sessions" / "2026" / "08" / "21" / "rollout-events.jsonl"
+    path.parent.mkdir(parents=True)
+    rows = [
+        {"timestamp": "2026-08-21T02:20:00Z", "type": "session_meta",
+         "payload": {"id": "synthetic-events", "cli_version": "0.146.0"}},
+        *({"timestamp": "2026-08-21T02:20:01Z", "type": "event_msg",
+           "payload": {"type": kind, "value": "synthetic"}}
+          for kind in ("task_complete", "thread_settings_applied", "turn_aborted",
+                       "context_compacted")),
+        {"timestamp": "2026-08-21T02:20:02Z", "type": "event_msg",
+         "payload": {"type": "sub_agent_activity", "event_id": "event-1",
+                     "agent_thread_id": "thread-child", "agent_path": "synthetic-agent",
+                     "kind": "started", "occurred_at_ms": 1770000000000}},
+    ]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    src = CodexSource(root)
+
+    events, _, _ = parse_file(src, path, False)
+
+    assert [(event.action, event.target, event.preview) for event in events] == [
+        ("spawn", "thread-child", "started")]
+    assert events[0].meta["event_id"] == "event-1"
+    assert events[0].meta["occurred_at_ms"] == 1770000000000
+    assert not [warning for warning in source_warnings(src)
+                if warning["kind"] == "unsupported_schema"]
 
 
 def test_event_meta_is_optional_and_roundtrips():
