@@ -335,11 +335,14 @@ class CodexFileParser:
             preview = payload.get("stdout") or payload.get("output") or payload.get("stderr")
             status = payload.get("status") or ("completed" if payload.get("exit_code") is not None else "unknown")
             if ident not in self.by_id:
-                actor = "user" if payload.get("source") in {"user_shell", "userShell"} else "unknown"
+                command_source = payload.get("source")
+                actor = ("user" if command_source in {"user_shell", "userShell"} else
+                         "agent" if self.session or payload.get("turn_id") or self.current_turn_id
+                         else "unknown")
                 self._emit(rec, actor, "bash", target=_command(payload.get("command")),
                            preview=preview, payload=payload, merge=True, status=status,
                            exit_code=payload.get("exit_code"),
-                           command_source=payload.get("source"), record_type="command_execution")
+                           source=command_source, record_type="command_execution")
             self._update(ident, preview, status=status, exit_code=payload.get("exit_code"))
         elif kind == "patch_apply_end":
             ident = _identity(payload)
@@ -501,14 +504,13 @@ class CodexFileParser:
         elif kind == "AgentMessage":
             self._emit(rec, "agent", "response", preview=_text(item), payload=item)
         elif kind == "CommandExecution":
-            ident = _identity(item)
-            linked = ident in self.by_id or bool(self.active_orchestrations)
             command_source = item.get("source")
             actor = ("user" if command_source in {"user_shell", "userShell"} else
-                     "agent" if linked else "unknown")
+                     "agent" if (self.session or self.record_context.get("turn_id")
+                                 or self.current_turn_id) else "unknown")
             meta = {"status": item.get("status") or "unknown",
                     "cwd": _file_url(item.get("cwd")), "exit_code": item.get("exit_code"),
-                    "command_source": command_source, "record_type": "command_execution",
+                    "source": command_source, "record_type": "command_execution",
                     "command_text": _command_text(item.get("command"))}
             if self.active_orchestrations:
                 orchestration = self.orchestrations[self.active_orchestrations[-1]]

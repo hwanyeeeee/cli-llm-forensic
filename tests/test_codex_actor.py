@@ -38,7 +38,7 @@ def _command(number, item_id, command, source, turn_id, exit_code=0, status="com
                      "aggregated_output": "synthetic output", "exit_code": exit_code}}}
 
 
-def test_command_actor_uses_user_shell_then_model_link_else_unknown(tmp_path):
+def test_command_actor_uses_user_shell_else_session_turn_agent(tmp_path):
     rows = [
         _meta(),
         _turn("turn-actor"),
@@ -56,14 +56,33 @@ def test_command_actor_uses_user_shell_then_model_link_else_unknown(tmp_path):
 
     assert [(event.meta["id"], event.actor) for event in commands] == [
         ("command-agent", "agent"), ("command-user", "user"),
-        ("command-unknown", "unknown")]
+        ("command-unknown", "agent")]
+    assert {event.actor for event in commands
+            if event.meta["source"] == "unified_exec_startup"} == {"agent"}
     for event in commands:
+        assert event.meta["source"] in {"unified_exec_startup", "user_shell"}
         assert event.meta["turn_id"] == "turn-actor"
         assert event.meta["thread_id"] == "thread-main"
         assert event.meta["approval_policy"] == "on-request"
         assert event.meta["sandbox_policy"] == {"type": "workspace-write"}
         assert event.meta["approvals_reviewer"] == "user"
         assert "approved_by_user" not in event.meta
+
+
+def test_command_without_session_or_turn_context_is_unknown(tmp_path):
+    rows = [{
+        "timestamp": "2026-08-21T05:01:00Z", "type": "event_msg", "ordinal": 1,
+        "payload": {"type": "item_completed", "item": {
+            "type": "CommandExecution", "id": "orphan-command",
+            "command": ["/bin/bash", "-lc", "printf orphan"], "cwd": "file:///case",
+            "source": "unified_exec_startup", "status": "completed",
+            "aggregated_output": "orphan", "exit_code": 0}}}]
+
+    event = _parse_rows(tmp_path, rows, "orphan")[0]
+
+    assert event.actor == "unknown"
+    assert event.meta["source"] == "unified_exec_startup"
+    assert "turn_id" not in event.meta and not event.session
 
 
 def test_turn_policy_is_scoped_by_turn_id(tmp_path):
