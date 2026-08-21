@@ -343,7 +343,11 @@ class CodexFileParser:
                            preview=preview, payload=payload, merge=True, status=status,
                            exit_code=payload.get("exit_code"),
                            source=command_source, record_type="command_execution")
-            self._update(ident, preview, status=status, exit_code=payload.get("exit_code"))
+            # source는 _emit 분기 밖에서도 실어야 한다. 앞선 function_call(exec_command)이
+            # 같은 call_id로 Event를 이미 만들었으면 위 분기를 건너뛰는데, 귀속 근거인
+            # source는 exec_command_end에만 있다 — 실데이터 1,254건 전부가 이 병합 경로다.
+            self._update(ident, preview, status=status, exit_code=payload.get("exit_code"),
+                         source=payload.get("source"))
         elif kind == "patch_apply_end":
             ident = _identity(payload)
             status = payload.get("status") or "completed"
