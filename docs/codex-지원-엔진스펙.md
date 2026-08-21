@@ -50,6 +50,19 @@ SQLite는 main/**WAL**/SHM 동시 확보 후 read-only 사본으로만 연다 (6
 
 **item era만 구현 시 회수율: 명령 10.2%, 쓰기 1.85%** (raw record 합산, dedup 전).
 
+### ★정정(2026-08-21 실측) — era는 버전이 아니라 **실행 모드**에도 좌우된다
+
+같은 0.147.0 바이너리인데 `session_meta.originator`에 따라 기록 계층이 갈린다.
+
+| originator | 관측 계층 | 파일수 |
+|---|---|---:|
+| `codex-tui` (대화형) | **item** (`item_completed` + PascalCase) | 22 |
+| `codex_exec` (헤드리스) | **legacy** (`user_message`/`agent_message`/`custom_tool_call`) | 6 |
+
+→ "legacy ≤0.146 / item 0.147+"는 **버전만으로 성립하지 않는다**. 0.147+에서도 헤드리스 실행은 legacy 계층을 쓴다.
+→ 포렌식 함의: item 계층만 보는 분석은 **`codex exec` 자동화 실행 전체를 놓친다**.
+→ R6-3의 structural sniffing 결정이 이 케이스로 검증됨 — 버전 하드코딩 파서였다면 이 6개 파일에서 0건이 나왔다.
+
 ### era 판정 = **structural sniffing 우선** (R6-3 확정)
 
 `cli_version` 하드코딩 switch **금지**. 0.148+에서 또 바뀌면 같은 사고가 반복된다.
@@ -117,10 +130,16 @@ UI는 unknown을 중립색 경고 카드/필터로 노출하고 **user·agent �
 `CommandExecution.source` 값 도메인 (raw 0.147): `unified_exec_startup` 2,293 / `user_shell` 1.
 SQLite: `unifiedExecStartup` 2,124 / `userShell` 1. `pluginId`·`scriptPath`는 **2,125/2,125 전부 empty**.
 
-- `userShell` → actor=user (직접 근거)
-- model tool call과 연결됨 → actor=agent
-- 연결 실패 → **unknown** (user로 폴백 금지)
-- `unifiedExecStartup`은 실행 transport일 뿐 **LLM 자율성 증명 아님**
+- `user_shell` / `userShell` → actor=user (직접 근거, 실측 1건)
+- 그 외 `CommandExecution` → actor=**agent**. 에이전트 턴 스트림 안의 기록이다
+- **unknown은 세션/턴 연결 자체가 없을 때만**
+- `meta.source`에 원본 값(`unified_exec_startup` 등)을 보존 — 귀속 근거를 사후 감사 가능하게
+
+**★정정(2026-08-21)** — 초기 규칙은 "모델 tool call과 연결되면 agent, 연결 실패면 unknown"이었다. **틀렸다.**
+item era에서 `custom_tool_call.call_id` ↔ `CommandExecution.exec-…` id는 **교집합 0**(R4 실증)이라 링크가 원래 성립하지 않는다.
+그 규칙으로 실데이터를 돌리면 같은 세션·같은 레코드 종류가 갈린다 —
+`agent 533 / unknown 53`, `agent 553 / unknown 27`, `agent 253 / unknown 38 / user 1`.
+링크 실패는 **귀속 근거가 아니라 파서 사정**이다. 근거 없이 151건을 "주체 불명"으로 표시하면 보고서가 틀린다.
 
 ### 3-4. 승인(approval) — 개별 승인 판정 불가
 

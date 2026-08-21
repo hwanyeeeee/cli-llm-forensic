@@ -81,3 +81,16 @@ legacy era·item era fixture 각 1개(민감값 제거 합성). capability golde
 전체 회귀 green + Codex 실 스캔 real-run.
 
 acceptance: python3 -m pytest tests/ -q
+
+## 9단계: exe 패키징 검증 (Codex 경로)
+
+Phase 2a에서 만든 PyInstaller exe는 Codex 지원 이전 산출물(dist/AgenTrace.exe, 2026-07-03)이다.
+`codex_sqlite`가 3곳 전부 **함수 내부 지연 import**(`cli.py:56` · `wsl_helper.py:48` · `web/api.py:325`)이고
+`web/api.py`는 `except Exception`으로 감싸져 있어, 번들 누락 시 **경고 한 줄만 남기고 SQLite 지원이 조용히 사라진다**.
+
+- exe 재빌드(`packaging\build-exe.bat`) 후 Codex 소스 스캔이 CLI 경로와 **동일 이벤트 수**를 내는지 등가 확인
+- `codex_parser` · `codex_sqlite` 번들 포함 확인. 누락 시 `--hidden-import` 추가
+- attestation에 rollout JSONL + DB main/-wal/-shm 해시가 exe 경로에서도 들어오는지
+- `requires-python >=3.11` 변경이 빌드에 영향 없는지 (빌드 환경 Windows Python 3.12.10 · PyInstaller 6.21.0)
+
+acceptance: python3 -m pytest tests/test_wsl_delegate.py tests/test_codex_sqlite.py -q
