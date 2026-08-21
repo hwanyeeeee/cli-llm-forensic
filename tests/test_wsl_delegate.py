@@ -1,4 +1,6 @@
 """O11 WSL-side 파싱 위임 — UNC 판정/경로재작성/스테이징 해시/헬퍼 등가성(핵심: 직접 파싱과 byte-identical)."""
+import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -56,6 +58,43 @@ def test_delegate_equivalence_with_direct_parse(tmp_path):
     assert len(res["helper_sha256"]) == 64
     assert {"parse_wall_s", "enrich_s"} <= set(res["timings"])
     assert progress and progress[-1][0] == progress[-1][1]   # 진행률이 완주까지 보고됨
+
+
+def _codex_root_without_sidecars(tmp_path):
+    """rollout 1개 + 사이드카 없는 SQLx DB 1개 → sqlite_sidecar_missing 경고를 유발하는 최소 증거 루트."""
+    root = tmp_path / "case" / ".codex"
+    rollout = root / "sessions" / "2026" / "08" / "21" / "rollout-delegate.jsonl"
+    rollout.parent.mkdir(parents=True)
+    rollout.write_text(json.dumps({
+        "timestamp": "2026-08-21T05:00:00Z", "type": "session_meta", "ordinal": 1,
+        "payload": {"id": "delegate-session", "cli_version": "0.147.0",
+                    "originator": "codex-tui"}}) + "\n", encoding="utf-8")
+    conn = sqlite3.connect(root / "state_5.sqlite")      # 기본 journal_mode → -wal/-shm 안 남음
+    conn.execute("CREATE TABLE _sqlx_migrations(version INTEGER PRIMARY KEY)")
+    conn.execute("INSERT INTO _sqlx_migrations VALUES (46)")
+    conn.execute("""CREATE TABLE threads(
+                        id TEXT PRIMARY KEY, rollout_path TEXT, cwd TEXT, git_branch TEXT,
+                        git_sha TEXT, model TEXT, approval_mode TEXT, sandbox_policy TEXT)""")
+    conn.commit()
+    conn.close()
+    return root
+
+
+def test_delegate_rewrites_every_path_in_a_warning(tmp_path):
+    # 6단계 회귀: file만 재작성하면 sqlite_sidecar_missing.missing[]가 POSIX로 남아
+    # 경고 하나에 UNC/POSIX가 섞인다 → Windows 조사자가 못 여는 경로가 보고서에 실린다.
+    root = _codex_root_without_sidecars(tmp_path)
+    target = r"\\wsl.localhost\Ubuntu\case\.codex"
+
+    res = wd._run_staged(str(root), target, "wsl", runner=LOCAL_RUNNER,
+                         workdir=str(tmp_path / "work"))
+
+    sidecar = [w for w in res["warnings"] if w["kind"] == "sqlite_sidecar_missing"]
+    assert sidecar, res["warnings"]
+    for warning in sidecar:
+        assert warning["file"].startswith(target)
+        assert warning["missing"] == [warning["file"] + "-wal", warning["file"] + "-shm"]
+    assert all(key.startswith(target) for key in res["manifest"])
 
 
 def test_delegate_helper_failure_raises(tmp_path):

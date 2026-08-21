@@ -178,6 +178,11 @@ def _run_staged(posix_root, target_root, origin_label, distro=None,
             row = dict(warning)
             if isinstance(row.get("file"), str):
                 row["file"] = rewrite_prefix(row["file"], posix_root, target_root)
+            # 6단계 sqlite_sidecar_missing.missing[]도 경로다 — file만 바꾸면 한 경고 안에
+            # UNC/POSIX가 섞여 Windows 조사자가 못 여는 경로가 보고서에 실린다.
+            if isinstance(row.get("missing"), list):
+                row["missing"] = [rewrite_prefix(p, posix_root, target_root)
+                                  if isinstance(p, str) else p for p in row["missing"]]
             warnings.append(row)
         return {"events": events,
                 "manifest": {k: manifest[k] for k in sorted(manifest)},
