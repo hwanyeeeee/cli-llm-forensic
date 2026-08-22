@@ -1,0 +1,351 @@
+"""A1 패널 최종 조판 — 확정 본문(panel-text.md) + 그림 4개를 A1 세로 1장으로 합성한다.
+
+    python3 panel/draft_a1.py
+
+산출:
+  draft-a1.jpg   미리보기 (dpi 150)
+  draft-a1.png   인쇄용   (dpi 300 · 7016×9933px · 양식 요건 원본 1MB↑)
+  draft-a1.svg   벡터본   (텍스트는 path 변환, 그림은 원본 해상도 래스터)
+
+본문은 **하드코딩하지 않고 `panel/panel-text.md`에서 파싱**한다.
+수치 동결에서 배운 것과 같은 이유다 — 같은 문장을 두 곳에 두면 한쪽만 고쳐진다.
+파싱에 실패하면 조용히 빈칸을 내지 않고 **즉시 죽는다**.
+
+레이아웃 제약은 `docs/패널-구성안.md` §1·§4. 폰트는 그림 4개와 같은 것을 쓴다(§주의 참조).
+"""
+import re
+import sys
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontProperties
+from matplotlib.patches import FancyBboxPatch
+import matplotlib.image as mpimg
+
+PANEL = Path(__file__).resolve().parent
+REPO = PANEL.parent
+TEXT_SOURCE = PANEL / "panel-text.md"
+
+# A1 세로. figsize를 실제 inch로 두면 matplotlib fontsize(pt)가 인쇄 pt와 1:1이 된다.
+A1_W_IN, A1_H_IN = 59.4 / 2.54, 84.1 / 2.54          # 23.386 × 33.110
+
+# `docs/패널-구성안.md` §1: 본문 나눔스퀘어 36pt 이하. 이 머신에 나눔스퀘어·KoPubWorld가
+# 없어서 그림 4개와 동일한 맑은고딕으로 조판한다. 제출 전 폰트 정합은 §주의 참고.
+FONT_CANDIDATES = [
+    "/mnt/c/Windows/Fonts/malgunbd.ttf",
+    "/usr/share/fonts/truetype/nanum/NanumSquareB.ttf",
+    "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+]
+
+INK = "#111111"
+MUTED = "#555555"
+FAINT = "#7a7a7a"
+ACCENT = "#1f5fa8"
+RULE = "#c7d2de"
+HEADER_BG = "#eaf1f9"
+BOX_BG = "#fbfcfe"
+
+# 세로 배분(figure fraction, 위에서부터). 합 = 1.0
+BANDS = [
+    ("margin_top", 0.012),
+    ("header", 0.085),
+    ("s1_background", 0.115),
+    ("f2_hero", 0.150),
+    ("fm_remote", 0.210),
+    ("s3_results", 0.245),
+    ("s4_impact", 0.150),
+    ("footnote", 0.028),
+    ("margin_bottom", 0.005),
+]
+LEFT, RIGHT = 0.030, 0.970
+CONTENT_W = RIGHT - LEFT
+
+
+def _font(size):
+    for candidate in FONT_CANDIDATES:
+        if Path(candidate).is_file():
+            return FontProperties(fname=candidate, size=size)
+    raise SystemExit("한글 폰트를 찾지 못했다. FONT_CANDIDATES에 경로를 추가해라.")
+
+
+def _bands():
+    """밴드 이름 → (top, bottom) figure-fraction. matplotlib y축(아래가 0)으로 변환해 둔다."""
+    out, cursor = {}, 1.0
+    for name, height in BANDS:
+        out[name] = (cursor, cursor - height)
+        cursor -= height
+    if abs(cursor) > 1e-9:
+        raise SystemExit(f"BANDS 합이 1.0이 아니다: 잔여 {cursor:.4f}")
+    return out
+
+
+# ---------------------------------------------------------------- 본문 파싱
+def _fenced_block(text, heading):
+    match = re.search(rf"^##\s*{re.escape(heading)}.*?\n+```\n(.*?)```", text,
+                      re.S | re.M)
+    if not match:
+        raise SystemExit(f"panel-text.md에서 '{heading}' 코드블록을 못 찾았다.")
+    return match.group(1).rstrip("\n")
+
+
+def _plain(text):
+    """마크다운 강조 표기를 벗긴다 — 포스터에 `**`가 그대로 찍히면 안 된다."""
+    return re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", text).replace("`", "")
+
+
+def _section_body(text, marker):
+    """`## ① …` 다음 문단(인용문·다음 heading 전까지)."""
+    match = re.search(rf"^##\s*{marker}[^\n]*\n+(.*?)(?=\n>|\n##\s)", text, re.S | re.M)
+    if not match:
+        raise SystemExit(f"panel-text.md에서 '{marker}' 본문을 못 찾았다.")
+    return _plain(re.sub(r"\s*\n\s*", " ", match.group(1).strip()))
+
+
+def load_text():
+    """헤더 블록은 `키  값` 2칸 구분. 값이 여러 줄이면 들여쓴 연속행으로 이어진다."""
+    raw = TEXT_SOURCE.read_text(encoding="utf-8")
+    header, key = {}, None
+    for line in _fenced_block(raw, "헤더").splitlines():
+        if not line.strip():
+            continue
+        if line.startswith((" ", "\t")) and key and "  " not in line.strip():
+            header[key].append(line.strip())            # 연속행(과제명 2줄째)
+            continue
+        name, _, value = line.strip().partition("  ")
+        key = name.strip()
+        header.setdefault(key, [])
+        if value.strip():
+            header[key].append(value.strip())
+    title = header.get("과제명(2줄)") or []
+    if len(title) < 2:
+        raise SystemExit(f"과제명 2줄을 못 찾았다: {title}")
+    bullets = re.findall(r"^-\s+\*\*(.+?)\*\*\s*—\s*(.+?)(?=\n-\s|\n##|\Z)", raw, re.S | re.M)
+    if len(bullets) < 3:
+        raise SystemExit(f"④ 기대·파급 불릿을 3개 이상 못 찾았다(찾은 수 {len(bullets)}).")
+    return {
+        "title": title,
+        "meta": [(k, " ".join(v)) for k, v in header.items()
+                 if k != "과제명(2줄)" and v],
+        "background": _section_body(raw, "①"),
+        "impact": [(_plain(head).strip(),
+                    _plain(re.sub(r"\s*\n\s*", " ", body)).strip())
+                   for head, body in bullets],
+        "footnote": _fenced_block(raw, "각주").strip(),
+    }
+
+
+def _wrap(text, width):
+    """한글은 어절 단위로만 끊는다(음절 중간 절단 방지)."""
+    lines, current = [], ""
+    for word in text.split():
+        trial = f"{current} {word}".strip()
+        if len(trial) <= width:
+            current = trial
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+# ---------------------------------------------------------------- 그리기
+def _rule(fig, y, x0=LEFT, x1=RIGHT, color=RULE, lw=1.2):
+    fig.add_artist(plt.Line2D([x0, x1], [y, y], color=color, lw=lw,
+                              transform=fig.transFigure))
+
+
+def _panel_box(fig, top, bottom, pad=0.004):
+    fig.add_artist(FancyBboxPatch(
+        (LEFT, bottom + pad), CONTENT_W, (top - bottom) - 2 * pad,
+        boxstyle="round,pad=0.004,rounding_size=0.006",
+        transform=fig.transFigure, facecolor=BOX_BG, edgecolor=RULE, lw=1.4, zorder=0))
+
+
+def _place_image(fig, path, top, bottom, x0=LEFT, x1=RIGHT, align="center"):
+    """슬롯 안에 원본 비율을 지키며 최대 크기로 앉힌다. 원본 픽셀은 손대지 않는다."""
+    if not Path(path).is_file():
+        raise SystemExit(f"그림이 없다: {path}")
+    image = mpimg.imread(str(path))
+    ratio = image.shape[1] / image.shape[0]                  # w/h (px)
+    slot_w_in, slot_h_in = (x1 - x0) * A1_W_IN, (top - bottom) * A1_H_IN
+    draw_w_in = min(slot_w_in, slot_h_in * ratio)
+    draw_h_in = draw_w_in / ratio
+    w, h = draw_w_in / A1_W_IN, draw_h_in / A1_H_IN
+    left = x0 if align == "left" else (x1 - w if align == "right"
+                                       else x0 + ((x1 - x0) - w) / 2)
+    axes = fig.add_axes([left, top - h, w, h])
+    axes.imshow(image, interpolation="antialiased")
+    axes.axis("off")
+    return top - h
+
+
+def build():
+    content = load_text()
+    band = _bands()
+    fig = plt.figure(figsize=(A1_W_IN, A1_H_IN))
+    fig.patch.set_facecolor("white")
+
+    # ---- 헤더
+    top, bottom = band["header"]
+    fig.add_artist(FancyBboxPatch(
+        (LEFT, bottom), CONTENT_W, top - bottom,
+        boxstyle="round,pad=0.003,rounding_size=0.005",
+        transform=fig.transFigure, facecolor=HEADER_BG, edgecolor="#c3d6ea", lw=1.6, zorder=0))
+    y = top - 0.014
+    for line in content["title"]:
+        fig.text(LEFT + 0.018, y, line, fontproperties=_font(36), color=INK, va="top")
+        y -= 0.0175
+    meta = "  ·  ".join(f"{key} {value}" for key, value in content["meta"])
+    meta_lines = _wrap(meta, 100)
+    y = bottom + 0.011 + 0.0110 * (len(meta_lines) - 1)
+    for line in meta_lines:
+        fig.text(LEFT + 0.018, y, line, fontproperties=_font(17), color=MUTED, va="bottom")
+        y -= 0.0110
+    if y + 0.0110 > top - 0.014 - 0.0175 * len(content["title"]) - 0.004:
+        raise SystemExit("헤더에서 과제명과 인적사항이 겹친다 — header 밴드를 늘려라.")
+
+    # ---- ① 배경·목적 (위치 고정)
+    top, bottom = band["s1_background"]
+    _panel_box(fig, top, bottom)
+    fig.text(LEFT + 0.016, top - 0.017, "① 과제 배경 및 목적",
+             fontproperties=_font(30), color=ACCENT, va="top")
+    y = top - 0.044
+    for line in _wrap(content["background"], 60):
+        fig.text(LEFT + 0.016, y, line, fontproperties=_font(27), color=INK, va="top")
+        y -= 0.0165
+
+    # ---- ② 방법·내용 : F2 hero + fm_remote
+    top, bottom = band["f2_hero"]
+    fig.text(LEFT, top - 0.008, "② 수행 방법 및 내용",
+             fontproperties=_font(30), color=ACCENT, va="top")
+    _place_image(fig, PANEL / "f2_hero_compact.jpg", top - 0.030, bottom)
+
+    top, bottom = band["fm_remote"]
+    _place_image(fig, PANEL / "fm_remote.jpg", top, bottom)
+
+    # ---- ③ 결과 : F5 실캡처 + F6 정량 카드
+    top, bottom = band["s3_results"]
+    fig.text(LEFT, top - 0.008, "③ 수행 결과",
+             fontproperties=_font(30), color=ACCENT, va="top")
+    row_top = top - 0.030
+    split = LEFT + CONTENT_W * 0.475
+    f5_bottom = _place_image(fig, REPO / "panel-f5-leak-scenario.png", row_top, bottom + 0.050,
+                             x0=LEFT, x1=split - 0.008, align="left")
+    f6_bottom = _place_image(fig, PANEL / "f6_metrics.jpg", row_top, bottom + 0.050,
+                             x0=split + 0.008, x1=RIGHT, align="right")
+    # 캡션은 각자 자기 그림 아래에. F5 설명을 F6 밑에 두면 무엇을 가리키는지 어긋난다.
+    fig.text(LEFT, f5_bottom - 0.010,
+             "실제 대시보드 화면 — 같은 명령이 사용자(파랑)와 에이전트(빨강)로 갈린다.\n"
+             "클릭하면 원본 위치(file:line)까지 역추적된다.",
+             fontproperties=_font(19), color=MUTED, va="top", linespacing=1.6)
+    fig.text(split + 0.008, f6_bottom - 0.010,
+             "합성 통제 데이터 기준 정확도. 회수율·한계는 종합문서에 분리 기재.",
+             fontproperties=_font(19), color=MUTED, va="top")
+
+    # ---- ④ 기대·파급
+    top, bottom = band["s4_impact"]
+    _panel_box(fig, top, bottom)
+    fig.text(LEFT + 0.016, top - 0.015, "④ 기대 효과 및 파급 효과",
+             fontproperties=_font(30), color=ACCENT, va="top")
+    # 표제와 본문을 같은 y에 놓으면 겹친다 — 표제 한 줄, 본문은 들여쓴 다음 줄부터.
+    y = top - 0.042
+    for head, body in content["impact"]:
+        fig.text(LEFT + 0.018, y, f"■ {head}", fontproperties=_font(23),
+                 color=ACCENT, va="top")
+        y -= 0.0118
+        for line in _wrap(body, 86):
+            fig.text(LEFT + 0.036, y, line, fontproperties=_font(21), color=INK, va="top")
+            y -= 0.0110
+        y -= 0.0035
+    if y < bottom:
+        raise SystemExit(f"④ 본문이 밴드를 넘쳤다(y={y:.4f} < {bottom:.4f}). "
+                         f"BANDS의 s4_impact를 늘리거나 글자를 줄여라.")
+
+    # ---- 각주
+    top, bottom = band["footnote"]
+    _rule(fig, top)
+    y = top - 0.006
+    for line in content["footnote"].splitlines():
+        fig.text(LEFT, y, line, fontproperties=_font(17), color=FAINT, va="top")
+        y -= 0.0104
+    if y < bottom - 0.004:
+        raise SystemExit(f"각주가 밴드 밖으로 나갔다(y={y:.4f}) — footnote 밴드를 늘려라.")
+
+    return fig
+
+
+def check_figure_consistency():
+    """한 포스터 안의 그림들이 서로 다른 수치를 말하는지 본다.
+
+    F6이 동결 기준이다(`docs/패널-구성안.md` §3). 다른 그림이 다른 값을 말하면
+    같은 A1 위에 두 숫자가 동시에 인쇄된다 — 인쇄 후에는 못 고친다."""
+    # `\b`는 한글 앞에서 안 끊긴다("37,081건") — 숫자·쉼표만 배제하는 look-around을 쓴다.
+    claims = {
+        "복원 이벤트": r"(?<![\d,])(3\d,\d{3})(?![\d,])",
+        "rollout 파일": r"rollout\s*(\d+)\s*파일",
+        "CLI 버전 종수": r"CLI 버전\s*(\d+)\s*종",
+    }
+    per_script = {}
+    for script in sorted(PANEL.glob("*.py")):
+        if script.name == Path(__file__).name:
+            continue
+        source = script.read_text(encoding="utf-8")
+        for label, pattern in claims.items():
+            values = set(re.findall(pattern, source))
+            if values:
+                per_script.setdefault(label, {})[script.name] = values
+
+    # 한 파일 안에 여러 수치가 있는 건 정상이다(F6은 이벤트와 actor를 같이 싣는다).
+    # 문제는 **파일끼리 겹치는 값이 하나도 없을 때** — 서로 다른 사실을 주장하는 것이다.
+    conflicts = {}
+    for label, by_script in per_script.items():
+        names = sorted(by_script)
+        if any(not (by_script[a] & by_script[b])
+               for i, a in enumerate(names) for b in names[i + 1:]):
+            conflicts[label] = {}
+            for name in names:
+                for value in sorted(by_script[name]):
+                    conflicts[label].setdefault(value, []).append(name)
+    if not conflicts:
+        return True
+    print("\n" + "!" * 78)
+    print("경고 — 같은 포스터의 그림들이 서로 다른 수치를 말한다. 인쇄 전에 맞춰야 한다.")
+    for label, values in conflicts.items():
+        print(f"  [{label}]")
+        for value, scripts in sorted(values.items()):
+            print(f"     {value:<10} ← {', '.join(sorted(set(scripts)))}")
+    print("  기준은 f6_metrics.py(동결본). 나머지 그림 스크립트를 그 값으로 맞추고 다시 구워라.")
+    print("!" * 78)
+    return False
+
+
+def main():
+    fig = build()
+    outputs = []
+    for name, dpi, kwargs in (("draft-a1.jpg", 150, {"pil_kwargs": {"quality": 92}}),
+                              ("draft-a1.png", 300, {}),
+                              ("draft-a1.svg", 300, {})):
+        path = PANEL / name
+        fig.savefig(path, dpi=dpi, facecolor="white", **kwargs)
+        size = path.stat().st_size
+        outputs.append((name, dpi, size))
+        print(f"  {name:<14} dpi {dpi:>3}  {size / 1024 / 1024:.2f} MB")
+    plt.close(fig)
+
+    print(f"\nA1 {A1_W_IN * 2.54:.1f} × {A1_H_IN * 2.54:.1f} cm "
+          f"· 인쇄본 {int(A1_W_IN * 300)}×{int(A1_H_IN * 300)} px")
+    print("세로 배분:", " · ".join(
+        f"{name} {height:.0%}" for name, height in BANDS if not name.startswith("margin")))
+    for name, _, size in outputs:
+        if name.endswith(".png") and size < 1024 * 1024:
+            sys.exit(f"양식 요건 위반: {name}이 1MB 미만({size} B)")
+    check_figure_consistency()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
