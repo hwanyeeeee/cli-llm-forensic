@@ -94,3 +94,68 @@ Phase 2a에서 만든 PyInstaller exe는 Codex 지원 이전 산출물(dist/Agen
 - `requires-python >=3.11` 변경이 빌드에 영향 없는지 (빌드 환경 Windows Python 3.12.10 · PyInstaller 6.21.0)
 
 acceptance: python3 -m pytest tests/test_wsl_delegate.py tests/test_codex_sqlite.py -q
+
+## 10단계: Codex 정확도 정량 측정
+
+신청서 목표 ⑤. Claude는 측정본이 있고 **Codex는 없다**. `docs/정확도-검증-시나리오.md` 3시나리오를 Codex 기록 형식으로 확장.
+
+- 주체 식별 100건 · 접근파일 판정 100건 · MCP 외부연동 호출 100건
+- 합성 transcript(정답 라벨 보유) ↔ 도구 판정 1:1 비교. 실데이터 복사 금지
+- legacy·item 두 era를 모두 포함해야 한다 — 한쪽만 재면 회수율 착시가 생긴다
+- 산출: 시나리오별 정확도 수치 + 오분류 사례 분류(무엇을 왜 틀렸는가)
+
+acceptance: python3 -m pytest tests/test_accuracy_codex.py -q
+
+## 11단계: 유출 시나리오 재현 데이터셋 (A/B 두 결론)
+
+패널 ④·발표 데모의 서사 근거. 신청서 §4 "책임 소재의 정확한 귀속", 기존 발표자료 「활용 시나리오 ③ 수사 결론」 대응.
+
+같은 "민감파일이 외부로 나갔다"는 결과에서 **주체가 갈리는 두 사건**을 통제 데이터로 재현한다.
+
+- **결론 A — 사용자 직접**: 사람이 민감파일을 열어 프롬프트에 붙여넣어 전송. 주체=사람, 시각·대상·원본위치 동반
+- **결론 B — 에이전트 자율**: 사용자 직접 지시 없이 에이전트가 bypass(권한확인 생략) 모드에서 민감 폴더를 자율로 읽어 전송. 어느 폴더·세션에서 그 모드를 썼는지 기록 잔존
+
+요건:
+- Claude·Codex **양쪽 형식**으로 각각 생성 (도구 무관하게 같은 결론이 나오는지)
+- 합성. 실데이터 복사·민감값 금지. 가짜 시크릿은 명백한 더미로(`AKIA...EXAMPLE` 등)
+- 대시보드에 띄웠을 때 A/B가 색으로 갈리고 `file:line` 역추적이 되는 상태까지
+- 산출: `tests/fixtures/leak-scenario/` + `docs/유출시나리오-재현.md`(사건 서술 + 도구가 낸 근거)
+
+패널 F5 캡처를 이 데이터셋으로 대체하면 개인 프로젝트 경로 노출 없이 시연할 수 있다.
+
+acceptance: python3 -m pytest tests/test_leak_scenario.py -q + 전체 회귀 green
+
+## 13단계: origin_channel — 원격 지시와 로컬 실행을 한 타임라인에
+
+근거: `/mnt/c/projects/llm모바일아티팩트/output/패널-인계-모바일원격제어.md` §4 (Android 실측 63건, Claude 2.1.238 · Codex 0.149.0)
+
+폰에서 내린 지시와 로컬에서 일어난 실행을 **같은 타임라인 위에서 구분**하기 위한 최소 필드.
+로컬 측 아티팩트만 다룬다 — 폰 단말 파싱은 이 저장소 범위 밖.
+
+| 필드 | Claude | Codex |
+|---|---|---|
+| `meta.origin_channel` | 세션 JSONL `promptSource`: `queued`=remote / `typed`=local | `logs_2.sqlite` `client_name` 조인 (`codex_chatgpt_android_remote`=remote) |
+| `meta.bridge_session_id` | `~/.claude/sessions/<pid>.json` | — |
+| `meta.environment_id` · `meta.server_name` | — | `remote_control_enrollments` |
+
+주의:
+- Codex는 `turn/start` 의 `connection_id` 를 `client_name` 에 **조인**해야 한다. 최근 RPC 표본만 보면 `codex-tui` 의 `plugin/list` 노이즈에 묻힌다
+- 판별 못 하면 `origin_channel="unknown"`. **local 로 폴백 금지** — 1단계에서 없앤 그 실패 유형이다
+- Claude 세션 ID 접두사가 계층마다 다르다(`session_…` vs `cse_…`) — 문자열 동일성으로 잇지 마라
+
+acceptance: python3 -m pytest tests/test_origin_channel.py -q + 전체 회귀 green
+
+## 15단계: 패널 수치 고정 테스트
+
+14단계에서 드러난 문제 — 패널에 실을 수치가 **코퍼스가 자라면서 조용히 낡는다.**
+측정 사이에 `FileChange` 66→171, `CommandExecution` 2,281→2,789로 변했고
+회수율 분모에 중복(call_id 교집합 1,277)이 섞여 쓰기 회수율이 4배 틀렸다.
+A1은 인쇄되면 못 고친다.
+
+- `tests/test_panel_numbers.py` — 패널·종합문서에 실린 수치를 코드·실데이터로 재계산해 단언
+- 실데이터 의존 수치는 **드리프트를 허용하되 방향과 산식을 고정**한다
+  (예: legacy 파일에 `item_completed` 0건은 불변, 회수율은 분모 중복제거 산식이 유지되는지)
+- 합성 fixture 기반 수치(정확도 3×100건 등)는 정확히 고정
+- 실데이터가 없는 환경에서는 skip 하되 **조용히 통과시키지 마라** — skip 사유를 출력
+
+acceptance: python3 -m pytest tests/test_panel_numbers.py -q + 전체 회귀 green

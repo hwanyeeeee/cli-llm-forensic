@@ -19,7 +19,7 @@
 | `state_5.sqlite` `threads` (`rollout_path`) | thread 카탈로그 | 필수(교차) |
 | `thread_history_1.sqlite` `thread_turns`/`thread_items` | item projection + byte offset | 보조(불완전) |
 | `goals_1.sqlite` | 목표·상태·budget 직접 증거 | **있음** |
-| `logs_2.sqlite` | runtime 상관·오류 진단 | 보조(스키마 불안정) |
+| `logs_2.sqlite` | runtime 상관·오류 진단 + **원격제어 판별(`client_name`)** | 보조 / **원격제어는 1차** |
 | `memories_1.sqlite` | 파생 요약 | 보조 |
 | `queue_1.sqlite` | 현재 0 rows | 없음(live 시 잠재) |
 | `history.jsonl` `session_index.jsonl` | 보조 인덱스 | **비권위**(중복·누락) |
@@ -32,6 +32,12 @@
 SQLite는 main/**WAL**/SHM 동시 확보 후 read-only 사본으로만 연다 (6개 DB 전부 `journal_mode=wal`).
 
 **커버리지 경고**: `state_5.threads` 341 vs `thread_items` distinct thread **21**. projection만으로 사건 확정 금지.
+
+**★원격제어 정정(2026-08-22, Android 실측)** — 6단계에서 `logs_2.sqlite`를 '보조'로 등급했으나,
+**원격 실행 여부의 판별자가 rollout이 아니라 `logs_2.sqlite`의 `client_name`** 이다
+(`codex_chatgpt_android_remote`). Codex는 **내용(rollout)과 출처(logs)가 파일 2개로 분리**되므로
+원격제어 사건 재구성에는 두 파일이 모두 필요하다. Claude는 세션 JSONL 1개에 둘 다 있다.
+근거: `llm모바일아티팩트/docs/모바일-원격제어-실측.md` (관측 63건, Codex 0.149.0).
 
 ---
 
@@ -48,7 +54,12 @@ SQLite는 main/**WAL**/SHM 동시 확보 후 read-only 사본으로만 연다 (6
 | MCP | `event_msg.mcp_tool_call_end` 85 | **0건 — 위치 미확인(§9)** |
 | envelope `ordinal` | 없음 | 전 라인 존재 (단, 1파일에서 중복 2건 → 단독키 불가) |
 
-**item era만 구현 시 회수율: 명령 10.2%, 쓰기 1.85%** (raw record 합산, dedup 전).
+**item era만 구현 시 관측 한계** — 최신 값은 `tests/test_panel_numbers.py` 가 기계 검증한다(2026-08-22 스냅샷):
+- 파일 기준: `item_completed` 레코드가 없는 세션 파일 **329/353 = 93.2%** 에서 **0건**
+  (legacy 323 + `codex_exec` 헤드리스 6 — 후자는 0.147을 보고하면서도 item 레코드를 내지 않는다)
+- 레코드 기준(중복제거 후): 명령 **11.5%**(2,789/21,482) · 쓰기 **7.1%**(171/2,222)
+  중복제거 근거 — `exec_command_end` call_id 1,254개가 `function_call` 과 완전 일치,
+  `apply_patch` ∩ `patch_apply_end` = 1,277. 단순 합산은 같은 실행/쓰기를 두 번 센다.
 
 ### ★정정(2026-08-21 실측) — era는 버전이 아니라 **실행 모드**에도 좌우된다
 
