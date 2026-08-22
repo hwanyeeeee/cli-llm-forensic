@@ -213,6 +213,34 @@ def _collect_enrollments(connection):
                   "environment_id", "server_name", "updated_at", "remote_control_enabled"))
 
 
+def enrollment_marker(support):
+    """`remote_control_enrollments` → 원격제어 마커 1행(소스 메타 계층, Event 아님).
+
+    **0행은 미사용이 아니다.** enroll 이 MFA 로 거부돼도 행은 안 남는다 — 그래서
+    빈 결과는 `none` 이 아니라 `unknown` 이다. state DB 를 아예 못 읽었을 때와
+    구분하려고 DB 유무를 status 로 나눈다."""
+    from clfx.sources.markers import marker
+    databases = [row for row in (support or {}).get("databases") or []
+                 if row.get("role") == "state"]
+    path = databases[0]["path"] if databases else "(state DB 미발견)"
+    note = ("등록 행은 '어느 환경에 등록됐나'까지만 말한다. 0행은 미사용이 아니다 — "
+            "enroll 이 MFA 로 거부돼도 0행이고, 등록이 남아 있어도 채널은 죽어 있을 수 있다.")
+    if not databases:
+        return marker("codex_remote_control_enrollments", "codex", path,
+                      "missing", "unknown", note)
+    rows = (support or {}).get("remote_control_enrollments") or []
+    # 자격증명·URL 은 안 싣는다. 조사자가 알아야 하는 건 '어느 환경에 등록됐나'다.
+    # 빈 문자열은 관측이 아니라 빈 칸이라 뺀다. 0/False 는 남긴다 — 그건 실제 값이다.
+    listed = [{key: row[key] for key in
+               ("environment_id", "server_name", "app_server_client_name",
+                "remote_control_enabled", "updated_at")
+               if row.get(key) is not None and row.get(key) != ""}
+              for row in rows]
+    return marker("codex_remote_control_enrollments", "codex", path, "observed",
+                  "configured" if rows else "unknown", note,
+                  values={"enrollments": len(rows)}, enrollments=listed)
+
+
 def collect_sqlite_support(root, rollout_paths):
     """Acquire recognized SQLx DBs and return auxiliary metadata, never projected Events."""
     started_at = _now()

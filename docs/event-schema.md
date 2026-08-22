@@ -32,6 +32,7 @@ Event {
 | `origin_os` | `ios` \| `android` \| `unknown` | **Codex 전용.** `client_name` 접미가 조작 단말 OS 를 담는다. `origin_channel == "remote"` 로 확정됐을 때만 단다 |
 | `origin_os_seen` | `["android","ios"]` | 한 스레드를 서로 다른 OS 단말이 이어받아 `origin_os` 가 `unknown` 일 때 |
 | `origin_os_candidates` | `["android"]` | 채널이 `unknown` 이라 단말을 단정할 수 없을 때. **주장이 아니라 관측 보존이다** |
+| `bridge_session_id` | 원문 값 | **Claude 전용.** 같은 파일의 `bridge-session` 레코드가 이 세션을 원격 브리지에 이었을 때. 계층마다 접두사가 달라(`uuid` vs `cse_…`) 잇는 키는 레코드 자신의 `sessionId` 다 |
 | `confidence` | `high` \| `medium` \| `low` \| `unknown` | 파일 작성 판정의 확신도 |
 | `write_target` | 경로 | shell 리다이렉션으로 만들어졌을 **후보** — 확정 아님 |
 | `sqlite_thread_id` · `cwd` · `git_branch` · `git_sha` · `model` · `approval_mode` · `sandbox_policy` | 원문 값 | Codex `state_5.sqlite` `threads` 에서 교차 부착 |
@@ -47,3 +48,6 @@ Event {
 - `approved_by_user` 는 **기록하지 않는다.** 개별 승인 레코드가 존재하지 않아 정책 스냅샷(`approval_mode`)만 남는다.
 - 데이터셋 정답(`ground-truth`)도 이 형식의 `actor`·`action`·`target` 을 그대로 쓴다 → 도구 출력과 1:1 비교.
 - 새 필드가 필요하면 이 파일을 고치고 PR로만 바꾼다 (다른 문서에 복제 금지).
+- **상태는 Event 가 아니다.** `hasUsedRemoteControl` 같은 호스트·계정 설정 플래그는 행동이
+  아니라 상태라서 Event 로 만들면 같은 사실이 타임라인에 한 줄 더 늘어 과계수가 난다.
+  소스 메타(원격제어 마커)로만 노출한다 → `docs/원격제어-마커.md`.

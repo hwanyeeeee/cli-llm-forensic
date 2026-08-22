@@ -41,6 +41,15 @@ def source_for(root, on_file=None):
     return SOURCE_REGISTRY[name](resolved, on_file=on_file)
 
 
+def remote_control_markers(source):
+    """소스 1개의 원격제어 마커 목록. `source_warnings` 와 같은 계층 — Event 가 아니다.
+
+    마커 판독은 소스별 레이아웃 지식이라 각 소스 클래스가 갖는다. 여기서는 라우팅만.
+    읽기 실패는 마커 안의 `status` 로 보고되므로 예외로 스캔을 죽이지 않는다."""
+    reader = getattr(source, "remote_control_markers", None)
+    return list(reader()) if reader else []
+
+
 def source_warnings(source):
     out = []
     for kind, attr in (("acquisition", "acquisition_errors"),
@@ -54,4 +63,4 @@ def source_warnings(source):
 
 
 __all__ = ["ClaudeSource", "CodexSource", "SOURCE_REGISTRY", "source_for",
-           "source_warnings"]
+           "source_warnings", "remote_control_markers"]

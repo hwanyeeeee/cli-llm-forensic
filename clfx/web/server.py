@@ -15,7 +15,8 @@ from clfx import roio
 from clfx.web.api import (events_payload, events_payload_bytes, query_payload, stats_payload,
                           activity_payload, files_payload, keywords_payload,
                           sources_payload, scan_to_engine, forensic_scan,
-                          mcp_payload, attestation_payload, attestation_csv)
+                          mcp_payload, attestation_payload, attestation_csv,
+                          remote_control_payload)
 
 # B-1/B-2: ServerState 초기 attestation — empty-but-valid 계약(스캔 전 GET /api/attestation 안전).
 _ATTEST_EMPTY = {"acquired": [], "acquired_count": 0, "stat_only_count": 0,
@@ -218,6 +219,12 @@ def make_handler(state):
             if u.path == "/api/mcp":
                 try:
                     self._json(state.mcp)
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
+            if u.path == "/api/remote-control":  # 23단계: 원격제어 마커 + origin_channel 집계
+                try:
+                    self._json(remote_control_payload(state.engine))
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return

@@ -10,7 +10,8 @@
   var TITLES = {
     mcp: "MCP 연결 흔적 · 설정 vs 실사용",
     retention: "tmp 보존기간 · 만료 잔여",
-    attestation: "읽기전용 증명 · Chain of Custody"
+    attestation: "읽기전용 증명 · Chain of Custody",
+    remote: "원격제어 마커 · 폰 지시 판정"
   };
 
   document.title = TITLES[key] || "포렌식 뷰";
@@ -22,6 +23,7 @@
     if (!TITLES[key]) { vbody.innerHTML = '<div class="empty">알 수 없는 뷰</div>'; return; }
     var endpoint = key === "mcp" ? "/api/mcp"
       : key === "attestation" ? "/api/attestation"
+      : key === "remote" ? "/api/remote-control"
       : "/api/artifacts";
     var d;
     try {
@@ -35,6 +37,7 @@
     if (key === "mcp") FV.renderMcp(vbody, d);
     else if (key === "retention") FV.renderRetention(vbody, d.retention, FV.leakTmpPaths(d));
     else if (key === "attestation") FV.renderAttestation(vbody, d);
+    else if (key === "remote") FV.renderRemoteControl(vbody, d);
   }
 
   load();

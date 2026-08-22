@@ -7,6 +7,7 @@ import tomllib
 
 from clfx import roio
 from clfx.sources.claude import RawRecord
+from clfx.sources.markers import flag_marker
 
 
 class CodexSource:
@@ -83,3 +84,16 @@ class CodexSource:
 
     def transcript_files(self):
         return self.jsonl_files()
+
+    def remote_control_markers(self):
+        """app-server-daemon/settings.json 의 remoteControlEnabled — **호스트 단위** 스위치.
+
+        켜져 있어도 채널이 살아 있다는 뜻은 아니고, 어느 계정이 썼는지도 말하지 않는다.
+        파일은 데몬이 처음 뜰 때 만들어지므로 부재는 판정 불가(unknown)다."""
+        return [flag_marker(
+            "codex_remote_control_setting", self.agent,
+            self.root / "app-server-daemon" / "settings.json",
+            ("remoteControlEnabled",),
+            "호스트 단위 스위치다. true 는 '이 머신에서 원격제어가 켜져 있다'까지고, "
+            "채널이 실제로 연결돼 있다는 뜻도 누가 썼다는 뜻도 아니다. 파일은 "
+            "app-server 데몬이 처음 실행될 때 생성된다.")]

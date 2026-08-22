@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from clfx.query.llm import route_intent, summarize, answer, answer_overview, answer_timeline, make_llm, search_terms
 from clfx.analyze.keywords import keyword_stats
 from clfx.event import actor_bucket, norm_ts
-from clfx.sources import source_for, source_warnings
+from clfx.sources import remote_control_markers, source_for, source_warnings
 from clfx.analyze.attribution import enrich
 from clfx.query.engine import QueryEngine
 from clfx import wsl_delegate
@@ -239,6 +239,7 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
             on_progress(0, 0, 0, None)
         eng0 = QueryEngine([])
         eng0.source_warnings = []
+        eng0.remote_markers = []
         eng0.parse_timings = {"parse_wall_s": 0.0, "enrich_s": 0.0}   # Phase1 계측(속성 부착 — arity 불변)
         eng0.delegate_info = {"delegated": [], "helper_sha256": [], "errors": []}   # O11: 위임 없음
         return (eng0, [], {}, {}) if collect_artifacts else eng0
@@ -300,6 +301,7 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     events = []
     sqlite_results = []
     sqlite_warnings = []
+    remote_markers = []                                     # 23단계: 원격제어 마커(Event 아님 — 소스 메타)
     ev_root = []                                            # collect_artifacts=True일 때만 채워 반환
     by_origin = {}                                          # OPT-8: origin별 카운트(조립 루프서 동시 누적)
     for ri, root in enumerate(roots):                       # 입력 루트 순서(I2)
@@ -310,6 +312,7 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
             evidence_manifest.update(delegate_ok[ri]["manifest"])
             if delegate_ok[ri].get("sqlite_support"):
                 sqlite_results.append(delegate_ok[ri]["sqlite_support"])
+            remote_markers.extend(delegate_ok[ri].get("remote_markers") or [])
         else:
             root_evs = []
             for fi in range(len(file_lists[ri])):           # 파일 순서(history먼저→sorted transcripts)
@@ -320,15 +323,20 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
             _t = time.perf_counter()
             enrich(root_evs, srcs[ri], bypass=bypass_by_root[ri])   # 수집된 bypass로 태깅(재읽기 X)
             t_enrich += time.perf_counter() - _t
+            remote_markers.extend(remote_control_markers(srcs[ri]))
             if srcs[ri].agent == "codex":
                 try:
-                    from clfx.codex_sqlite import augment_events, collect_sqlite_support
+                    from clfx.codex_sqlite import (augment_events, collect_sqlite_support,
+                                                   enrollment_marker)
                     support = collect_sqlite_support(srcs[ri].sqlite_root, file_lists[ri])
                     if support["databases"]:
                         augment_events(root_evs, support)
                         evidence_manifest.update(support["manifest"])
                         sqlite_warnings.extend(support["warnings"])
                         sqlite_results.append(support)
+                    # DB 를 못 찾았을 때도 마커는 낸다 — 부재를 침묵으로 보고하면
+                    # 대시보드에서 '등록 없음'과 '안 봤음'이 구분되지 않는다.
+                    remote_markers.append(enrollment_marker(support))
                 except Exception as error:
                     sqlite_warnings.append({"kind": "sqlite_acquisition",
                                             "file": str(srcs[ri].sqlite_root),
@@ -361,6 +369,7 @@ def scan_to_engine(roots, on_progress=None, collect_artifacts=False):
     engine.evidence_manifest = {p: evidence_manifest[p] for p in sorted(evidence_manifest)}
     engine.sqlite_support = (sqlite_results[0] if len(sqlite_results) == 1 else
                              {"sources": sqlite_results})
+    engine.remote_markers = remote_markers      # 23단계: /api/remote-control 원본(요약은 payload가)
     # O11 표면화: 위임 사용 내역·헬퍼 무결성 해시·실패 사유(폴백됨) — attestation으로 전달(I2).
     engine.delegate_info = {
         "delegated": sorted(str(roots[ri]) for ri in delegate_ok),
@@ -514,6 +523,46 @@ def mcp_payload(engine, roots, on_progress=None):
     if on_progress is not None:
         on_progress("mcp", 1, 1)
     return out
+
+
+_CHANNELS = ("remote", "local", "unknown")
+
+
+def remote_control_payload(engine):
+    """23단계: 원격제어 마커(호스트 상태) + origin_channel 집계(실제 행동)를 한 화면에.
+
+    두 계층을 나란히 두는 게 요점이다. 마커는 '설정된 적 있음'까지만 말하고, 실제로
+    원격에서 온 행동이 있었는지는 이벤트의 `origin_channel` 만 말할 수 있다.
+    마커가 `configured` 인데 remote 이벤트가 0이면 그건 '켜 뒀지만 안 썼다'가 아니라
+    '이 코퍼스에서는 원격 행동이 관측되지 않았다'다 — caveats 가 그 선을 긋는다.
+
+    `not_observed` 는 필드가 아예 없던 이벤트다. `unknown`(봤는데 못 가림)과 다르고,
+    둘 중 어느 것도 `local` 이 아니다."""
+    from clfx.sources.markers import summarize
+    channels = {name: 0 for name in _CHANNELS}
+    channels["not_observed"] = 0
+    oses, bridges, bridge_events = {}, set(), 0
+    for event in engine.timeline():
+        meta = event.meta or {}
+        channel = meta.get("origin_channel")
+        key = "not_observed" if channel is None else str(channel)
+        channels[key] = channels.get(key, 0) + 1          # 낯선 값도 삼키지 않고 그대로 센다
+        origin_os = meta.get("origin_os")
+        if origin_os is not None:
+            oses[str(origin_os)] = oses.get(str(origin_os), 0) + 1
+        bridge = meta.get("bridge_session_id")
+        if bridge:
+            bridges.add(str(bridge))
+            bridge_events += 1
+    payload = summarize(getattr(engine, "remote_markers", None) or [])
+    payload["events"] = {
+        "origin_channel": channels,
+        "origin_os": {name: oses[name] for name in sorted(oses)},
+        "bridge_session_events": bridge_events,
+        "bridge_session_ids": sorted(bridges),
+        "total": sum(channels.values()),
+    }
+    return payload
 
 
 def sources_payload():

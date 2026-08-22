@@ -16,7 +16,7 @@ import time
 
 
 def run(root, origin_tag, out_path):
-    from clfx.sources import source_for, source_warnings
+    from clfx.sources import remote_control_markers, source_for, source_warnings
     from clfx.parser import parse_file
     from clfx.analyze.attribution import enrich
     if not os.path.isdir(root):
@@ -44,18 +44,22 @@ def run(root, origin_tag, out_path):
     enrich_s = time.perf_counter() - _t
     sqlite_support = {}
     sqlite_warnings = []
+    markers = remote_control_markers(src)            # 23단계: 위임 경로도 같은 마커를 낸다
     if src.agent == "codex":
-        from clfx.codex_sqlite import augment_events, collect_sqlite_support
+        from clfx.codex_sqlite import (augment_events, collect_sqlite_support,
+                                       enrollment_marker)
         support = collect_sqlite_support(src.sqlite_root, files)
         if support["databases"]:
             augment_events(events, support)
             manifest.update(support["manifest"])
             sqlite_warnings = support["warnings"]
             sqlite_support = support
+        markers.append(enrollment_marker(support))
     meta = {"files": len(files), "events": len(events),
             "manifest": {k: manifest[k] for k in sorted(manifest)},
             "warnings": source_warnings(src) + sqlite_warnings,
             "sqlite_support": sqlite_support,
+            "remote_markers": markers,
             "timings": {"parse_wall_s": round(parse_s, 3), "enrich_s": round(enrich_s, 3)}}
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(json.dumps(meta, ensure_ascii=False) + "\n")

@@ -443,9 +443,118 @@
     el.innerHTML = html;
   }
 
+  /* [23단계] 원격제어 마커 + origin_channel 집계. d=/api/remote-control payload.
+     두 계층을 위아래로 나눠 그린다: (위) 실제 행동 = 이벤트의 origin_channel,
+     (아래) 호스트 상태 = 마커. 순서가 중요하다 — 마커를 위에 두면 "설정돼 있음"이
+     "썼음"으로 먼저 읽힌다. 값은 서버가 단일진실 — 여기서 재판정 없음(모든 esc()). */
+  var SIGNAL_LABEL = {
+    configured: { txt: "설정 흔적 있음", cls: "sig-on" },
+    none: { txt: "음성", cls: "sig-off" },
+    unknown: { txt: "판정 불가", cls: "sig-unk" }
+  };
+  var CHANNEL_LABEL = {
+    remote: "원격(폰 지시)", local: "로컬 입력",
+    unknown: "미상(봤으나 못 가림)", not_observed: "관측 없음(필드 자체가 없음)"
+  };
+
+  function renderRemoteControl(el, d) {
+    if (!el) return;
+    if (!d) { el.innerHTML = '<div class="empty">원격제어 마커 불러오기 실패 (/api/remote-control)</div>'; return; }
+    var ev = d.events || {};
+    var ch = ev.origin_channel || {};
+    var markers = d.markers || [];
+
+    var html = '<div class="attest-head"><b>원격제어</b> — 폰에서 내린 지시가 있었나</div>';
+
+    // (1) 실제 행동. remote>0 이라야 "원격에서 온 행동이 관측됐다"고 말할 수 있다.
+    html += '<div class="attest-lead">아래 <b>이벤트 판정</b>이 실제 행동이다. ' +
+      '그 아래 <b>마커</b>는 이 머신에 원격제어가 <b>설정된 적 있는지</b>까지만 말한다 — ' +
+      '설정돼 있다고 쓴 것이 아니고, 마커가 없다고 안 쓴 것도 아니다.</div>';
+    html += '<div class="sub">이벤트 판정 — origin_channel (전체 ' + esc(ev.total || 0) + '건)</div>';
+    html += '<div class="attest-nums">' + ["remote", "local", "unknown", "not_observed"].map(function (k) {
+      var n = ch[k] || 0;
+      return '<div class="anum' + (k === "remote" && n > 0 ? " ok" : "") + '">' +
+        '<div class="anv">' + esc(n) + '</div>' +
+        '<div class="anl">' + esc(CHANNEL_LABEL[k]) + '</div></div>';
+    }).join("") + '</div>';
+    // 정의되지 않은 채널 값이 들어오면 조용히 숨기지 않는다(파서 회귀 조기 발견).
+    var extra = Object.keys(ch).filter(function (k) { return !CHANNEL_LABEL[k]; }).sort();
+    if (extra.length) {
+      html += '<div class="row muted">그 밖의 값: ' + extra.map(function (k) {
+        return esc(k) + " " + esc(ch[k]);
+      }).join(" · ") + '</div>';
+    }
+
+    var oses = ev.origin_os || {}, osKeys = Object.keys(oses).sort();
+    html += '<div class="row">조작 단말(origin_os): ' + (osKeys.length
+      ? osKeys.map(function (k) { return '<b>' + esc(k) + '</b> ' + esc(oses[k]) + '건'; }).join(" · ")
+      : '<span class="muted">관측 없음 — Codex 원격 로그에만 실리는 축이다</span>') + '</div>';
+    html += '<div class="row">브리지 세션(bridge_session_id): ' +
+      (ev.bridge_session_events
+        ? '<b>' + esc(ev.bridge_session_events) + '</b>건 · id ' +
+          esc((ev.bridge_session_ids || []).length) + '종 <span class="muted">' +
+          esc((ev.bridge_session_ids || []).join(", ")) + '</span>'
+        : '<span class="muted">관측 없음</span>') + '</div>';
+    // 실측: 같은 브리지 세션이 두 아티팩트에서 접두사가 다르게 적힌다
+    // (sessions/<pid>.json = session_01GNKc… / transcript = cse_01GNKc…). 문자열이 달라
+    // 서로 무관해 보이지만 ULID 부분이 같다 — 다른 세션으로 세면 안 된다.
+    if (ev.bridge_session_events && (d.markers || []).some(function (m) {
+      return m.kind === "claude_bridge_sessions" && (m.sessions || []).length;
+    })) {
+      html += '<div class="row muted">↑ 아래 <code>claude_bridge_sessions</code> 마커의 id 와 ' +
+        '접두사가 다를 수 있다(<code>session_…</code> vs <code>cse_…</code>). ' +
+        '뒤쪽 ULID 가 같으면 <b>같은 세션</b>이다 — 따로 세지 마라.</div>';
+    }
+
+    // (2) 호스트·계정 마커.
+    var c = d.counts || {};
+    html += '<div class="sub">마커 — 설정 흔적 (설정 ' + esc(c.configured || 0) +
+      ' · 음성 ' + esc(c.none || 0) + ' · 판정 불가 ' + esc(c.unknown || 0) + ')</div>';
+    html += markers.length ? markers.map(markerRowHTML).join("")
+      : '<div class="empty">마커 없음 — 스캔한 소스가 없다</div>';
+
+    html += '<details class="attest-tech"><summary>이 화면이 말할 수 없는 것</summary>' +
+      (d.caveats || []).map(function (t) { return '<div class="row">· ' + esc(t) + '</div>'; }).join("") +
+      '</details>';
+    el.innerHTML = html;
+  }
+
+  function markerRowHTML(m) {
+    var sig = SIGNAL_LABEL[m.signal] || SIGNAL_LABEL.unknown;
+    var vals = m.values || {};
+    var keys = Object.keys(vals).sort();
+    var body = keys.length
+      ? keys.map(function (k) {
+          return '<div class="row"><code>' + esc(k) + '</code> = <b>' + esc(String(vals[k])) + '</b></div>';
+        }).join("")
+      : '<div class="row muted">읽어낸 값 없음</div>';
+    if ((m.absent_keys || []).length) {
+      // 없는 키를 false 로 뭉개지 않는다 — 구버전 CLI 와 '꺼 둠'은 다른 사실이다.
+      body += '<div class="row muted">파일에 없던 키: ' + m.absent_keys.map(esc).join(", ") + '</div>';
+    }
+    (m.sessions || []).forEach(function (s) {
+      body += '<div class="row">pid ' + esc(s.pid) + ' · session <code>' + esc(s.session_id) +
+        '</code> → bridge <code>' + esc(s.bridge_session_id) + '</code></div>';
+    });
+    (m.enrollments || []).forEach(function (e) {
+      body += '<div class="row">' + Object.keys(e).sort().map(function (k) {
+        return esc(k) + "=" + esc(String(e[k]));
+      }).join(" · ") + '</div>';
+    });
+    return '<details class="rcmarker"><summary>' +
+      '<span class="rcsig ' + sig.cls + '">' + esc(sig.txt) + '</span> ' +
+      '<b>' + esc(m.kind) + '</b>' +
+      (m.volatile ? ' <span class="rcvol" title="정상종료 시 삭제되는 휘발성 증거">휘발성</span>' : '') +
+      (m.status !== "observed" ? ' <span class="muted">(' + esc(m.status) + ')</span>' : '') +
+      '</summary>' + body +
+      '<div class="row muted lpp">' + esc(m.file) + '</div>' +
+      '<div class="row attest-note">' + esc(m.note) + '</div></details>';
+  }
+
   window.ForensicViews = {
     esc: esc,
     renderMcp: renderMcp,
+    renderRemoteControl: renderRemoteControl,
     renderRetention: renderRetention,
     renderAttestation: renderAttestation,
     leakTmpPaths: leakTmpPaths,

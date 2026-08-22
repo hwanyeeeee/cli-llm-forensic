@@ -94,6 +94,8 @@ const ACTOR_LABEL={user:"A 사용자",agent:"B 에이전트",unknown:"주체 미
 const ACTOR_SHORT={user:"u",agent:"a",unknown:"x"};
 function actorKey(actor){return ACTORS.includes(actor)?actor:"unknown";}
 function actorLabel(actor){return ACTOR_LABEL[actorKey(actor)];}
+/* 자리구분 — 타일이 146048로 나와 자릿수를 눈으로 세야 했다. 표기를 한 곳으로 모은다. */
+function num(n){return Number(n||0).toLocaleString("ko-KR");}
 function warningCount(actorWarnings,sourceWarnings=SCAN_WARNINGS){
   return Number(actorWarnings||0)+(Array.isArray(sourceWarnings)?sourceWarnings.length:0);
 }
@@ -103,7 +105,8 @@ function restoreScanWarnings(payload){
 }
 function scanWarningText(){return SCAN_WARNINGS.length?`스캔 경고 ${SCAN_WARNINGS.length}건`:"";}
 let SEL=null;
-const active={user:true,agent:true,unknown:true,"bypass-mode":true};
+// "remote-only"만 기본 false — 다른 칩은 빼기 필터(켜짐=보임)지만 이건 좁히기 필터다.
+const active={user:true,agent:true,unknown:true,"bypass-mode":true,"remote-only":false};
 const openDays={};        // 날짜→펼침 여부(true만 펼침, 기본 접힘). 카드는 펼친 날만 생성(가상화·무손실).
 const dayShown={};        // 날짜→현재 렌더한 카드 수(페이지네이션, TL_PAGE 단위 '더 보기'). 전 이벤트 도달 가능.
 const TL_PAGE=300;        // 한 날 1회 렌더 카드 수(나머지는 '더 보기'로 점진 — 이벤트 절대 안 버림).
@@ -153,10 +156,10 @@ function renderStats(){
   // LIVE: 타일도 엔진 /api/stats 단일진실(소스토글 시 loadAggregates가 선택 origin으로 재요청 → 서버범위).
   //   점진부팅(EVENTS 로드 전)에도 동일 경로 — SRV_STATS 그대로(JS 재집계 금지·다른 서버패널과 일관).
   if(LIVE && SRV_STATS){
-    $("#st-total").textContent=SRV_STATS.total; $("#st-bypass").textContent=SRV_STATS.bypass;
-    $("#st-user").textContent=SRV_STATS.user;   $("#st-agent").textContent=SRV_STATS.agent;
-    $("#st-unknown").textContent=SRV_STATS.unknown||0;
-    $("#st-actor-warnings").textContent=warningCount(SRV_STATS.actor_warnings);
+    $("#st-total").textContent=num(SRV_STATS.total); $("#st-bypass").textContent=num(SRV_STATS.bypass);
+    $("#st-user").textContent=num(SRV_STATS.user);   $("#st-agent").textContent=num(SRV_STATS.agent);
+    $("#st-unknown").textContent=num(SRV_STATS.unknown||0);
+    $("#st-actor-warnings").textContent=num(warningCount(SRV_STATS.actor_warnings));
     return;
   }
   // !LIVE(MOCK/offline) 전용: 서버 없음 → EVENTS 기반 파생(소스 토글 inSrc 반영, 전량 1패스).
@@ -168,12 +171,12 @@ function renderStats(){
     const actor=actorKey(e.actor);if(actor==="user")u++;else if(actor==="agent")a++;else x++;
     if(actor!==e.actor)w++;
   }
-  $("#st-total").textContent=total;
-  $("#st-bypass").textContent=byp;
-  $("#st-user").textContent=u;
-  $("#st-agent").textContent=a;
-  $("#st-unknown").textContent=x;
-  $("#st-actor-warnings").textContent=warningCount(w);
+  $("#st-total").textContent=num(total);
+  $("#st-bypass").textContent=num(byp);
+  $("#st-user").textContent=num(u);
+  $("#st-agent").textContent=num(a);
+  $("#st-unknown").textContent=num(x);
+  $("#st-actor-warnings").textContent=num(warningCount(w));
 }
 
 /* ---------- date helpers ---------- */
@@ -261,16 +264,18 @@ function renderDonut(){
       style="cursor:pointer" data-kw="${esc(k)}" data-col="${col}"><title>${k}: ${c} (클릭→시간분포)</title></circle>`;
     off+=len;});
   $("#donut").innerHTML=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#eceff3" stroke-width="${sw}"/>${segs}
-    <text x="60" y="56" text-anchor="middle" fill="#1b2433" font-size="20" font-weight="800" font-family="ui-monospace">${total}</text>
+    <text x="60" y="56" text-anchor="middle" fill="#1b2433" font-size="20" font-weight="800" font-family="ui-monospace">${num(total)}</text>
     <text x="60" y="72" text-anchor="middle" fill="#5c6675" font-size="9">키워드 언급</text>`;
   $("#legend").innerHTML=data.map(([k,c,ba],i)=>{
     const col=KWCOLORS[i%KWCOLORS.length];
     // actor 분리(④): by_actor 있으면 세 주체 모두. MOCK(ba undefined)이면 생략.
+    // 인라인 style 제거 — ksplit 을 자기 줄로 내리는 건 CSS 몫이다(좁은 칸에서 이게
+    // 라벨을 한 글자로 짓눌렀다). title 로 잘린 키워드 전문을 항상 볼 수 있게 한다.
     const split=(ba&&(ba.user!=null||ba.agent!=null||ba.unknown!=null))
-      ?`<span class="ksplit" style="color:var(--faint);font-size:10px;margin-left:6px">사용자 ${ba.user||0} · 에이전트 ${ba.agent||0} · 미상 ${ba.unknown||0}</span>`:"";
-    return `<div class="li" data-kw="${esc(k)}" data-col="${col}">
+      ?`<span class="ksplit">사용자 ${num(ba.user)} · 에이전트 ${num(ba.agent)} · 미상 ${num(ba.unknown)}</span>`:"";
+    return `<div class="li" data-kw="${esc(k)}" data-col="${col}" title="${esc(k)} — ${num(c)}회">
      <span class="sw" style="background:${col}"></span>
-     <span class="kw">${esc(k)}</span><span class="ct">${c}</span>${split}</div>`;
+     <span class="kw">${esc(k)}</span><span class="ct">${num(c)}</span>${split}</div>`;
   }).join("");
 }
 
@@ -300,7 +305,7 @@ function renderFiles(){
     });
     rows=Object.entries(m);
   }
-  $("#fcount").textContent=rows.length+"건";
+  $("#fcount").textContent=num(rows.length)+"건";
   if(!rows.length){$("#files").innerHTML='<div class="empty">접근 파일 없음</div>';return;}
   $("#files").innerHTML=rows.map(([path,f])=>{
     const primary=f.x>Math.max(f.u,f.a)?"x":(f.u>=f.a?"u":"a"),tg=f.tags[0];
@@ -309,19 +314,35 @@ function renderFiles(){
     const warn=f.w?`<span class="fbadge warn">형식경고 ${f.w}</span>`:"";
     // 에이전트(B) 작성 표식: 첫 등장 이벤트(idx)가 agent/write이면 작은 B 뱃지(사람 생성과 시각 구분). EVENTS 로드 전 idx -1 → 뱃지 없음(무해).
     const bw=(f.idx>=0&&EVENTS[f.idx]&&EVENTS[f.idx].actor==="agent"&&EVENTS[f.idx].action==="write")?`<span class="fbw" title="에이전트(B) 작성">B</span>`:"";
+    // B 뱃지는 경로 **앞**에 둔다. 뒤에 붙이면 .fpath의 ellipsis 흐름 안이라 긴 경로에서
+    // 통째로 잘려 나간다(실측 2,318개 중 2,162개=93%가 안 보였다). "bypass로 읽었다"는
+    // 포렌식 신호가 경로 길이 때문에 사라지면 안 된다. title로 전체 경로는 보존.
     return `<div class="frow ${SEL===f.idx?'sel':''}" data-i="${f.idx}">
       <div class="fic ${primary}">${primary==="u"?'👤':primary==="a"?'🤖':'?'}</div>
-      <div class="fmeta"><div class="fpath">${esc(path)}${bw}</div>
-        <div class="fsub">사용자 ${f.u} · 에이전트 ${f.a} · 미상 ${f.x} · 총 ${f.u+f.a+f.x}회</div></div>${warn}${bg}</div>`;
+      <div class="fmeta"><div class="fpathrow">${bw}<div class="fpath" title="${esc(path)}">${esc(path)}</div></div>
+        <div class="fsub">사용자 ${num(f.u)} · 에이전트 ${num(f.a)} · 미상 ${num(f.x)} · 총 ${num(f.u+f.a+f.x)}회</div></div>${warn}${bg}</div>`;
   }).join("");
 }
 
 /* ---------- timeline grouped by date ---------- */
 function badge(t){return `<span class="badge ${t}">${t}</span>`;}
+/* 23단계: 파서가 실은 meta를 그대로 읽는다(JS 재판정 금지).
+   필드 부재는 null로 남긴다 — "관측 없음"은 local도 unknown도 아니다. */
+function channelOf(e){const c=(e.meta||{}).origin_channel;return c==null?null:String(c);}
+function originOsOf(e){const o=(e.meta||{}).origin_os;return o==null?null:String(o);}
+function bridgeOf(e){return (e.meta||{}).bridge_session_id||null;}
+/* 원격 뱃지 — remote로 확정된 이벤트에만. unknown은 안 붙인다(실데이터 3천건이라 노이즈고,
+   "미상"을 색으로 강조하면 원격처럼 읽힌다). OS는 remote일 때만 실리므로 있으면 같이 보여준다. */
+function remoteBadge(e){
+  if(channelOf(e)!=="remote")return "";
+  const os=originOsOf(e);
+  return `<span class="badge rc" title="원격(폰)에서 내려온 지시">📱 원격${os?" · "+esc(os):""}</span>`;
+}
 function passFilter(e){
   if(!inSrc(e))return false;               // 소스(origin) 필터
   if(!active[actorKey(e.actor)])return false;
   if(!active["bypass-mode"]&&e.tags.includes("bypass-mode"))return false;
+  if(active["remote-only"]&&channelOf(e)!=="remote")return false;   // 좁히기(기본 off)
   return true;
 }
 function evCard(e,i){
@@ -332,9 +353,10 @@ function evCard(e,i){
         <span class="ts">${timeStr(e.ts)}</span>
         <span class="who ${actor}">${actorLabel(e.actor)}</span>
         <span class="act">/${e.action}</span>
+        ${remoteBadge(e)}
         ${showTags(e.tags).map(badge).join("")}
       </div>
-      <div class="ctarget">${esc(e.target)}</div>
+      <div class="ctarget" title="${esc(e.target)}">${esc(e.target)}</div>
       ${e.preview?`<div class="cprev">${esc(e.preview)}</div>`:""}
     </div></div>`;
 }
@@ -344,7 +366,7 @@ function dayBodyHTML(d){
   const shown=Math.min(dayShown[d]||TL_PAGE, idxs.length);
   let html=idxs.slice(0,shown).map(i=>evCard(EVENTS[i],i)).join("");
   const rem=idxs.length-shown;
-  if(rem>0) html+=`<button class="more" data-day="${d}">더 보기 (남은 ${rem}건)</button>`;
+  if(rem>0) html+=`<button class="more" data-day="${d}">더 보기 (남은 ${num(rem)}건)</button>`;
   return `<div class="timeline">${html}</div>`;
 }
 // 한 날 그룹만 갱신(전체 재빌드 금지). 펼치면 카드 렌더, 접으면 비움.
@@ -376,14 +398,41 @@ function renderTimeline(){
         <span class="caret">▶</span>
         <span class="daydate">${d}</span><span class="dayweek">(${weekday(d)})</span>
         <span class="daymeta">
-          ${byp?`<span class="pill s">bypass ${byp}</span>`:""}
-          <span class="pill u">A ${u}</span><span class="pill a">B ${a}</span><span class="pill x">? ${x}</span>
-          <span class="pill">${idxs.length}건</span>
+          ${byp?`<span class="pill s">bypass ${num(byp)}</span>`:""}
+          <span class="pill u">A ${num(u)}</span><span class="pill a">B ${num(a)}</span><span class="pill x">? ${num(x)}</span>
+          <span class="pill">${num(idxs.length)}건</span>
         </span>
       </div>
       <div class="daybody">${open?dayBodyHTML(d):""}</div>
     </div>`;
   }).join("");
+}
+
+/* 23단계 상세 3줄: 지시 경로 · 조작 단말 · 브리지 세션.
+   "관측 없음"(필드 부재)을 "-"로 뭉개면 로컬로 읽힌다 — 네 상태를 각각 다른 문구로 쓴다.
+   unknown 은 왜 못 가렸는지(prompt_source/origin_kind)를 파서가 실어 보내면 같이 보여준다. */
+const CHANNEL_TEXT={remote:"원격 — 폰에서 내려온 지시",local:"로컬 — 이 PC에서 직접 입력",
+                    unknown:"미상 — 봤지만 못 가림"};
+function channelRowsHTML(e){
+  const meta=e.meta||{}, ch=channelOf(e);
+  let why="";
+  if(ch==="unknown"){
+    const bits=[];
+    if(meta.prompt_source!=null)bits.push("promptSource="+meta.prompt_source);
+    if(meta.origin_kind!=null)bits.push("origin.kind="+meta.origin_kind);
+    if((meta.origin_channels_seen||[]).length)bits.push("관측="+meta.origin_channels_seen.join("/"));
+    if(bits.length)why=` <span class="muted">(${esc(bits.join(" · "))})</span>`;
+  }
+  const chTxt=ch===null?'<span class="muted">관측 없음 — 이 이벤트에는 판정 근거가 실리지 않는다(로컬이라는 뜻이 아니다)</span>'
+    :`${esc(CHANNEL_TEXT[ch]||ch)}${why}`;
+  const os=originOsOf(e), cand=meta.origin_os_candidates||[];
+  const osTxt=os!==null?esc(os)
+    :cand.length?`<span class="muted">단정 불가 · 후보 ${esc(cand.join(", "))}</span>`
+    :'<span class="muted">관측 없음</span>';
+  const bridge=bridgeOf(e);
+  return `<div class="row"><span class="k">지시 경로</span><span class="v ${ch==="remote"?"rc":""}">${chTxt}</span></div>
+    <div class="row"><span class="k">조작 단말</span><span class="v">${osTxt}</span></div>
+    <div class="row"><span class="k">브리지 세션</span><span class="v">${bridge?`<span class="src">${esc(bridge)}</span>`:'<span class="muted">관측 없음</span>'}</span></div>`;
 }
 
 /* ---------- detail ---------- */
@@ -398,6 +447,7 @@ function renderDetail(i){
     <div class="row"><span class="k">대상</span><span class="v">${esc(e.target)}</span></div>
     <div class="row"><span class="k">태그</span><span class="v">${showTags(e.tags).length?showTags(e.tags).map(badge).join(" "):"-"}</span></div>
     <div class="row"><span class="k">소스</span><span class="v">${originOf(e)?(SRC_LABEL[originOf(e)]||originOf(e)):"-"}</span></div>
+    ${channelRowsHTML(e)}
     <div class="row"><span class="k">세션</span><span class="v">${esc(e.session||"")}</span></div>
     <div class="row"><span class="k">출처</span><span class="v"><span class="src">${esc(e.src)}</span></span></div>
     <pre>${esc(e.preview||"(preview 없음)")}</pre>`;
@@ -743,6 +793,18 @@ async function loadAttestation(){
   }catch(_){ ForensicViews.renderAttestation(box, null); }   // 부재/실패 → placeholder(무크래시)
 }
 
+/* ---------- 23단계: 원격제어 마커 + origin_channel 집계 ----------
+   뱃지 = **원격으로 판정된 이벤트 수**(마커 수가 아니다). 마커는 "설정된 적 있음"까지라
+   그 개수를 세워 두면 설정=사용으로 읽힌다. 경보색은 안 쓴다 — 원격 사용 자체는 위반이 아니다. */
+async function loadRemoteControl(){
+  const box=$("#remote"); if(!box)return;
+  try{
+    const d=await jget("/api/remote-control");
+    setFbadge("remote", ((d.events||{}).origin_channel||{}).remote||0, false);
+    ForensicViews.renderRemoteControl(box, d);
+  }catch(_){ ForensicViews.renderRemoteControl(box, null); }
+}
+
 /* Issue-1: 온디맨드 해시검색 박스를 파일목록 컨텍스트(#filehash)에 1회만 마운트.
    #files 밖이라 renderFiles innerHTML이 덮어쓰지 않음(재마운트 가드 — 이미 박스 있으면 skip).
    박스는 브라우저측 SHA-256(ForensicViews.sha256Hex) → GET /api/hash-search?sha=<hex>(파일내용 전송 0·hex만). */
@@ -833,7 +895,8 @@ function initForensicModals(){
   const modal=document.getElementById("fmodal"); if(!modal)return;
   const title=document.getElementById("fmodal-title");
   const TITLES={mcp:"MCP 연결 흔적 · 설정 vs 실사용", retention:"tmp 보존기간 · 만료 잔여",
-                attestation:"읽기전용 증명 · Chain of Custody"};
+                attestation:"읽기전용 증명 · Chain of Custody",
+                remote:"원격제어 마커 · 폰 지시 판정"};
   const panes=modal.querySelectorAll(".fm-pane");
   // Issue-1: 해시검색 박스는 파일목록 컨텍스트(#filehash)로 이전 — boot서 1회 마운트(아래). 모달은 mcp/retention/attestation만.
   openFmodal=function(key){
@@ -884,9 +947,10 @@ async function boot(){
     loadArtifacts();                          // 아티팩트 패널(점진 — EVENTS 무관, await 안 함)
     loadMcp();                                 // MCP 연결흔적 패널(점진 — await 안 함)
     loadAttestation();                         // 읽기전용 증명 패널(점진 — await 안 함)
+    loadRemoteControl();                       // 원격제어 마커 패널(점진 — await 안 함)
     $("#tlscroll").innerHTML='<div class="empty">타임라인 불러오는 중… (전체 이벤트 로드)</div>';
     setCaseChip(true);
-    addMsg("ai",`기록 로드 완료. 총 <b>${SRV_STATS.total}</b>건 · bypass 모드 자율 행위 <b>${SRV_STATS.bypass}</b>건. 무엇을 조사할까요?`);
+    addMsg("ai",`기록 로드 완료. 총 <b>${num(SRV_STATS.total)}</b>건 · bypass 모드 자율 행위 <b>${num(SRV_STATS.bypass)}</b>건. 무엇을 조사할까요?`);
     renderSuggest(); $("#rescan").hidden=false;
     try{performance.mark("clfx-boot-stage1");performance.measure("clfx-boot-stage1","clfx-boot-start");}catch(_){}
     // 2단계(백그라운드): 전체 이벤트(무거움) → 타임라인/소스필터/상세연결. await 안 함(대시보드 이미 떠 있음).
@@ -897,7 +961,7 @@ async function boot(){
     TARGET_IDX=new Map(); EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
     TL_AUTOOPENED=false; srcActive=new Set(originLabels()); agentActive=new Set(agentLabels()); renderSrcFilters(); renderAll(); renderSuggest();
     $("#rescan").hidden=true; setCaseChip(false);
-    addMsg("ai",`샘플 데이터 표시 중(서버 미연결). 총 <b>${EVENTS.length}</b>건. <code>clfx serve</code> 또는 exe 실행 시 실데이터가 로드됩니다.`);
+    addMsg("ai",`샘플 데이터 표시 중(서버 미연결). 총 <b>${num(EVENTS.length)}</b>건. <code>clfx serve</code> 또는 exe 실행 시 실데이터가 로드됩니다.`);
   }
 }
 

@@ -184,9 +184,18 @@ def _run_staged(posix_root, target_root, origin_label, distro=None,
                 row["missing"] = [rewrite_prefix(p, posix_root, target_root)
                                   if isinstance(p, str) else p for p in row["missing"]]
             warnings.append(row)
+        # 23단계 마커도 경로를 들고 온다(.claude.json·sessions/·settings.json·state DB).
+        # 안 고치면 Windows 조사자에게 못 여는 POSIX 경로가 보고서에 실린다 — 경고와 같은 문제다.
+        remote_markers = []
+        for row in meta.get("remote_markers") or []:
+            row = dict(row)
+            if isinstance(row.get("file"), str):
+                row["file"] = rewrite_prefix(row["file"], posix_root, target_root)
+            remote_markers.append(row)
         return {"events": events,
                 "manifest": {k: manifest[k] for k in sorted(manifest)},
                 "warnings": warnings,
+                "remote_markers": remote_markers,
                 "sqlite_support": meta.get("sqlite_support") or {},
                 "timings": meta.get("timings") or {},
                 "helper_sha256": helper_sha}

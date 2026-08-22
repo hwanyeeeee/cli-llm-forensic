@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgenTrace — CLI 에이전트 포렌식 대시보드</title>
 <link rel="stylesheet" href="/app.css">
+<link rel="icon" href="/logo.png" type="image/png">   <!-- 없으면 브라우저가 /favicon.ico 를 찾아 404 를 낸다 -->
 </head>
 <body>
 
@@ -69,6 +70,7 @@
       <button class="fbtn" data-modal="mcp">MCP 연결 흔적<span class="fbtn-n" id="fn-mcp"></span></button>
       <button class="fbtn" data-modal="retention">TMP 보존기간<span class="fbtn-n" id="fn-retention"></span></button>
       <button class="fbtn" data-modal="attestation">읽기전용 증명<span class="fbtn-n" id="fn-attestation"></span></button>
+      <button class="fbtn" data-modal="remote">원격제어 마커<span class="fbtn-n" id="fn-remote"></span></button>
     </div>
   </div>
 
@@ -83,6 +85,9 @@
           <span class="fchip a" data-f="agent" aria-pressed="true">B 에이전트</span>
           <span class="fchip x" data-f="unknown" aria-pressed="true">? 주체 미상</span>
           <span class="fchip" data-f="bypass-mode" aria-pressed="true">bypass</span>
+          <!-- 23단계: 다른 칩과 반대로 기본 off인 '좁히기' 칩. 켜면 origin_channel=remote만 남긴다.
+               remote는 실데이터 37k건 중 1.2k건뿐이라 빼기 필터로는 의미가 없다. -->
+          <span class="fchip rc" data-f="remote-only" aria-pressed="false" title="폰에서 내린 지시로 판정된 이벤트만">📱 원격만</span>
         </div>
         <div class="filters" id="srcfilters"></div>   <!-- 소스(WSL/Windows) 토글 — app.js가 origin: 태그서 동적 생성 -->
       </div>
@@ -113,6 +118,7 @@
       <div id="mcp" class="mcp fm-pane" hidden></div>
       <div id="retention" class="retention fm-pane" hidden></div>
       <div id="attestation" class="attestation fm-pane" hidden></div>
+      <div id="remote" class="remote fm-pane" hidden></div>
     </div>
   </div>
 </div>
