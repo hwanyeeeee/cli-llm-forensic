@@ -19,6 +19,7 @@
 """
 import json
 import os
+import re
 import warnings
 from pathlib import Path
 
@@ -99,6 +100,16 @@ def codex_corpus():
                             elif item.get("type") == "FileChange":
                                 out["item_filechange"] += 1
     return out
+
+
+@pytest.fixture(scope="module")
+def codex_events():
+    """코퍼스를 Event 로 복원한 현재 상태. 동결값과 대조할 '현재값'의 출처."""
+    _require(CODEX_HOME, "Codex 이벤트 복원")
+    from clfx.parser import parse_source
+    from clfx.sources import source_for
+    source = source_for(str(CODEX_HOME))
+    return list(parse_source(source)), source
 
 
 @pytest.fixture(scope="module")
@@ -215,13 +226,9 @@ def test_legacy_files_contain_no_item_records(codex_corpus):
     assert without / corpus["files"] > 0.5, "legacy 다수라는 전제가 깨졌다 — 패널 문구 재검토"
 
 
-def test_codex_actor_domain_holds_on_real_data():
+def test_codex_actor_domain_holds_on_real_data(codex_events):
     """패널 ③의 'unknown 0'. 값이 아니라 도메인 불변식이다."""
-    _require(CODEX_HOME, "Codex actor 분포")
-    from clfx.parser import parse_source
-    from clfx.sources import source_for
-    source = source_for(str(CODEX_HOME))
-    events = list(parse_source(source))
+    events, source = codex_events
     actors = {event.actor for event in events}
 
     assert actors <= {"user", "agent"}, f"unknown 이 생겼다: {actors}"
@@ -240,6 +247,136 @@ def test_claude_remote_channel_evidence_survives(claude_prompt_sources):
     assert combos.get(("typed", "human")), "typed ∧ human 조합이 0"
     # 원격이 로컬보다 훨씬 적다는 방향(패널 서술의 전제)
     assert combos[("queued", "human")] < combos[("typed", "human")]
+
+
+# =========================================================================
+# 동결 수치 동기화 — 문서와 그림이 같은 값을 말하는가
+# =========================================================================
+# 2026-08-22 17:20 을 동결 시각으로 잡고 전 문서·F6 을 그 값으로 맞췄다.
+# 코퍼스는 계속 자라므로 **동결값 == 현재값**은 요구하지 않는다.
+# 요구하는 것은 두 가지뿐이다: ①동결값이 문서와 그림 사이에서 서로 일치할 것
+# ②스냅샷 시각이 표기돼 있을 것. 현재값과의 격차는 실패가 아니라 경고로 알린다.
+
+REPO = Path(__file__).resolve().parents[1]
+FROZEN_DOC = REPO / "docs" / "AgenTrace-종합-아티팩트-분석.md"
+FROZEN_FIGURE = REPO / "panel" / "f6_metrics.py"
+DRIFT_WARN_RATIO = 0.02      # 2% 넘게 벌어지면 '갱신 검토' 경고
+
+
+def _int(text):
+    return int(text.replace(",", ""))
+
+
+def _frozen_from_doc(text):
+    """§9.2 실측 표와 §3.3 ① 블록에 박힌 동결값. 표현이 바뀌면 못 찾고 실패한다 — 의도된 것이다."""
+    found = {}
+    for key, pattern in (
+            ("events", r"복원 이벤트\s*\|\s*\*{0,2}([\d,]+)"),
+            ("files", r"\|\s*rollout\s*\|\s*\*{0,2}([\d,]+)\s*파일"),
+    ):
+        match = re.search(pattern, text)
+        if match:
+            found[key] = _int(match.group(1))
+    actor = re.search(r"agent\s+([\d,]+)\s*[·/]\s*user\s+([\d,]+)", text)
+    if actor:
+        found["agent"], found["user"] = _int(actor.group(1)), _int(actor.group(2))
+    window = re.search(r"세션 파일\s*\*{0,2}([\d,]+)\s*/\s*([\d,]+)\s*=\s*([\d.]+)\s*%", text)
+    if window:
+        found["zero_files"] = _int(window.group(1))
+        found["zero_total"] = _int(window.group(2))
+        found["zero_pct"] = float(window.group(3))
+    found["snapshot"] = bool(re.search(r"20\d\d-\d\d-\d\d(?:\s+\d\d:\d\d)?\s*스냅샷", text))
+    return found
+
+
+def _frozen_from_figure(text):
+    """F6 도식에 박힌 동결값."""
+    found = {}
+    files = re.search(r"rollout\s*([\d,]+)\s*파일", text)
+    if files:
+        found["files"] = _int(files.group(1))
+    events = re.search(r'd\.box\(\s*"m1".*?"([\d,]+)"', text, re.S)
+    if events:
+        found["events"] = _int(events.group(1))
+    actor = re.search(r"사용자\s*([\d,]+)\s*·\s*에이전트\s*([\d,]+)", text)
+    if actor:
+        found["user"], found["agent"] = _int(actor.group(1)), _int(actor.group(2))
+    window = re.search(r"([\d,]+)\s*개 중\s*([\d,]+)\s*개\(\s*([\d.]+)\s*%\)", text)
+    if window:
+        found["zero_total"] = _int(window.group(1))
+        found["zero_files"] = _int(window.group(2))
+        found["zero_pct"] = float(window.group(3))
+    found["snapshot"] = bool(re.search(r"20\d\d-\d\d-\d\d\s+\d\d:\d\d\s*스냅샷", text))
+    return found
+
+
+@pytest.fixture(scope="module")
+def frozen():
+    missing = [str(p) for p in (FROZEN_DOC, FROZEN_FIGURE) if not p.is_file()]
+    if missing:
+        reason = (f"동결 수치 원본 없음: {', '.join(missing)} — 문서·그림 동기화를 확인하지 못했다. "
+                  f"패널 인쇄 전에는 두 파일이 있는 작업본에서 반드시 다시 돌려라.")
+        warnings.warn(reason, UserWarning)
+        pytest.skip(reason)
+    return (_frozen_from_doc(FROZEN_DOC.read_text(encoding="utf-8")),
+            _frozen_from_figure(FROZEN_FIGURE.read_text(encoding="utf-8")))
+
+
+def test_frozen_numbers_agree_between_document_and_figure(frozen):
+    """같은 값이 두 곳에 박혀 있다. 한쪽만 고치면 인쇄물이 자기모순한다."""
+    doc, figure = frozen
+    shared = sorted(set(doc) & set(figure) - {"snapshot"})
+    assert shared, f"두 파일에서 공통으로 뽑힌 동결값이 없다 — 표현이 바뀌었는지 확인해라 (doc={doc}, fig={figure})"
+    mismatched = {key: (doc[key], figure[key]) for key in shared if doc[key] != figure[key]}
+    assert not mismatched, f"문서와 F6 동결값 불일치 {{항목: (문서, 그림)}}: {mismatched}"
+
+
+def test_frozen_numbers_are_internally_consistent(frozen):
+    """동결값끼리의 산수도 맞아야 한다 — 한 칸만 고치고 파생값을 안 고치는 실수를 막는다."""
+    for source, name in zip(frozen, ("문서", "F6")):
+        if {"agent", "user", "events"} <= set(source):
+            assert source["agent"] + source["user"] == source["events"], (
+                f"{name}: agent+user={source['agent'] + source['user']} 인데 "
+                f"이벤트는 {source['events']} — unknown 0 이라면 합이 같아야 한다")
+        if {"zero_files", "zero_total", "zero_pct"} <= set(source):
+            computed = round(100 * source["zero_files"] / source["zero_total"], 1)
+            assert computed == source["zero_pct"], (
+                f"{name}: {source['zero_files']}/{source['zero_total']} = {computed}% "
+                f"인데 {source['zero_pct']}% 로 적혀 있다")
+        if {"files", "zero_total"} <= set(source):
+            assert source["files"] == source["zero_total"], (
+                f"{name}: rollout {source['files']}파일 vs 0건 구간 분모 {source['zero_total']}")
+
+
+def test_frozen_numbers_carry_a_snapshot_time(frozen):
+    """동결값은 시각 표기 없이는 못 읽는다 — 언제 기준인지 모르면 낡았는지도 모른다."""
+    doc, figure = frozen
+    assert doc["snapshot"], "종합 문서에 '스냅샷' 시각 표기가 없다"
+    assert figure["snapshot"], "F6에 'YYYY-MM-DD HH:MM 스냅샷' 표기가 없다"
+
+
+def test_frozen_versus_current_drift_is_reported(frozen, codex_events, codex_corpus):
+    """실패시키지 않는다. 발표 직전에 '얼마나 낡았는지'를 보고 갱신 여부를 판단하라고 알릴 뿐이다."""
+    doc, _ = frozen
+    events, _ = codex_events
+    current = {"events": len(events), "files": codex_corpus["files"],
+               "agent": sum(1 for e in events if e.actor == "agent"),
+               "user": sum(1 for e in events if e.actor == "user"),
+               "zero_files": codex_corpus["files"] - len(codex_corpus["files_with_item"])}
+
+    drifted = []
+    print("\n── 동결값 대 현재값 ──")
+    for key in sorted(set(doc) & set(current)):
+        frozen_value, now = doc[key], current[key]
+        delta = now - frozen_value
+        ratio = abs(delta) / frozen_value if frozen_value else 0
+        flag = "  ← 갱신 검토" if ratio > DRIFT_WARN_RATIO else ""
+        print(f"{key:<12} 동결 {frozen_value:>8,} · 현재 {now:>8,} · 차이 {delta:+,}{flag}")
+        if ratio > DRIFT_WARN_RATIO:
+            drifted.append(f"{key}: {frozen_value:,} → {now:,} ({delta:+,})")
+    if drifted:
+        warnings.warn("동결 수치가 현재값과 " + f"{DRIFT_WARN_RATIO:.0%} 넘게 벌어졌다 — "
+                      "패널 인쇄 전에 갱신 검토: " + " · ".join(drifted), UserWarning)
 
 
 # =========================================================================
