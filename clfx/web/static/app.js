@@ -94,8 +94,13 @@ const ACTOR_LABEL={user:"A 사용자",agent:"B 에이전트",unknown:"주체 미
 const ACTOR_SHORT={user:"u",agent:"a",unknown:"x"};
 function actorKey(actor){return ACTORS.includes(actor)?actor:"unknown";}
 function actorLabel(actor){return ACTOR_LABEL[actorKey(actor)];}
-/* 자리구분 — 타일이 146048로 나와 자릿수를 눈으로 세야 했다. 표기를 한 곳으로 모은다. */
-function num(n){return Number(n||0).toLocaleString("ko-KR");}
+/* 자리구분 — 타일이 146048로 나와 자릿수를 눈으로 세야 했다.
+   구현은 forensic-views.js 한 벌(양쪽 HTML이 그 파일을 먼저 로드한다). 여기서 다시 만들면
+   원격 뷰와 표기가 갈린다 — 실제로 한 번 갈렸다. 그 파일이 없는 환경(노드 하네스)만 폴백. */
+function num(n){
+  const FV=typeof window!=="undefined"&&window.ForensicViews;
+  return FV&&FV.num?FV.num(n):Number(n||0).toLocaleString("ko-KR");
+}
 function warningCount(actorWarnings,sourceWarnings=SCAN_WARNINGS){
   return Number(actorWarnings||0)+(Array.isArray(sourceWarnings)?sourceWarnings.length:0);
 }
@@ -108,11 +113,21 @@ let SEL=null;
 // "remote-only"만 기본 false — 다른 칩은 빼기 필터(켜짐=보임)지만 이건 좁히기 필터다.
 const active={user:true,agent:true,unknown:true,"bypass-mode":true,"remote-only":false};
 const openDays={};        // 날짜→펼침 여부(true만 펼침, 기본 접힘). 카드는 펼친 날만 생성(가상화·무손실).
-const dayShown={};        // 날짜→현재 렌더한 카드 수(페이지네이션, TL_PAGE 단위 '더 보기'). 전 이벤트 도달 가능.
-const TL_PAGE=300;        // 한 날 1회 렌더 카드 수(나머지는 '더 보기'로 점진 — 이벤트 절대 안 버림).
-let TL_GROUPS={};         // 마지막 렌더의 날짜→이벤트인덱스[] (토글/더보기서 재계산 없이 재사용).
+const TL_PAGE=300;        // 한 날 1회 요청·렌더 카드 수(나머지는 '더 보기'로 점진 — 이벤트 절대 안 버림).
 let TL_AUTOOPENED=false;  // 데이터 로드당 1회 최근 날 자동 펼침(boot서 재무장).
-let TARGET_IDX=null;      // target→첫 등장 EVENTS 인덱스 Map(renderFiles O(1) 상세연결).
+/* 24단계: 이벤트를 날짜 단위로만 들고 있는다.
+   TL_INDEX = 서버가 준 날짜별 건수(본문 없음) → 헤더는 이것만으로 전부 그린다.
+   DAY_EVENTS[day] = 그 날 펼쳤을 때 받아 온 이벤트(정규화됨). 안 펼친 날은 아예 없다.
+   DAY_TOTAL[day] = 서버가 말한 그 날 총건수('더 보기' 남은 수 계산).
+   예전엔 EVENTS 하나에 146,289건을 전부 얹었다(JS 힙 570MB). */
+let TL_INDEX=null;
+const DAY_EVENTS={};
+const DAY_TOTAL={};
+const DAY_LOADING={};
+function dayEvents(d){return DAY_EVENTS[d]||[];}
+function dayTotal(d){const r=(TL_INDEX||[]).find(x=>x.day===d);return DAY_TOTAL[d]!=null?DAY_TOTAL[d]:(r?r.total:0);}
+function clearDayCache(){for(const k in DAY_EVENTS)delete DAY_EVENTS[k];
+  for(const k in DAY_TOTAL)delete DAY_TOTAL[k];for(const k in DAY_LOADING)delete DAY_LOADING[k];}
 let srcActive=null;   // 활성 소스(origin) 집합. null/미설정이면 전체 통과.
 let agentActive=null; // 활성 CLI agent(claude/codex) 집합. null/빈/전부면 전체.
 
@@ -120,8 +135,17 @@ let agentActive=null; // 활성 CLI agent(claude/codex) 집합. null/빈/전부�
 const SRC_LABEL={wsl:"WSL",windows:"Windows",other:"기타"};
 const AGENT_LABEL={claude:"Claude",codex:"Codex"};
 function originOf(e){const t=(e.tags||[]).find(x=>x.startsWith("origin:"));return t?t.slice(7):null;}
-function originLabels(){return [...new Set(EVENTS.map(originOf).filter(Boolean))].sort();}
-function agentLabels(){return [...new Set(EVENTS.map(e=>e.agent).filter(Boolean))].sort();}
+/* 24단계: 라벨은 서버 색인(/api/events/index)이 준다. 예전엔 전량 EVENTS 를 훑어 만들었는데
+   그러려고 146,289건(225MB)을 받고 있었다. LIVE 가 아니면(MOCK) 예전대로 EVENTS 파생. */
+let SRV_LABELS=null;   // {origins:[..], agents:[..]} — 필터와 무관한 전체 코퍼스 기준
+function originLabels(){
+  if(SRV_LABELS)return SRV_LABELS.origins||[];
+  return [...new Set(EVENTS.map(originOf).filter(Boolean))].sort();
+}
+function agentLabels(){
+  if(SRV_LABELS)return SRV_LABELS.agents||[];
+  return [...new Set(EVENTS.map(e=>e.agent).filter(Boolean))].sort();
+}
 function inSrc(e){
   const o=originOf(e);
   const originOk=o===null||!srcActive||srcActive.size===0||srcActive.has(o);
@@ -139,6 +163,19 @@ function srcParam(sep){
     !(agents.length&&agentActive.size>=agents.length&&agents.every(l=>agentActive.has(l)));
   if(originScoped)params.push("sources="+encodeURIComponent([...srcActive].join(",")));
   if(agentScoped)params.push("agents="+encodeURIComponent([...agentActive].join(",")));
+  return params.length?sep+params.join("&"):"";
+}
+/* 24단계: 타임라인 전용 파라미터 = 소스 스코프 + 주체/bypass/원격 칩.
+   색인과 창이 **같은 문자열**을 써야 날짜 헤더 건수와 실제 카드 수가 맞는다.
+   기본 상태(전부 켜짐 · 원격만 꺼짐)에서는 빈 문자열 — 서버가 필터 없는 경로를 탄다. */
+function tlParams(sep){
+  const params=[];
+  const s=srcParam("&");
+  if(s)params.push(s.slice(1));
+  const actors=ACTORS.filter(a=>active[a]);
+  if(actors.length<ACTORS.length)params.push("actors="+encodeURIComponent(actors.join(",")));
+  if(!active["bypass-mode"])params.push("bypass=0");
+  if(active["remote-only"])params.push("channel=remote");
   return params.length?sep+params.join("&"):"";
 }
 function showTags(tags){return (tags||[]).filter(t=>!t.startsWith("origin:"));}  // origin: 태그는 배지서 숨김(필터·상세에만 사용)
@@ -223,9 +260,10 @@ function renderHeatmap(){
 }
 
 /* ---------- 날짜 점프 (드롭다운 + 히트맵 공용) ---------- */
-function jumpToDay(d){
+async function jumpToDay(d){
   if(!d)return;
-  openDays[d]=true;dayShown[d]=TL_PAGE;renderTimeline();
+  openDays[d]=true;renderTimeline();
+  if(LIVE){await loadDay(d);renderDayGroup(d);}
   const g=document.querySelector(`.daygrp[data-day="${d}"]`);
   if(g)g.scrollIntoView({behavior:"smooth",block:"start"});
   document.querySelectorAll(".hcell").forEach(c=>c.classList.toggle("on",c.dataset.d===d));
@@ -280,49 +318,67 @@ function renderDonut(){
 }
 
 /* ---------- file list ---------- */
+const FILES_PAGE=300;     // 한 번에 DOM에 올리는 파일행 수(나머지는 '더 보기').
+let filesShown=FILES_PAGE;
+let FILE_ROWS=[];         // 마지막으로 만든 행 배열([path, f]) — '더 보기'가 재집계 없이 재사용
 function renderFiles(){
-  // 행 형태 통일: [path,{u,a,x,w,tags[],idx}]. actor별 접근수·형식경고를 분리한다.
-  // tags는 표시단계서 secret/pii 제거(엔진 데이터는 유지). idx=상세 연결용 표시 이벤트 인덱스.
+  // 행 형태 통일: [path,{u,a,x,w,tags[],first}]. actor별 접근수·형식경고를 분리한다.
+  // tags는 표시단계서 secret/pii 제거(엔진 데이터는 유지).
+  // 24단계: idx(전역 EVENTS 인덱스) → first{ts,actor,action,file,line}. 창 단위 로딩이라
+  // 전역 인덱스가 없다. 상세 연결은 source(file:line)로 되짚는다.
   const cleanTags=ts=>(ts||[]).filter(t=>t!=="secret"&&t!=="pii"&&!t.startsWith("origin:"));
   let rows;
   if(LIVE){    // LIVE 집계는 엔진만 — 실패 시 JS 재집계 금지(단일진실), 실패 표시 후 return
     if(!(SRV_FILES&&Array.isArray(SRV_FILES.files))){
       $("#fcount").textContent="0건";$("#files").innerHTML='<div class="empty">접근파일 집계 실패 (/api/files)</div>';return;
     }
-    // 엔진 접근파일 집계(actor 분리·횟수·태그 서버값) 그대로 — JS 재집계 아님.
+    // 엔진 접근파일 집계(actor 분리·횟수·태그·첫 접근 서버값) 그대로 — JS 재집계 아님.
     rows=SRV_FILES.files.map(f=>{
       const ba=f.by_actor||{};
-      const idx=(TARGET_IDX&&TARGET_IDX.has(f.target))?TARGET_IDX.get(f.target):-1;   // 상세 연결 O(1)(첫 등장 인덱스)
-      return [f.target,{u:ba.user||0,a:ba.agent||0,x:ba.unknown||0,w:f.actor_warnings||0,tags:cleanTags(f.tags),idx}];
+      return [f.target,{u:ba.user||0,a:ba.agent||0,x:ba.unknown||0,w:f.actor_warnings||0,
+                        tags:cleanTags(f.tags),first:f.first||null}];
     });
   }else{       // !LIVE(MOCK/offline) 전용 JS 파생
     const m={};
-    EVENTS.forEach((e,i)=>{
+    EVENTS.forEach(e=>{
       if(!["read","write","paste"].includes(e.action))return;
-      const f=m[e.target]=m[e.target]||{u:0,a:0,x:0,w:0,tags:[],idx:i};
+      const f=m[e.target]=m[e.target]||{u:0,a:0,x:0,w:0,tags:[],
+        first:{ts:e.ts,actor:e.actor,action:e.action,file:(e.source||{}).file,line:(e.source||{}).line}};
       const actor=actorKey(e.actor);f[ACTOR_SHORT[actor]]++;if(actor!==e.actor)f.w++;
       cleanTags(e.tags).forEach(t=>{if(!f.tags.includes(t))f.tags.push(t);});
     });
     rows=Object.entries(m);
   }
+  FILE_ROWS=rows;
   $("#fcount").textContent=num(rows.length)+"건";
   if(!rows.length){$("#files").innerHTML='<div class="empty">접근 파일 없음</div>';return;}
-  $("#files").innerHTML=rows.map(([path,f])=>{
+  renderFileRows();
+}
+// 실데이터에서 3,815행을 통째로 DOM에 올렸다. 타임라인과 같은 '더 보기' 방식으로 자른다.
+function renderFileRows(){
+  const rows=FILE_ROWS, shown=Math.min(filesShown,rows.length);
+  let html=rows.slice(0,shown).map(([path,f])=>{
     const primary=f.x>Math.max(f.u,f.a)?"x":(f.u>=f.a?"u":"a"),tg=f.tags[0];
     const bcol=tg==="pii"?"var(--pii)":"var(--bypass)";
     const bg=tg?`<span class="fbadge" style="background:rgba(16,24,40,.04);color:${bcol};border:1px solid ${bcol}">${tg}</span>`:"";
     const warn=f.w?`<span class="fbadge warn">형식경고 ${f.w}</span>`:"";
-    // 에이전트(B) 작성 표식: 첫 등장 이벤트(idx)가 agent/write이면 작은 B 뱃지(사람 생성과 시각 구분). EVENTS 로드 전 idx -1 → 뱃지 없음(무해).
-    const bw=(f.idx>=0&&EVENTS[f.idx]&&EVENTS[f.idx].actor==="agent"&&EVENTS[f.idx].action==="write")?`<span class="fbw" title="에이전트(B) 작성">B</span>`:"";
+    // 에이전트(B) 작성 표식: 첫 접근이 agent/write이면 작은 B 뱃지(사람 생성과 시각 구분).
+    const first=f.first||{};
+    const bw=(first.actor==="agent"&&first.action==="write")?`<span class="fbw" title="에이전트(B) 작성">B</span>`:"";
+    const src=first.file?`${first.file}:${first.line}`:"";
     // B 뱃지는 경로 **앞**에 둔다. 뒤에 붙이면 .fpath의 ellipsis 흐름 안이라 긴 경로에서
     // 통째로 잘려 나간다(실측 2,318개 중 2,162개=93%가 안 보였다). "bypass로 읽었다"는
     // 포렌식 신호가 경로 길이 때문에 사라지면 안 된다. title로 전체 경로는 보존.
-    return `<div class="frow ${SEL===f.idx?'sel':''}" data-i="${f.idx}">
+    return `<div class="frow ${SEL&&src&&SEL.indexOf("#")>0&&selSrc()===src?'sel':''}" data-src="${esc(src)}" data-day="${esc((first.ts||"").slice(0,10))}">
       <div class="fic ${primary}">${primary==="u"?'👤':primary==="a"?'🤖':'?'}</div>
       <div class="fmeta"><div class="fpathrow">${bw}<div class="fpath" title="${esc(path)}">${esc(path)}</div></div>
         <div class="fsub">사용자 ${num(f.u)} · 에이전트 ${num(f.a)} · 미상 ${num(f.x)} · 총 ${num(f.u+f.a+f.x)}회</div></div>${warn}${bg}</div>`;
   }).join("");
+  const rem=rows.length-shown;
+  if(rem>0)html+=`<button class="more" id="files-more">더 보기 (남은 ${num(rem)}건)</button>`;
+  $("#files").innerHTML=html;
 }
+function selSrc(){const e=SEL?eventByKey(SEL):null;return e?e.src:null;}
 
 /* ---------- timeline grouped by date ---------- */
 function badge(t){return `<span class="badge ${t}">${t}</span>`;}
@@ -345,9 +401,9 @@ function passFilter(e){
   if(active["remote-only"]&&channelOf(e)!=="remote")return false;   // 좁히기(기본 off)
   return true;
 }
-function evCard(e,i){
+function evCard(e,key){
   const actor=actorKey(e.actor);
-  return `<div class="ev ${actor} ${SEL===i?'sel':''}" data-i="${i}">
+  return `<div class="ev ${actor} ${SEL===key?'sel':''}" data-k="${key}">
     <div class="card">
       <div class="cmeta">
         <span class="ts">${timeStr(e.ts)}</span>
@@ -360,12 +416,13 @@ function evCard(e,i){
       ${e.preview?`<div class="cprev">${esc(e.preview)}</div>`:""}
     </div></div>`;
 }
-// 펼친 날 카드 HTML(페이지네이션: TL_PAGE까지 + 나머지 '더 보기'). 전 이벤트 도달 가능(무손실).
+// 펼친 날 카드 HTML. 받아 온 만큼만 그리고, 서버가 말한 총건수와 차이를 '더 보기'로 남긴다.
 function dayBodyHTML(d){
-  const idxs=TL_GROUPS[d]||[];
-  const shown=Math.min(dayShown[d]||TL_PAGE, idxs.length);
-  let html=idxs.slice(0,shown).map(i=>evCard(EVENTS[i],i)).join("");
-  const rem=idxs.length-shown;
+  const evs=dayEvents(d);
+  if(DAY_LOADING[d]&&!evs.length)return `<div class="timeline"><div class="empty">불러오는 중…</div></div>`;
+  if(!evs.length)return `<div class="timeline"><div class="empty">이 날 이벤트 없음</div></div>`;
+  let html=evs.map((e,i)=>evCard(e,d+"#"+i)).join("");
+  const rem=dayTotal(d)-evs.length;
   if(rem>0) html+=`<button class="more" data-day="${d}">더 보기 (남은 ${num(rem)}건)</button>`;
   return `<div class="timeline">${html}</div>`;
 }
@@ -377,30 +434,42 @@ function renderDayGroup(d){
   g.classList.toggle("open",open);
   g.querySelector(".daybody").innerHTML=open?dayBodyHTML(d):"";
 }
-function renderTimeline(){
-  const groups={};
-  EVENTS.forEach((e,i)=>{if(passFilter(e)){const d=dayOf(e.ts);(groups[d]=groups[d]||[]).push(i);}});
-  TL_GROUPS=groups;
-  const dates=Object.keys(groups).sort((a,b)=>a<b?1:-1);   // 최신순(내림차순) — 최근 날 위로
-  if(!dates.length){$("#tlscroll").innerHTML=`<div class="empty">필터에 맞는 이벤트 없음</div>`;return;}
-  if(!TL_AUTOOPENED){                       // 데이터 로드당 1회: 가장 최근 날만 펼침(초기 DOM 최소)
-    const recent=dates[0];
-    openDays[recent]=true; dayShown[recent]=TL_PAGE; TL_AUTOOPENED=true;
+/* MOCK(서버 미연결) 전용: 서버 색인과 **같은 모양**을 EVENTS 에서 만든다.
+   렌더 경로를 하나로 유지하려는 것 — 예전처럼 LIVE/MOCK 두 벌을 그리면 한쪽만 고쳐진다. */
+function buildLocalIndex(){
+  clearDayCache();
+  const days={};
+  for(const e of EVENTS){
+    if(!passFilter(e))continue;
+    const d=dayOf(e.ts)||"unknown";
+    const row=days[d]||(days[d]={day:d,total:0,user:0,agent:0,unknown:0,bypass:0});
+    row.total++; row[actorKey(e.actor)]++;
+    if((e.tags||[]).includes("bypass-mode"))row.bypass++;
+    (DAY_EVENTS[d]=DAY_EVENTS[d]||[]).push(e);
   }
-  // 모든 날 헤더+건수는 전체 데이터 기준 항상 렌더(무손실). 카드는 펼친 날만 생성(가상화).
-  $("#tlscroll").innerHTML=dates.map(d=>{
-    const idxs=groups[d];
-    let u=0,a=0,x=0,byp=0;
-    for(const i of idxs){const k=actorKey(EVENTS[i].actor);if(k==="user")u++;else if(k==="agent")a++;else x++;if(EVENTS[i].tags.includes("bypass-mode"))byp++;}
-    const open=openDays[d]===true;
+  for(const d in DAY_EVENTS)DAY_TOTAL[d]=DAY_EVENTS[d].length;
+  TL_INDEX=Object.values(days).sort((a,b)=>a.day<b.day?1:-1);
+}
+function renderTimeline(){
+  if(!LIVE)buildLocalIndex();
+  if(!TL_INDEX){$("#tlscroll").innerHTML='<div class="empty">타임라인 불러오는 중…</div>';return;}
+  const rows=TL_INDEX.slice().sort((a,b)=>a.day<b.day?1:-1);   // 최신순 — 최근 날 위로
+  if(!rows.length){$("#tlscroll").innerHTML=`<div class="empty">필터에 맞는 이벤트 없음</div>`;return;}
+  if(!TL_AUTOOPENED){                       // 데이터 로드당 1회: 가장 최근 날만 펼침(초기 DOM 최소)
+    openDays[rows[0].day]=true; TL_AUTOOPENED=true;
+    if(LIVE)loadDay(rows[0].day).then(()=>renderDayGroup(rows[0].day));
+  }
+  // 헤더+건수는 서버 색인 기준으로 **모든 날** 렌더(무손실). 본문은 펼친 날만 받아 온다.
+  $("#tlscroll").innerHTML=rows.map(r=>{
+    const d=r.day, open=openDays[d]===true;
     return `<div class="daygrp ${open?'open':''}" data-day="${d}">
       <div class="dayhdr">
         <span class="caret">▶</span>
         <span class="daydate">${d}</span><span class="dayweek">(${weekday(d)})</span>
         <span class="daymeta">
-          ${byp?`<span class="pill s">bypass ${num(byp)}</span>`:""}
-          <span class="pill u">A ${num(u)}</span><span class="pill a">B ${num(a)}</span><span class="pill x">? ${num(x)}</span>
-          <span class="pill">${num(idxs.length)}건</span>
+          ${r.bypass?`<span class="pill s">bypass ${num(r.bypass)}</span>`:""}
+          <span class="pill u">A ${num(r.user)}</span><span class="pill a">B ${num(r.agent)}</span><span class="pill x">? ${num(r.unknown)}</span>
+          <span class="pill">${num(r.total)}건</span>
         </span>
       </div>
       <div class="daybody">${open?dayBodyHTML(d):""}</div>
@@ -435,9 +504,65 @@ function channelRowsHTML(e){
     <div class="row"><span class="k">브리지 세션</span><span class="v">${bridge?`<span class="src">${esc(bridge)}</span>`:'<span class="muted">관측 없음</span>'}</span></div>`;
 }
 
+/* ---------- 24단계: 타임라인 창 로딩 ----------
+   색인은 한 번(작다), 본문은 펼친 날만. 실패해도 대시보드는 살아 있어야 한다. */
+async function loadTimelineIndex(){
+  try{
+    const d=await jget("/api/events/index"+tlParams("?"));
+    TL_INDEX=d.days||[]; restoreScanWarnings(d);
+    SRV_LABELS={origins:d.origins||[],agents:d.agents||[]};
+    clearDayCache();                       // 필터가 바뀌면 이전 창은 그 필터의 결과라 못 쓴다
+    return d;
+  }catch(_){ TL_INDEX=TL_INDEX||[]; return null; }
+}
+async function loadDay(d){
+  if(DAY_EVENTS[d]||DAY_LOADING[d])return;
+  DAY_LOADING[d]=true;
+  try{
+    const r=await jget(`/api/events?day=${encodeURIComponent(d)}&offset=0&limit=${TL_PAGE}`+tlParams("&"));
+    DAY_EVENTS[d]=(r.events||[]).map(normalize); DAY_TOTAL[d]=r.count;
+  }catch(_){ DAY_EVENTS[d]=DAY_EVENTS[d]||[]; }
+  finally{ delete DAY_LOADING[d]; }
+}
+async function loadMoreDay(d){
+  const have=dayEvents(d).length;
+  try{
+    const r=await jget(`/api/events?day=${encodeURIComponent(d)}&offset=${have}&limit=${TL_PAGE}`+tlParams("&"));
+    DAY_EVENTS[d]=dayEvents(d).concat((r.events||[]).map(normalize)); DAY_TOTAL[d]=r.count;
+  }catch(_){}
+}
+/* 파일행·검색 결과에서 특정 이벤트로 되짚어 간다. 예전엔 전량 EVENTS 인덱스로 즉시 찾았지만
+   이제 그 날을 먼저 받아야 한다. source(file:line)가 그 날 안에서 이벤트를 특정한다. */
+async function selectBySource(day,src){
+  if(!day)return;
+  openDays[day]=true;
+  if(LIVE)await loadDay(day);
+  renderTimeline();
+  const evs=dayEvents(day);
+  let i=evs.findIndex(e=>e.src===src);
+  if(i<0&&LIVE&&dayTotal(day)>evs.length){   // 첫 창에 없으면 그 날을 끝까지 훑는다(무손실)
+    while(dayTotal(day)>dayEvents(day).length&&i<0){
+      const before=dayEvents(day).length;
+      await loadMoreDay(day);
+      if(dayEvents(day).length===before)break;         // 진행이 없으면 무한루프 방지
+      i=dayEvents(day).findIndex(e=>e.src===src);
+    }
+    renderDayGroup(day);
+  }
+  if(i>=0)renderDetail(day+"#"+i);
+  const g=document.querySelector(`.daygrp[data-day="${day}"]`);
+  if(g)g.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
 /* ---------- detail ---------- */
-function renderDetail(i){
-  SEL=i;const e=EVENTS[i];
+function eventByKey(key){
+  const at=String(key).lastIndexOf("#");
+  if(at<0)return null;
+  return dayEvents(key.slice(0,at))[+key.slice(at+1)]||null;
+}
+function renderDetail(key){
+  SEL=key;const e=eventByKey(key);
+  if(!e){$("#detail").innerHTML='<div class="empty">이벤트를 불러오지 못했습니다</div>';return;}
   const actor=actorKey(e.actor);
   $("#detail").innerHTML=`
     <div class="row"><span class="k">시각</span><span class="v">${tsFull(e.ts)}</span></div>
@@ -453,13 +578,21 @@ function renderDetail(i){
     <pre>${esc(e.preview||"(preview 없음)")}</pre>`;
   // 전체 재빌드 금지(클릭마다 멈춤 원인). .sel만 이동(현재 DOM에 있는 카드/파일행에).
   document.querySelectorAll(".ev.sel,.frow.sel").forEach(el=>el.classList.remove("sel"));
-  document.querySelectorAll(`.ev[data-i="${i}"],.frow[data-i="${i}"]`).forEach(el=>el.classList.add("sel"));
+  document.querySelectorAll(`.ev[data-k="${key}"]`).forEach(el=>el.classList.add("sel"));
+  // 파일행은 이벤트 인덱스가 아니라 source(file:line)로 잇는다 — 창 단위 로딩이라
+  // 전역 인덱스가 없다.
+  document.querySelectorAll(`.frow[data-src="${cssEscape(e.src)}"]`).forEach(el=>el.classList.add("sel"));
 }
+function cssEscape(s){return String(s).replace(/["\\]/g,"\\$&");}
 
 /* ---------- events ---------- */
-$("#filters").addEventListener("click",ev=>{
+$("#filters").addEventListener("click",async ev=>{
   const c=ev.target.closest(".fchip");if(!c)return;
-  const f=c.dataset.f;active[f]=!active[f];c.setAttribute("aria-pressed",active[f]);renderTimeline();
+  const f=c.dataset.f;active[f]=!active[f];c.setAttribute("aria-pressed",active[f]);
+  // 24단계: 날짜 헤더 건수도 필터를 따라야 하므로 서버 색인을 다시 받는다(본문 없음 — 가볍다).
+  // 안 그러면 "원격만"을 켜도 헤더는 전체 건수를 말해 카드 수와 어긋난다.
+  if(LIVE){TL_AUTOOPENED=false;await loadTimelineIndex();}
+  renderTimeline();
 });
 $("#srcfilters").addEventListener("click",async ev=>{
   const c=ev.target.closest(".fchip.src");if(!c)return;
@@ -470,23 +603,28 @@ $("#srcfilters").addEventListener("click",async ev=>{
   c.setAttribute("aria-pressed",set.has(value));
   // 소스 토글 → 선택 origin으로 서버집계 재요청(JS 재집계 금지·증거 단일진실). 캐시 SRV_* 재사용 금지(범위 변경).
   // LIVE만 의미(MOCK은 srcActive=전체라 srcParam=""·재요청 무해). 재요청 후 전 패널 재렌더(타임라인은 inSrc 즉시반응).
-  if(LIVE) await loadAggregates();
+  if(LIVE){await loadAggregates();TL_AUTOOPENED=false;await loadTimelineIndex();}
+  filesShown=FILES_PAGE;
   renderAll();
 });
-$("#tlscroll").addEventListener("click",ev=>{
+$("#tlscroll").addEventListener("click",async ev=>{
   const more=ev.target.closest(".more");
-  if(more){const d=more.dataset.day;dayShown[d]=(dayShown[d]||TL_PAGE)+TL_PAGE;renderDayGroup(d);return;}  // 다음 페이지 append
+  if(more){const d=more.dataset.day;if(LIVE)await loadMoreDay(d);renderDayGroup(d);return;}  // 다음 창 append
   const hdr=ev.target.closest(".dayhdr");
   if(hdr){
     const d=hdr.parentElement.dataset.day;
     openDays[d]=!(openDays[d]===true);
-    if(openDays[d])dayShown[d]=TL_PAGE;        // 펼칠 때 페이지 초기화
-    renderDayGroup(d);                          // 그 날 그룹만 갱신(전체 재빌드 금지)
+    renderDayGroup(d);                          // 먼저 '불러오는 중' 표시(응답 대기 중 빈 칸 방지)
+    if(openDays[d]&&LIVE){await loadDay(d);renderDayGroup(d);}
     return;
   }
-  const c=ev.target.closest(".ev");if(c)renderDetail(+c.dataset.i);
+  const c=ev.target.closest(".ev");if(c)renderDetail(c.dataset.k);
 });
-$("#files").addEventListener("click",ev=>{const c=ev.target.closest(".frow");if(c)renderDetail(+c.dataset.i);});
+$("#files").addEventListener("click",async ev=>{
+  if(ev.target.closest("#files-more")){filesShown+=FILES_PAGE;renderFileRows();return;}
+  const c=ev.target.closest(".frow");
+  if(c)await selectBySource(c.dataset.day,c.dataset.src);   // 그 날을 받아 온 뒤 상세 연결
+});
 $("#bars").addEventListener("click",ev=>{const c=ev.target.closest(".hcell.has");if(c)jumpToDay(c.dataset.d);});
 $("#datejump").addEventListener("change",e=>jumpToDay(e.target.value));
 
@@ -516,7 +654,8 @@ function showKwPop(kw,col,x,y){
   const unknownN=perday["unknown"]||0;
   const uknote=unknownN>0?` · 날짜미상 ${unknownN}회`:"";
   const validEntries=Object.entries(perday).filter(([d])=>DOK(d));
-  const all=EVENTS.map(e=>dayOf(e.ts)).filter(DOK).sort();
+  // 24단계: 축은 서버 날짜 색인에서(LIVE). 예전엔 전량 EVENTS 를 훑었다.
+  const all=(TL_INDEX?TL_INDEX.map(r=>r.day):EVENTS.map(e=>dayOf(e.ts))).filter(DOK).sort();
   const pop=$("#kwpop");
   let verdict;
   if(srvK){    // 엔진 판정 pattern 그대로(JS 재판정 안 함)
@@ -775,20 +914,44 @@ async function loadAggregates(){
 
 /* ---------- 아티팩트 포렌식(해시 대조 + 주체 왜곡 보정) ----------
    엔진(/api/artifacts)이 단일 진실원천 — JS 재집계/재판정 금지, 값 그대로 그림. XSS: 모든 동적 문자열 esc(). */
+/* 24단계: 무거운 패널은 **열 때** 받는다.
+   부팅에서 전부 받던 시절 실데이터 전송이 /api/artifacts 17MB + /api/attestation 5MB 였고,
+   접힌 <details> 안이라도 DOM 은 그대로 만들어져 노드가 13만 개까지 갔다. 둘 다 모달 전용
+   패널이라 열지 않으면 한 줄도 필요 없다. 뱃지 숫자만 ?counts=1 로 따로 받는다(수 KB). */
+const PANEL_LOADED={};
+async function loadArtifactCounts(){
+  try{
+    const d=await jget("/api/artifacts?counts=1");
+    setFbadge("retention", d.retention_count||0, (d.retention_soon||0)>0);
+  }catch(_){}
+}
 async function loadArtifacts(){
   // Issue-1: 자동 유출패널 제거 — retention만 그린다(증거표식은 leakTmpPaths over d.hashes로 유지).
   try{ const d=await jget("/api/artifacts"); renderRetention(d.retention, d); }
   catch(_){ const box=$("#retention"); if(box) box.innerHTML='<div class="empty">아티팩트 분석 불러오기 실패</div>'; }
 }
+/* 인앱 모달로 열 때만 본문을 받는다. 별도 창(view.html)은 자기가 직접 받으므로 여기 안 온다. */
+async function ensurePanel(key){
+  if(PANEL_LOADED[key])return;
+  PANEL_LOADED[key]=true;
+  if(key==="retention")await loadArtifacts();
+  else if(key==="attestation")await loadAttestation();
+}
 
 /* ---------- 읽기전용 증명(Chain of Custody) ----------
    엔진/API(/api/attestation)가 단일 진실원천 — JS 재해싱/재판정 금지(값 그대로 렌더). HTML 빌드는 ForensicViews 위임.
    개발 중 엔드포인트 부재 시 크래시 없이 placeholder(렌더 함수가 d=null 방어). */
+async function loadAttestationCounts(){
+  try{
+    const d=await jget("/api/attestation?counts=1");
+    setFbadge("attestation", d.acquired_count||0, false);   // 뱃지=취득 건수(경보 아님 — 중립)
+  }catch(_){}
+}
 async function loadAttestation(){
   const box=$("#attestation"); if(!box)return;
   try{
     const d=await jget("/api/attestation");
-    setFbadge("attestation", d.acquired_count||0, false);   // 뱃지=취득 건수(경보 아님 — 중립)
+    setFbadge("attestation", d.acquired_count||0, false);
     ForensicViews.renderAttestation(box, d);
   }catch(_){ ForensicViews.renderAttestation(box, null); }   // 부재/실패 → placeholder(무크래시)
 }
@@ -899,10 +1062,11 @@ function initForensicModals(){
                 remote:"원격제어 마커 · 폰 지시 판정"};
   const panes=modal.querySelectorAll(".fm-pane");
   // Issue-1: 해시검색 박스는 파일목록 컨텍스트(#filehash)로 이전 — boot서 1회 마운트(아래). 모달은 mcp/retention/attestation만.
-  openFmodal=function(key){
+  openFmodal=async function(key){
     title.textContent=TITLES[key]||key;
     panes.forEach(p=>{p.hidden=(p.id!==key);});
     modal.hidden=false;
+    await ensurePanel(key);        // 24단계: 무거운 패널은 여기서 처음 받는다
   };
   const close=()=>{ modal.hidden=true; };
   document.querySelectorAll(".fbtn").forEach(b=>b.addEventListener("click",()=>openForensicWindow(b.dataset.modal)));
@@ -912,7 +1076,7 @@ function initForensicModals(){
 }
 function setFbadge(key,n,alert){
   const el=document.getElementById("fn-"+key); if(!el)return;
-  el.textContent=n>0?String(n):"";
+  el.textContent=n>0?num(n):"";        // 뱃지도 자리구분 — 원격 뱃지가 1257로 나왔다
   const btn=el.closest(".fbtn"); if(btn) btn.classList.toggle("alert",!!alert&&n>0);
 }
 
@@ -932,7 +1096,8 @@ async function boot(){
   try{ SRV_STATS=await jget("/api/stats"); reachable=true; }catch(_){ SRV_STATS=null; }
   // 연결 + 데이터 0건 → 스캔 화면(아직 스캔 전). 미연결 → MOCK 대시보드.
   if(reachable && SRV_STATS && SRV_STATS.total===0){
-    try{const d=await jget("/api/events");restoreScanWarnings(d);}catch(_){}
+    // 24단계: 경고만 필요하므로 본문 없는 색인을 부른다(예전엔 /api/events 전량이었다).
+    try{const d=await jget("/api/events/index");restoreScanWarnings(d);}catch(_){}
     await showScan(); return;
   }
   $("#scan-screen").hidden=true; $(".wrap").style.display="";   // 대시보드 복귀
@@ -940,43 +1105,39 @@ async function boot(){
   if(LIVE){
     // 1단계(즉시): 타일 + 집계패널(히트맵/도넛/파일/날짜점프) — EVENTS 불요. 타임라인만 로딩표시.
     await loadAggregates();                  // activity/files/keywords(작은 출력)
-    EVENTS=[]; TARGET_IDX=new Map();          // 아직 이벤트 없음(타임라인 백그라운드 로드)
-    srcActive=null; agentActive=null;         // 집계는 전체 기준(필터는 EVENTS 로드 후 활성)
+    EVENTS=[];                                // LIVE 는 EVENTS 를 안 쓴다(날짜 창만 들고 있음)
+    srcActive=null; agentActive=null;         // 집계는 전체 기준(필터는 색인 로드 후 활성)
     renderStats();renderHeatmap();renderDonut();renderDateJump();renderFiles();
     mountFileHashSearch();                     // Issue-1: 온디맨드 해시검색 박스 1회 마운트(#filehash — renderFiles 영향 밖)
-    loadArtifacts();                          // 아티팩트 패널(점진 — EVENTS 무관, await 안 함)
-    loadMcp();                                 // MCP 연결흔적 패널(점진 — await 안 함)
-    loadAttestation();                         // 읽기전용 증명 패널(점진 — await 안 함)
-    loadRemoteControl();                       // 원격제어 마커 패널(점진 — await 안 함)
+    loadMcp();                                 // MCP 연결흔적 패널(작다 — 그대로 즉시)
+    loadRemoteControl();                       // 원격제어 마커 패널(작다 — 그대로 즉시)
+    loadArtifactCounts();                      // 24단계: 뱃지 숫자만(본문은 열 때)
+    loadAttestationCounts();                   // 〃
     $("#tlscroll").innerHTML='<div class="empty">타임라인 불러오는 중… (전체 이벤트 로드)</div>';
     setCaseChip(true);
     addMsg("ai",`기록 로드 완료. 총 <b>${num(SRV_STATS.total)}</b>건 · bypass 모드 자율 행위 <b>${num(SRV_STATS.bypass)}</b>건. 무엇을 조사할까요?`);
     renderSuggest(); $("#rescan").hidden=false;
     try{performance.mark("clfx-boot-stage1");performance.measure("clfx-boot-stage1","clfx-boot-start");}catch(_){}
-    // 2단계(백그라운드): 전체 이벤트(무거움) → 타임라인/소스필터/상세연결. await 안 함(대시보드 이미 떠 있음).
-    loadEventsInBackground();
+    // 2단계(백그라운드): 날짜 색인 + 최근 하루치만. await 안 함(대시보드 이미 떠 있음).
+    loadTimelineInBackground();
   }else{
-    // 오프라인 MOCK(기존 경로)
+    // 오프라인 MOCK(기존 경로) — 서버가 없으니 색인도 JS가 만든다(buildLocalIndex).
     EVENTS=MOCK.map(normalize);
-    TARGET_IDX=new Map(); EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
     TL_AUTOOPENED=false; srcActive=new Set(originLabels()); agentActive=new Set(agentLabels()); renderSrcFilters(); renderAll(); renderSuggest();
     $("#rescan").hidden=true; setCaseChip(false);
     addMsg("ai",`샘플 데이터 표시 중(서버 미연결). 총 <b>${num(EVENTS.length)}</b>건. <code>clfx serve</code> 또는 exe 실행 시 실데이터가 로드됩니다.`);
   }
 }
 
-async function loadEventsInBackground(){
-  let live=[];
-  try{ const d=await jget("/api/events"); restoreScanWarnings(d); if(d&&Array.isArray(d.events)) live=d.events; }
-  catch(_){ $("#tlscroll").innerHTML='<div class="empty">이벤트 로드 실패 (/api/events)</div>'; return; }
-  EVENTS=live.map(normalize);
-  TARGET_IDX=new Map(); EVENTS.forEach((e,i)=>{if(!TARGET_IDX.has(e.target))TARGET_IDX.set(e.target,i);});
+/* 24단계: 예전 loadEventsInBackground 는 /api/events 전량(225MB)을 받아 EVENTS 에 얹었다.
+   이제 날짜 색인만 받고, 본문은 renderTimeline 이 최근 하루치만 요청한다. */
+async function loadTimelineInBackground(){
+  const d=await loadTimelineIndex();
+  if(!d){ $("#tlscroll").innerHTML='<div class="empty">타임라인 색인 로드 실패 (/api/events/index)</div>'; return; }
   TL_AUTOOPENED=false;
   srcActive=new Set(originLabels()); agentActive=new Set(agentLabels()); renderSrcFilters();
-  renderStats();        // EVENTS 기반 재계산 — 값은 SRV_STATS.total과 동일해야(무손실 확인점)
-  renderDateJump();     // EVENTS 로드 후에도 LIVE면 SRV_ACTIVITY 유지(동일)
-  renderFiles();        // TARGET_IDX 채워진 뒤 재렌더 → 파일행 상세연결(idx) 활성
-  renderTimeline();     // 카드 채움(가상화: 최신 날만 자동 펼침)
+  renderDateJump();     // LIVE면 SRV_ACTIVITY 유지(동일)
+  renderTimeline();     // 헤더 전부 + 최신 날 하루치만 fetch
   try{performance.mark("clfx-boot-stage2");performance.measure("clfx-boot-stage2","clfx-boot-start");}catch(_){}
   perfReport();
 }

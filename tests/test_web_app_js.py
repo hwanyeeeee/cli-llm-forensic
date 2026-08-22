@@ -149,19 +149,21 @@ def test_scan_source_warnings_persist_through_all_lifecycle_paths():
     src = APP_JS.read_text(encoding="utf-8")
     scan_handler = src[src.index('$("#scan-go").addEventListener('):src.index("/* ---------- util", src.index('$("#scan-go").addEventListener('))]
     show_scan = src[src.index("async function showScan("):src.index("/* ---------- boot", src.index("async function showScan("))]
-    boot = src[src.index("async function boot("):src.index("async function loadEventsInBackground(")]
-    load_events = src[src.index("async function loadEventsInBackground("):src.index("\n}", src.index("async function loadEventsInBackground("))]
+    boot = src[src.index("async function boot("):src.index("/* 24단계: 예전 loadEventsInBackground")]
+    load_events = src[src.index("async function loadTimelineInBackground("):src.index("\n}", src.index("async function loadTimelineInBackground("))]
     source_toggle = src[src.index('$("#srcfilters").addEventListener('):src.index("});", src.index('$("#srcfilters").addEventListener('))]
 
     assert "restoreScanWarnings(d)" in scan_handler       # (1) scan completion
     assert "scanWarningText()" in show_scan               # (2) zero-event scan screen
     assert '$("#scan-status").textContent=""' not in show_scan
     zero_branch = boot[boot.index("SRV_STATS.total===0"):boot.index('$("#scan-screen")')]
-    assert 'await jget("/api/events")' in zero_branch
+    assert 'await jget("/api/events/index")' in zero_branch
     assert "restoreScanWarnings(d)" in zero_branch
     assert "await showScan()" in zero_branch
-    assert "restoreScanWarnings(d)" in load_events         # (3) refresh/reconnect
-    assert load_events.index("restoreScanWarnings(d)") < load_events.index("renderStats()")
+    # (3) 재접속: 색인 로더가 경고를 복원한다(창 응답엔 경고를 안 싣는다 — 매 요청 중복).
+    assert "loadTimelineIndex()" in load_events
+    assert "restoreScanWarnings(d)" in src[src.index("async function loadTimelineIndex("):
+                                           src.index("async function loadDay(")]
     assert "SCAN_WARNINGS=[]" not in source_toggle         # (4) scope transition
     assert "renderAll()" in source_toggle
     assert "warningCount(SRV_STATS.actor_warnings" in src
@@ -251,10 +253,15 @@ def test_event_card_target_is_clamped():
 def test_counts_are_digit_grouped():
     """④: 타일이 146048 로 나와 자릿수를 눈으로 세야 했다. 표기를 num() 한 곳으로 모은다."""
     src = APP_JS.read_text(encoding="utf-8")
-    assert 'function num(n){return Number(n||0).toLocaleString("ko-KR");}' in src
+    fv = FORENSIC_JS.read_text(encoding="utf-8")
+    # 구현은 forensic-views.js 한 벌. app.js가 자기 사본을 다시 들면 23단계처럼 표기가 갈린다.
+    assert 'function num(n) { return Number(n || 0).toLocaleString("ko-KR"); }' in fv
+    assert "num: num," in fv, "export 안 하면 app.js/view.js가 못 쓴다"
+    assert "FV&&FV.num?FV.num(n)" in src, "app.js는 공용 구현에 위임해야 한다"
     for frag in ('$("#st-total").textContent=num(', '$("#st-user").textContent=num(',
                  '$("#fcount").textContent=num(rows.length)', "남은 ${num(rem)}건",
-                 "${num(idxs.length)}건", 'font-family="ui-monospace">${num(total)}</text>'):
+                 "${num(r.total)}건", 'font-family="ui-monospace">${num(total)}</text>',
+                 "el.textContent=n>0?num(n)"):     # 포렌식 버튼 뱃지도 자리구분
         assert frag in src, f"자리구분 누락: {frag}"
     # 회귀 가드: 타일이 다시 원시 숫자로 돌아가면 잡는다.
     assert '$("#st-total").textContent=SRV_STATS.total;' not in src
@@ -276,6 +283,55 @@ def test_keyword_legend_stays_readable_when_narrow():
 def test_favicon_declared_so_no_404():
     for path in (INDEX_HTML, VIEW_HTML):
         assert '<link rel="icon" href="/logo.png"' in path.read_text(encoding="utf-8"), path.name
+
+
+# --- 24단계: 전량 전송 끊기 --------------------------------------------------
+
+def test_timeline_loads_by_day_not_whole_corpus():
+    """부팅이 /api/events 전량을 받으면 안 된다 — 실데이터에서 225MB · JS 힙 570MB 였다."""
+    src = APP_JS.read_text(encoding="utf-8")
+    assert 'jget("/api/events")' not in src, "전량 전송 경로가 되살아났다"
+    assert '"/api/events/index"' in src, "날짜 색인부터 받아야 한다"
+    assert "&limit=${TL_PAGE}" in src, "창 크기를 안 주면 서버 기본값에 의존한다"
+    # 헤더는 색인, 본문은 펼친 날만.
+    start = src.index("function renderTimeline(")
+    body = src[start:src.index("\n}", start)]
+    assert "TL_INDEX" in body and "loadDay(" in body
+    assert "EVENTS.forEach" not in body, "타임라인이 다시 전량 EVENTS 를 훑는다"
+
+
+def test_filter_toggle_refetches_the_index():
+    """필터가 서버로 안 가면 날짜 헤더 건수와 실제 카드 수가 어긋난다."""
+    src = APP_JS.read_text(encoding="utf-8")
+    start = src.index('$("#filters").addEventListener(')
+    handler = src[start:src.index("});", start)]
+    assert "await loadTimelineIndex()" in handler
+    assert handler.index("await loadTimelineIndex()") < handler.index("renderTimeline()")
+    tl = src[src.index("function tlParams("):src.index("\n}", src.index("function tlParams("))]
+    for frag in ('actors=', 'bypass=0', 'channel=remote', 'srcParam("&")'):
+        assert frag in tl, f"타임라인 파라미터 누락: {frag}"
+
+
+def test_heavy_panels_load_on_open_not_on_boot():
+    """모달 전용 패널을 부팅에서 다 받던 시절 artifacts 17MB + attestation 5MB 였고,
+    접힌 <details> 안이라도 DOM 은 만들어져 노드가 13만 개까지 갔다."""
+    src = APP_JS.read_text(encoding="utf-8")
+    boot = src[src.index("async function boot("):src.index("/* 24단계: 예전 loadEventsInBackground")]
+    assert "loadArtifacts()" not in boot and "loadAttestation()" not in boot
+    assert "loadArtifactCounts()" in boot and "loadAttestationCounts()" in boot
+    assert '"/api/artifacts?counts=1"' in src and '"/api/attestation?counts=1"' in src
+    assert "await ensurePanel(key)" in src, "모달을 열 때 본문을 받아야 한다"
+    # 뱃지는 유지된다 — counts 응답이 개수와 만료임박 수를 준다.
+    assert "d.retention_count" in src and "d.retention_soon" in src
+
+
+def test_file_list_is_paginated():
+    """실데이터에서 3,815행을 통째로 DOM 에 올렸다. 타임라인과 같은 '더 보기' 방식."""
+    src = APP_JS.read_text(encoding="utf-8")
+    assert "const FILES_PAGE=300" in src and 'id="files-more"' in src
+    assert "filesShown+=FILES_PAGE" in src
+    # 파일행 → 상세는 전역 인덱스가 아니라 source(file:line)로 잇는다.
+    assert 'data-src="${esc(src)}"' in src and "selectBySource(" in src
 
 
 def test_no_filesystem_writes_in_app_js():

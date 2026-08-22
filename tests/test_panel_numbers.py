@@ -114,6 +114,11 @@ def codex_corpus():
                                 out["item_command"] += 1
                             elif item.get("type") == "FileChange":
                                 out["item_filechange"] += 1
+    # 24단계: legacy 파일 한정 집합. 회수율 분모는 **이쪽**이다 — 전 코퍼스를 쓰면
+    # item-era 파일이 같은 명령을 custom_tool_call(exec) 로도 적어 분자·분모 이중계상된다.
+    for name in ("fc_exec", "ctc_exec", "exec_end", "apply_patch", "patch_end"):
+        out["legacy_" + name] = {key for key in out[name]
+                                 if key[0] not in out["files_with_item"]}
     return out
 
 
@@ -227,6 +232,34 @@ def test_recovery_rate_uses_deduplicated_denominators(codex_corpus):
     assert cmd_rate > rate(corpus["item_command"], naive_cmd)
 
 
+def test_recovery_denominator_excludes_item_era_files(codex_corpus):
+    """분모 **범위**를 못박는다. 두 문서가 11.5%(전 코퍼스) vs 12.9%(legacy 파일)로 갈렸다.
+
+    전 코퍼스 분모가 틀린 이유는 취향이 아니라 실측이다: 늘어나는 분량이 **전부**
+    item-era 파일의 `custom_tool_call(exec)` 이고, 그 파일들은 같은 명령을
+    `item_completed CommandExecution` 으로도 적는다 — item 파서에 보이는 명령을
+    '안 보이는 legacy' 칸에 넣는 셈이라 회수율이 낮게 나온다."""
+    corpus = codex_corpus
+    whole = corpus["fc_exec"] | corpus["ctc_exec"] | corpus["exec_end"]
+    legacy = (corpus["legacy_fc_exec"] | corpus["legacy_ctc_exec"]
+              | corpus["legacy_exec_end"])
+    extra = whole - legacy
+    assert extra, "item-era 파일이 legacy 형식을 하나도 안 낸다면 두 분모가 같아야 한다"
+    # 늘어난 분량은 전부 custom_tool_call(exec) — fc·end 는 item 파일에서 안 나온다.
+    assert extra <= corpus["ctc_exec"], "예상 밖 레코드가 분모에 섞였다 — 산식 재검토"
+    item_files = {key[0] for key in extra}
+    assert item_files <= corpus["files_with_item"]
+
+    def rate(item, den):
+        return item / (item + den)
+
+    assert rate(corpus["item_command"], len(legacy)) > rate(corpus["item_command"], len(whole)), \
+        "전 코퍼스 분모는 이중계상이라 회수율을 낮춘다 — 그 방향이 뒤집히면 산식이 바뀐 것"
+    # 쓰기는 두 분모가 같아야 한다: item-era 파일은 legacy 형식 쓰기를 안 낸다.
+    assert (corpus["apply_patch"] | corpus["patch_end"]) == (
+        corpus["legacy_apply_patch"] | corpus["legacy_patch_end"])
+
+
 def test_legacy_files_contain_no_item_records(codex_corpus):
     """패널이 쓰는 이진 속성: legacy 세션 파일에는 `item_completed` 가 **한 건도** 없다.
 
@@ -297,6 +330,18 @@ def _frozen_from_doc(text):
         match = re.search(pattern, text)
         if match:
             found[key] = _int(match.group(1))
+    # 24단계: 회수율 표. 두 문서가 같은 지표에 다른 분모(21,482 vs 18,927)를 써서
+    # 11.5% / 12.9% 로 갈렸는데 위 키들이 그 행을 안 봐서 못 잡았다.
+    cmd = re.search(r"\|\s*명령\s*\|\s*\*{0,2}([\d,]+)\*{0,2}\s*\|\s*\*{0,2}([\d,]+)"
+                    r"\*{0,2}\s*\|\s*\*{0,2}([\d.]+)\s*%", text)
+    if cmd:
+        found["cmd_legacy"], found["cmd_item"] = _int(cmd.group(1)), _int(cmd.group(2))
+        found["cmd_rate"] = float(cmd.group(3))
+    write = re.search(r"\|\s*(?:파일 )?쓰기\s*\|\s*\*{0,2}([\d,]+)\*{0,2}\s*\|\s*\*{0,2}([\d,]+)"
+                      r"\*{0,2}\s*\|\s*\*{0,2}([\d.]+)\s*%", text)
+    if write:
+        found["write_legacy"], found["write_item"] = _int(write.group(1)), _int(write.group(2))
+        found["write_rate"] = float(write.group(3))
     actor = re.search(r"agent\s+([\d,]+)\s*[·/]\s*user\s+([\d,]+)", text)
     if actor:
         found["agent"], found["user"] = _int(actor.group(1)), _int(actor.group(2))
@@ -344,6 +389,15 @@ def test_frozen_numbers_are_internally_consistent(frozen):
         if {"files", "zero_total"} <= set(source):
             assert source["files"] == source["zero_total"], (
                 f"{name}: rollout {source['files']}파일 vs 0건 구간 분모 {source['zero_total']}")
+        # 회수율은 item/(legacy+item) — 표에 적힌 두 수로 그 퍼센트가 다시 나와야 한다.
+        for prefix in ("cmd", "write"):
+            keys = {f"{prefix}_legacy", f"{prefix}_item", f"{prefix}_rate"}
+            if keys <= set(source):
+                legacy, item = source[f"{prefix}_legacy"], source[f"{prefix}_item"]
+                computed = round(100 * item / (legacy + item), 1)
+                assert computed == source[f"{prefix}_rate"], (
+                    f"{name}: {prefix} {item}/({legacy}+{item}) = {computed}% 인데 "
+                    f"{source[f'{prefix}_rate']}% 로 적혀 있다")
 
 
 def test_frozen_numbers_carry_a_snapshot_time(frozen):
@@ -406,8 +460,11 @@ def test_panel_number_sheet(codex_corpus, claude_prompt_sources, tmp_path):
     """인쇄 직전 대조용 표. `pytest tests/test_panel_numbers.py -s` 로 본다."""
     corpus = codex_corpus
     counts, combos = claude_prompt_sources
-    legacy_cmd = corpus["fc_exec"] | corpus["ctc_exec"] | corpus["exec_end"]
-    legacy_write = corpus["apply_patch"] | corpus["patch_end"]
+    # 문서(§3.3 ②)와 **같은 분모** — legacy 파일 한정. 여기서 전 코퍼스를 쓰면
+    # 대조표가 문서와 다른 회수율을 말한다.
+    legacy_cmd = (corpus["legacy_fc_exec"] | corpus["legacy_ctc_exec"]
+                  | corpus["legacy_exec_end"])
+    legacy_write = corpus["legacy_apply_patch"] | corpus["legacy_patch_end"]
     without = corpus["files"] - len(corpus["files_with_item"])
 
     print("\n── 동결 수치 대조표 (실데이터, 스냅샷 시각 기준) ──")
@@ -420,8 +477,11 @@ def test_panel_number_sheet(codex_corpus, claude_prompt_sources, tmp_path):
     print(f"쓰기 회수율                 "
           f"{100 * corpus['item_filechange'] / (corpus['item_filechange'] + len(legacy_write)):.1f}%"
           f"   (item {corpus['item_filechange']} / legacy distinct {len(legacy_write)})")
-    print(f"  분모 중복 제거            명령 {len(corpus['fc_exec']) + len(corpus['ctc_exec']) + len(corpus['exec_end'])}"
-          f"→{len(legacy_cmd)} · 쓰기 {len(corpus['apply_patch']) + len(corpus['patch_end'])}→{len(legacy_write)}")
+    print(f"  분모 중복 제거            명령 {len(corpus['legacy_fc_exec']) + len(corpus['legacy_ctc_exec']) + len(corpus['legacy_exec_end'])}"
+          f"→{len(legacy_cmd)} · 쓰기 {len(corpus['legacy_apply_patch']) + len(corpus['legacy_patch_end'])}→{len(legacy_write)}")
+    print(f"  분모 범위                 legacy 파일 {without}개 한정 — 전 코퍼스로 쓰면 "
+          f"{len(corpus['fc_exec'] | corpus['ctc_exec'] | corpus['exec_end'])} (item-era "
+          f"custom_tool_call 이중계상)")
     print(f"Claude queued               {counts.get('queued')}"
           f"  (queued∧human {combos.get(('queued', 'human'))})")
     print("합성 정확도                 주체/접근/MCP 각 100건 100.0% (위 테스트에서 고정)")

@@ -8,6 +8,11 @@
 (function () {
   "use strict";
 
+  /* 자리구분 — app.js·view.js가 **이 한 벌**을 쓴다. 23단계에서 app.js에만 num()을 두는
+     바람에 원격 뷰와 버튼 뱃지가 raw 숫자(1257·136368)로 남았다. 여기(먼저 로드되는
+     파일)에 두고 export 해야 두 진입점이 같은 표기를 낸다. */
+  function num(n) { return Number(n || 0).toLocaleString("ko-KR"); }
+
   // app.js esc와 동일 구현(self-contained 복제는 의도 — 외부 전역 의존 0).
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -111,11 +116,11 @@
     var okCls = (ops === 0) ? ' ok' : '';
     html += '<div class="attest-roline">읽기 전용 접근: <b>전부</b></div>';
     html += '<div class="attest-nums">' +
-      '<div class="anum' + okCls + '"><div class="anv">' + esc(ops) + '</div>' +
+      '<div class="anum' + okCls + '"><div class="anv">' + esc(num(ops)) + '</div>' +
         '<div class="anl">변경(쓰기/삭제/이동) 횟수</div></div>' +
-      '<div class="anum"><div class="anv">' + esc(ac) + '</div>' +
+      '<div class="anum"><div class="anv">' + esc(num(ac)) + '</div>' +
         '<div class="anl">해시 기록한 증거 파일</div></div>' +
-      '<div class="anum"><div class="anv">' + esc(so) + '</div>' +
+      '<div class="anum"><div class="anv">' + esc(num(so)) + '</div>' +
         '<div class="anl">메타데이터만 확인(내용 미접근)</div></div>' +
       '</div>';
 
@@ -131,7 +136,7 @@
     html += '<div class="attest-export">' +
       '<a class="att-csv" href="/api/attestation.csv" download="acquisition-hash-manifest.csv">' +
       'CSV로 내보내기</a>' +
-      '<span class="muted">취득 해시 원장 ' + esc(ac) + '개 · path · sha256 (UTF-8)</span>' +
+      '<span class="muted">취득 해시 원장 ' + esc(num(ac)) + '개 · path · sha256 (UTF-8)</span>' +
       '<span class="att-csv-status muted"></span></div>';
 
     // (5) 기술 상세(접이식, 기본 접힘) — 개발자 용어(_ro_open 등)는 이 안에서만.
@@ -145,7 +150,7 @@
       '</details>';
 
     // (6) 취득 해시 원장(접이식, 기본 접힘) — 기본 화면에 대량 덤프 방지. 펼치면 검색.
-    html += '<details class="attest-ledger"><summary>취득 해시 원장 (전체 ' + esc(ac) + '개) — 펼쳐서 검색</summary>' +
+    html += '<details class="attest-ledger"><summary>취득 해시 원장 (전체 ' + esc(num(ac)) + '개) — 펼쳐서 검색</summary>' +
       '<input type="text" id="attfilter" class="attest-filter" placeholder="경로로 검색…" autocomplete="off">' +
       (acquired.length
         ? '<div id="attlist" class="attest-list">' + attRowsHTML(acquired) + '</div>'
@@ -470,29 +475,29 @@
     html += '<div class="attest-lead">아래 <b>이벤트 판정</b>이 실제 행동이다. ' +
       '그 아래 <b>마커</b>는 이 머신에 원격제어가 <b>설정된 적 있는지</b>까지만 말한다 — ' +
       '설정돼 있다고 쓴 것이 아니고, 마커가 없다고 안 쓴 것도 아니다.</div>';
-    html += '<div class="sub">이벤트 판정 — origin_channel (전체 ' + esc(ev.total || 0) + '건)</div>';
+    html += '<div class="sub">이벤트 판정 — origin_channel (전체 ' + esc(num(ev.total)) + '건)</div>';
     html += '<div class="attest-nums">' + ["remote", "local", "unknown", "not_observed"].map(function (k) {
       var n = ch[k] || 0;
       return '<div class="anum' + (k === "remote" && n > 0 ? " ok" : "") + '">' +
-        '<div class="anv">' + esc(n) + '</div>' +
+        '<div class="anv">' + esc(num(n)) + '</div>' +
         '<div class="anl">' + esc(CHANNEL_LABEL[k]) + '</div></div>';
     }).join("") + '</div>';
     // 정의되지 않은 채널 값이 들어오면 조용히 숨기지 않는다(파서 회귀 조기 발견).
     var extra = Object.keys(ch).filter(function (k) { return !CHANNEL_LABEL[k]; }).sort();
     if (extra.length) {
       html += '<div class="row muted">그 밖의 값: ' + extra.map(function (k) {
-        return esc(k) + " " + esc(ch[k]);
+        return esc(k) + " " + esc(num(ch[k]));
       }).join(" · ") + '</div>';
     }
 
     var oses = ev.origin_os || {}, osKeys = Object.keys(oses).sort();
     html += '<div class="row">조작 단말(origin_os): ' + (osKeys.length
-      ? osKeys.map(function (k) { return '<b>' + esc(k) + '</b> ' + esc(oses[k]) + '건'; }).join(" · ")
+      ? osKeys.map(function (k) { return '<b>' + esc(k) + '</b> ' + esc(num(oses[k])) + '건'; }).join(" · ")
       : '<span class="muted">관측 없음 — Codex 원격 로그에만 실리는 축이다</span>') + '</div>';
     html += '<div class="row">브리지 세션(bridge_session_id): ' +
       (ev.bridge_session_events
-        ? '<b>' + esc(ev.bridge_session_events) + '</b>건 · id ' +
-          esc((ev.bridge_session_ids || []).length) + '종 <span class="muted">' +
+        ? '<b>' + esc(num(ev.bridge_session_events)) + '</b>건 · id ' +
+          esc(num((ev.bridge_session_ids || []).length)) + '종 <span class="muted">' +
           esc((ev.bridge_session_ids || []).join(", ")) + '</span>'
         : '<span class="muted">관측 없음</span>') + '</div>';
     // 실측: 같은 브리지 세션이 두 아티팩트에서 접두사가 다르게 적힌다
@@ -508,8 +513,8 @@
 
     // (2) 호스트·계정 마커.
     var c = d.counts || {};
-    html += '<div class="sub">마커 — 설정 흔적 (설정 ' + esc(c.configured || 0) +
-      ' · 음성 ' + esc(c.none || 0) + ' · 판정 불가 ' + esc(c.unknown || 0) + ')</div>';
+    html += '<div class="sub">마커 — 설정 흔적 (설정 ' + esc(num(c.configured)) +
+      ' · 음성 ' + esc(num(c.none)) + ' · 판정 불가 ' + esc(num(c.unknown)) + ')</div>';
     html += markers.length ? markers.map(markerRowHTML).join("")
       : '<div class="empty">마커 없음 — 스캔한 소스가 없다</div>';
 
@@ -553,6 +558,7 @@
 
   window.ForensicViews = {
     esc: esc,
+    num: num,
     renderMcp: renderMcp,
     renderRemoteControl: renderRemoteControl,
     renderRetention: renderRetention,

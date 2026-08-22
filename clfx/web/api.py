@@ -37,11 +37,103 @@ def events_payload(engine):
 
 
 def events_payload_bytes(engine):
-    """OPT-8: events_payload를 1회 직렬화한 bytes를 엔진 메모이즈 — /api/events 재요청 시 재인코딩 회피.
-    바이트는 _json(events_payload(engine))과 동일(ensure_ascii=False, utf-8). 서버가 그대로 전송."""
+    """events_payload를 1회 직렬화한 bytes(엔진 메모이즈).
+
+    **HTTP 경로에서는 더 이상 쓰지 않는다.** 실데이터 146,289건에서 이 바이트가 225MB였고,
+    메모이즈 때문에 서버 메모리에도 그대로 상주했다(24단계). /api/events 는 창 단위로
+    나가고, 전량 직렬화가 필요한 건 CLI·테스트뿐이라 함수만 남긴다."""
     def _build():
         return json.dumps(events_payload(engine), ensure_ascii=False).encode("utf-8")
     return engine._memo("events_payload_bytes", _build)
+
+
+# --- 24단계: 타임라인 창(window) 전송 ----------------------------------------
+# 예전 /api/events 는 전량을 보냈다(225MB · JS 힙 570MB). 화면은 한 번에 **하루치**만
+# 그리므로 서버도 하루치만 보낸다. 색인(날짜별 건수)과 창이 **같은 필터 함수**를 쓰는 게
+# 핵심이다 — 두 곳이 따로 거르면 날짜 헤더 건수와 실제 카드 수가 어긋난다.
+_WINDOW_MAX = 2000          # 한 요청 상한. 클라이언트가 다시 전량을 요구하지 못하게 막는다.
+_WINDOW_DEFAULT = 300       # app.js TL_PAGE 와 같은 값
+
+
+def _event_day(event):
+    return (norm_ts(event.ts) or "")[:10] or "unknown"
+
+
+def _timeline_key(origins, agents, actors, bypass, channel):
+    return "|".join((_origins_key(origins),
+                     ",".join(sorted(agents)) if agents else "all",
+                     ",".join(sorted(actors)) if actors else "all",
+                     "byp" if bypass else "nobyp",
+                     channel or "any"))
+
+
+def _timeline_scope(engine, origins=None, agents=None, actors=None,
+                    bypass=True, channel=None):
+    """타임라인 필터를 적용한 ts-정렬 이벤트. 필터 조합별 메모이즈(리스트는 참조만 담는다).
+
+    actors=None 전체 / bypass=False 면 bypass-mode 태그 제외 / channel 지정 시 그 값만."""
+    def _build():
+        events = _by_scope(engine.sorted_events, origins, agents)
+        if actors:
+            events = [e for e in events if actor_bucket(e.actor) in actors]
+        if not bypass:
+            events = [e for e in events if "bypass-mode" not in (e.tags or [])]
+        if channel:
+            events = [e for e in events
+                      if (e.meta or {}).get("origin_channel") == channel]
+        return events
+    return engine._memo("tl:" + _timeline_key(origins, agents, actors, bypass, channel),
+                        _build)
+
+
+def _event_dict(event):
+    d = event.to_dict()
+    d["ts"] = norm_ts(d.get("ts"))
+    return d
+
+
+def events_index_payload(engine, origins=None, agents=None, actors=None,
+                         bypass=True, channel=None):
+    """타임라인 날짜 색인 — 날짜별 건수만. 이벤트 본문은 안 실린다(초기 전송의 핵심).
+
+    origins·agents 목록은 **필터와 무관하게 전체 코퍼스**에서 뽑는다. 필터를 걸었다고
+    소스 칩이 사라지면 되돌릴 방법이 없어진다."""
+    scoped = _timeline_scope(engine, origins, agents, actors, bypass, channel)
+    days = {}
+    for event in scoped:
+        day = _event_day(event)
+        row = days.get(day)
+        if row is None:
+            row = days[day] = {"day": day, "total": 0, "user": 0, "agent": 0,
+                               "unknown": 0, "bypass": 0}
+        row["total"] += 1
+        row[actor_bucket(event.actor)] += 1
+        if "bypass-mode" in (event.tags or []):
+            row["bypass"] += 1
+    labels = engine._memo("tl:labels", lambda: {
+        "origins": sorted({tag[len("origin:"):] for e in engine.events
+                           for tag in (e.tags or []) if tag.startswith("origin:")}),
+        "agents": sorted({e.agent for e in engine.events if e.agent})})
+    return {"days": sorted(days.values(), key=lambda row: row["day"], reverse=True),
+            "total": len(scoped), "origins": labels["origins"],
+            "agents": labels["agents"],
+            "warnings": getattr(engine, "source_warnings", [])}
+
+
+def events_window_payload(engine, day=None, offset=0, limit=_WINDOW_DEFAULT,
+                          origins=None, agents=None, actors=None, bypass=True,
+                          channel=None):
+    """이벤트 한 창. day 지정 시 그 날만, 아니면 전체에서 offset..offset+limit.
+
+    `count` 는 창이 아니라 **선택 범위 전체**의 건수다 — '더 보기'가 남은 수를 알아야 한다."""
+    scoped = _timeline_scope(engine, origins, agents, actors, bypass, channel)
+    if day:
+        scoped = [event for event in scoped if _event_day(event) == day]
+    offset = max(0, int(offset or 0))
+    limit = max(1, min(int(limit or _WINDOW_DEFAULT), _WINDOW_MAX))
+    window = scoped[offset:offset + limit]
+    return {"events": [_event_dict(event) for event in window], "count": len(scoped),
+            "offset": offset, "limit": limit, "returned": len(window), "day": day}
 
 
 def _origin_of(e):

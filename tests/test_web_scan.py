@@ -231,21 +231,70 @@ def test_scan_pops_inventory_and_resets_lazy_cache(tmp_path):
         httpd.shutdown()
 
 
-def test_events_route_sends_cached_bytes(tmp_path):
-    # OPT-8: GET /api/events는 캐시된 bytes를 그대로 전송 — events_payload와 바이트 동일.
+def test_events_route_sends_a_window_not_the_whole_corpus(tmp_path):
+    """24단계: GET /api/events 는 창만 보낸다. 예전엔 전량이었고 실데이터에서 225MB 였다.
+
+    limit 은 상한이 있어서 클라이언트가 다시 전량을 요구할 수 없다 — 그게 이 계약의 핵심이다."""
     import json, threading, urllib.request
     from http.server import ThreadingHTTPServer
     from clfx.web.server import make_handler, ServerState
-    from clfx.web.api import scan_to_engine, events_payload
+    from clfx.web.api import scan_to_engine, events_payload, _WINDOW_MAX
+    eng = scan_to_engine(["tests/fixtures/dot-claude"])
+    total = events_payload(eng)["count"]
+    assert total >= 2, "창 동작을 보려면 이벤트가 최소 2건 필요하다"
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ServerState(eng)))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        port = httpd.server_address[1]
+
+        def get(path):
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}") as r:
+                return json.loads(r.read().decode("utf-8"))
+
+        one = get("/api/events?limit=1")
+        assert len(one["events"]) == 1
+        assert one["count"] == total          # count 는 창이 아니라 선택 범위 전체다
+        # 이어 받으면 전량에 도달한다(무손실) — 순서도 전량 payload 와 같다.
+        rest = get(f"/api/events?offset=1&limit={total}")
+        assert [e["source"] for e in one["events"] + rest["events"]] == \
+            [e["source"] for e in events_payload(eng)["events"]]
+        # 상한: 요청이 아무리 커도 서버가 잘라 준다.
+        capped = get("/api/events?limit=999999")
+        assert capped["limit"] == _WINDOW_MAX
+        # 색인은 본문을 싣지 않는다(초기 전송을 줄인 이유 자체).
+        index = get("/api/events/index")
+        assert "events" not in index and index["total"] == total
+        assert sum(row["total"] for row in index["days"]) == total
+    finally:
+        httpd.shutdown()
+
+
+def test_events_index_and_window_agree_under_filters(tmp_path):
+    """날짜 헤더 건수와 실제 카드 수가 어긋나면 안 된다 — 둘이 같은 필터 함수를 쓰는지 확인."""
+    import json, threading, urllib.request
+    from http.server import ThreadingHTTPServer
+    from clfx.web.server import make_handler, ServerState
+    from clfx.web.api import scan_to_engine
     eng = scan_to_engine(["tests/fixtures/dot-claude"])
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ServerState(eng)))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
         port = httpd.server_address[1]
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/events")
-        with urllib.request.urlopen(req) as r:
-            raw = r.read()
-        assert raw == json.dumps(events_payload(eng), ensure_ascii=False).encode("utf-8")
+
+        def get(path):
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}") as r:
+                return json.loads(r.read().decode("utf-8"))
+
+        for query in ("", "?actors=user", "?actors=agent", "?bypass=0",
+                      "?channel=remote", "?actors=user,agent&bypass=0"):
+            index = get("/api/events/index" + query)
+            for row in index["days"]:
+                sep = "&" if query else "?"
+                window = get(f"/api/events{query}{sep}day={row['day']}&limit=2000")
+                assert window["count"] == row["total"], (query, row["day"])
+                assert row["user"] + row["agent"] + row["unknown"] == row["total"]
+        # 도메인 밖 actor 는 버린다 — 필터를 통째로 비우면 화면이 빈다.
+        assert get("/api/events/index?actors=bogus")["total"] == get("/api/events/index")["total"]
     finally:
         httpd.shutdown()
 

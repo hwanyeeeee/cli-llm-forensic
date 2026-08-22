@@ -12,11 +12,66 @@ from urllib.parse import urlparse, parse_qs
 from clfx.event import Event
 from clfx.query.engine import QueryEngine
 from clfx import roio
-from clfx.web.api import (events_payload, events_payload_bytes, query_payload, stats_payload,
+from clfx.web.api import (query_payload, stats_payload,
                           activity_payload, files_payload, keywords_payload,
                           sources_payload, scan_to_engine, forensic_scan,
                           mcp_payload, attestation_payload, attestation_csv,
-                          remote_control_payload)
+                          remote_control_payload, events_index_payload,
+                          events_window_payload)
+
+
+_ACTOR_VALUES = ("user", "agent", "unknown")
+
+
+def _int_param(qs, name, default):
+    """숫자 쿼리 1개. 쓰레기 값은 기본값으로 — 잘못된 offset 이 500 을 내면 안 된다."""
+    try:
+        return int((qs.get(name) or [default])[0])
+    except (TypeError, ValueError):
+        return default
+
+
+def _wants_counts(query):
+    return (parse_qs(query).get("counts") or ["0"])[0] not in ("0", "")
+
+
+def _counts_only(payload, heavy):
+    """큰 배열을 길이로 바꾼 요약본. 뱃지 숫자만 필요한 부팅 경로용.
+
+    배열을 **지우는 게 아니라 개수로 치환**한다 — 키가 통째로 사라지면 렌더 쪽이
+    '아직 안 옴'과 '0건'을 구분 못 한다. retention 은 만료임박(≤7d) 여부도 뱃지 색에
+    쓰이므로 그 수까지 같이 센다."""
+    if not isinstance(payload, dict):
+        return payload
+    out = {k: v for k, v in payload.items() if k not in heavy}
+    for key in heavy:
+        value = payload.get(key)
+        out[key + "_count"] = len(value) if isinstance(value, (list, dict)) else 0
+    rows = payload.get("retention")
+    if isinstance(rows, list):
+        out["retention_soon"] = sum(
+            1 for row in rows if isinstance(row, dict)
+            and isinstance(row.get("expires_in_days"), (int, float))
+            and 0 < row["expires_in_days"] <= 7)
+    out["counts_only"] = True
+    return out
+
+
+def _timeline_filters(query):
+    """쿼리스트링 → _timeline_scope 인자. 색인과 창이 **같은 파싱**을 쓴다(어긋나면 헤더 건수와
+    카드 수가 안 맞는다). 모르는 actor 값은 버린다 — 도메인 밖 값이 필터를 통째로 비우면 안 된다."""
+    qs = parse_qs(query)
+
+    def _set(name):
+        raw = (qs.get(name) or [""])[0]
+        return {v for v in raw.split(",") if v} or None
+
+    actors = _set("actors")
+    if actors:
+        actors = {a for a in actors if a in _ACTOR_VALUES} or None
+    channel = (qs.get("channel") or [""])[0] or None
+    return {"origins": _set("sources"), "agents": _set("agents"), "actors": actors,
+            "bypass": (qs.get("bypass") or ["1"])[0] != "0", "channel": channel}
 
 # B-1/B-2: ServerState 초기 attestation — empty-but-valid 계약(스캔 전 GET /api/attestation 안전).
 _ATTEST_EMPTY = {"acquired": [], "acquired_count": 0, "stat_only_count": 0,
@@ -154,10 +209,24 @@ def make_handler(state):
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
-            if u.path == "/api/events":
+            if u.path == "/api/events/index":     # 24단계: 날짜별 건수만(본문 없음)
                 try:
-                    # OPT-8: 캐시된 bytes를 그대로 전송(재요청마다 재인코딩 회피). 바이트는 events_payload 동일.
-                    self._send(events_payload_bytes(state.engine), 200, "application/json")
+                    self._json(events_index_payload(state.engine,
+                                                    **_timeline_filters(u.query)))
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                return
+            if u.path == "/api/events":
+                # 24단계: 전량 전송 폐지. day/offset/limit 창만 보낸다 — 예전엔 실데이터
+                # 146,289건에 225MB 였고 직렬화 결과가 서버 메모리에도 상주했다.
+                try:
+                    qs = parse_qs(u.query)
+                    self._json(events_window_payload(
+                        state.engine,
+                        day=(qs.get("day") or [None])[0] or None,
+                        offset=_int_param(qs, "offset", 0),
+                        limit=_int_param(qs, "limit", 300),
+                        **_timeline_filters(u.query)))
                 except Exception as e:               # 서버는 안 죽는다
                     self._json({"error": str(e)}, 500)
                 return
@@ -211,8 +280,12 @@ def make_handler(state):
                     self._json({"error": str(e)}, 500)
                 return
             if u.path == "/api/artifacts":
+                # 24단계: ?counts=1 이면 큰 배열 없이 개수만. 부팅 때 뱃지 숫자만 필요한데
+                # 전체는 실데이터에서 17MB(retention 25,727 · hashes 4,486)였다.
                 try:
-                    self._json(state.artifacts)
+                    self._json(_counts_only(state.artifacts,
+                                            ("retention", "hashes", "attribution", "errors"))
+                               if _wants_counts(u.query) else state.artifacts)
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return
@@ -230,7 +303,9 @@ def make_handler(state):
                 return
             if u.path == "/api/attestation":     # B-1/B-2: chain-of-custody attestation(read-only)
                 try:
-                    self._json(state.attestation)
+                    # ?counts=1 → acquired 원장(실데이터 23,134행·5MB) 없이 요약만.
+                    self._json(_counts_only(state.attestation, ("acquired",))
+                               if _wants_counts(u.query) else state.attestation)
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                 return

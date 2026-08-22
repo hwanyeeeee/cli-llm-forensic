@@ -109,7 +109,8 @@ class QueryEngine:
             r = agg.setdefault(e.target, {"target": e.target, "count": 0,
                                           "by_actor": {"user": 0, "agent": 0, "unknown": 0},
                                           "actor_warnings": 0,
-                                          "actions": {}, "tags": set()})
+                                          "actions": {}, "tags": set(),
+                                          "first": None, "_key": None})
             r["count"] += 1
             actor = actor_bucket(e.actor)
             r["by_actor"][actor] += 1
@@ -117,7 +118,16 @@ class QueryEngine:
             r["actions"][e.action] = r["actions"].get(e.action, 0) + 1
             for t in (e.tags or []):
                 r["tags"].add(t)
+            # 24단계: 가장 이른 접근 1건. 대시보드가 파일행에서 그 이벤트로 되짚어 가는 데
+            # 쓴다 — 예전엔 클라이언트가 전량 EVENTS 를 들고 인덱스를 만들어 썼다.
+            # ts_key 로 비교한다: 사전순은 epoch-ms/ISO 혼재에서 깨진다.
+            key = ts_key(e.ts)
+            if r["_key"] is None or key < r["_key"]:
+                r["_key"] = key
+                r["first"] = {"ts": norm_ts(e.ts), "actor": e.actor, "action": e.action,
+                              "file": e.source.file, "line": e.source.line}
         rows = sorted(agg.values(), key=lambda r: (-r["count"], r["target"]))
         for r in rows:
             r["tags"] = sorted(r["tags"])
+            r.pop("_key", None)                      # 정렬용 내부값 — 페이로드로 내보내지 않는다
         return rows
