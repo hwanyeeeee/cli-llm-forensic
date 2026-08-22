@@ -30,6 +30,11 @@ CODEX_HOME = Path.home() / ".codex"
 CLAUDE_HOME = Path.home() / ".claude"
 EXEC_NAMES = {"exec_command", "shell_command", "run"}
 
+# iOS(S1·S2)는 별도 세션에서 진행 중이다. 취득본이 이 경로에 놓이면 아래 테스트가 깨어난다.
+# 환경변수로 덮어쓸 수 있게 둔 이유: 취득본은 저장소 밖(외장·케이스 디렉터리)에 두는 게 정상이다.
+IOS_ACQUISITION = Path(os.environ.get("CLFX_IOS_ACQUISITION",
+                                      Path.home() / "cases" / "ios-remote-control"))
+
 
 def _require(path, what):
     if not path.is_dir():
@@ -237,6 +242,29 @@ def test_claude_remote_channel_evidence_survives(claude_prompt_sources):
     assert combos[("queued", "human")] < combos[("typed", "human")]
 
 
+# =========================================================================
+# iOS(S1·S2) — 아직 미측정. 자리만 잡아두고, 데이터가 오면 깨어난다.
+# =========================================================================
+
+def test_ios_acquisition_is_recorded_when_present():
+    """종합 문서 §10.1 수신 표의 여섯 축을 iOS 취득본으로 재확인하는 자리.
+
+    지금은 취득본이 없어 skip 하되 **사유를 경고로 남긴다** — §10.1이 `미측정`으로
+    남아 있다는 사실 자체가 패널에 반영돼야 하기 때문이다. 빈칸을 "Android와 같다"로
+    읽으면 안 된다는 §10.1 단서와 같은 취지다.
+
+    취득본이 오면 여기서 축별로 단언한다:
+      ①마커 위치 ②원격/로컬 판별자 ③결속축 ④폰에 지시 내용 ⑤자격증명 보호 수준 ⑥종료 후 존속"""
+    if not IOS_ACQUISITION.is_dir():
+        reason = (f"iOS 취득본 없음: {IOS_ACQUISITION} — S1·S2는 미측정 상태다. "
+                  f"종합 문서 §10.1 여섯 축이 여전히 빈칸이며, 패널에서 그 칸을 "
+                  f"'Android와 같다'로 채우면 안 된다. "
+                  f"취득본 경로는 CLFX_IOS_ACQUISITION 으로 지정한다.")
+        warnings.warn(reason, UserWarning)
+        pytest.skip(reason)
+    pytest.fail("iOS 취득본이 생겼다 — §10.1 축별 단언을 구현해라(현재 미구현).")
+
+
 def test_panel_number_sheet(codex_corpus, claude_prompt_sources, tmp_path):
     """인쇄 직전 대조용 표. `pytest tests/test_panel_numbers.py -s` 로 본다."""
     corpus = codex_corpus
@@ -261,3 +289,4 @@ def test_panel_number_sheet(codex_corpus, claude_prompt_sources, tmp_path):
           f"  (queued∧human {combos.get(('queued', 'human'))})")
     print("합성 정확도                 주체/접근/MCP 각 100건 100.0% (위 테스트에서 고정)")
     print("시연 화면                   총 19 · 사용자 7 · 에이전트 12 · bypass 2 (고정)")
+    print(f"iOS(S1·S2)                  {'취득본 있음 — §10.1 채울 것' if IOS_ACQUISITION.is_dir() else '미측정 — §10.1 여섯 축 빈칸'}")
