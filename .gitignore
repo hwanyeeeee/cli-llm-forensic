@@ -7,9 +7,9 @@
 # 테스트 고정물까지 조용히 빠진다(실제로 빠져서 클린 클론에서 테스트 9건이 깨졌다).
 /.claude/
 /.codex/
-CLAUDE.md
-AGENTS.md
-.mcp.json
+/CLAUDE.md
+/AGENTS.md
+/.mcp.json
 docs/superpowers/plans/2026-06-15-codex-cross-review.md
 docs/superpowers/specs/2026-06-15-codex-cross-review-design.md
 docs/Ref/
