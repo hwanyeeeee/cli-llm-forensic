@@ -19,8 +19,9 @@ clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔�
 
 ## 현재 작업
 - 도구: claude (panel1)
-- 위치: 23단계 (원격제어 마커 3종 + 뷰어 노출)
-- 수행 중: panel1=23단계 구현, panel0=검수
+- 위치: 23단계 (원격제어 마커 3종 + 뷰어 노출 + UI 결함 3건)
+- 수행 중: panel1=23단계(마커+뷰어+UI 3건), panel0=검수 완료분 대기
+- panel0 실측 검증(2026-08-22): 파이프라인 전 구간 green — parse 146,048건 25s · analyze 6s · query 20건 530ms · attestation all_read_only=true · actor unknown 0. UI 결함 4건 발견 → ①②④는 23단계 추가분, ③(전량 225MB 전송·힙 570MB)은 24단계로 분리
 - 범위 결정(2026-08-22): **폰 취득본 파싱은 하지 않는다.** clfx 는 로컬 아티팩트만 읽는다. 원격/로컬 판별은 로컬 파일만으로 서기 때문이다 — Claude=세션 JSONL `promptSource`, Codex=`logs_2.sqlite` `client_name`. 폰은 결속·정황 증거라 도구가 없어도 문서로 다룬다. 인계문서 §5 의 iOS Manifest 메타·DBMessageChunk 재조립 2건은 이 결정으로 **범위 밖**.
 - 패널 수치 동결 시각: 2026-08-22 17:20
 - 별도 세션: 모바일 원격제어 4시나리오(docs/모바일-원격제어-분석-계획.md)
