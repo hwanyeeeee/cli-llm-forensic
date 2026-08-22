@@ -50,15 +50,23 @@ BOX_BG = "#fbfcfe"
 
 # 세로 배분(figure fraction, 위에서부터). 합 = 1.0
 BANDS = [
-    ("margin_top", 0.008),
-    ("header", 0.080),
-    ("s1_background", 0.112),
-    ("f2_hero", 0.150),
-    ("fm_remote", 0.278),
-    ("s3_results", 0.204),
-    ("s4_impact", 0.140),
-    ("footnote", 0.026),
+    ("margin_top", 0.002),
+    ("header", 0.076),
+    ("s1_background", 0.142),
+    ("f2_hero", 0.135),
+    ("fm_remote", 0.228),
+    ("s3_results", 0.271),
+    ("s4_impact", 0.124),
+    ("footnote", 0.020),
     ("margin_bottom", 0.002),
+]
+
+# F5 대시보드 캡처에서 잘라 쓸 두 줄 — 같은 명령인데 주체가 갈리는 그 지점.
+# 전체 캡처를 작게 넣으면 UI 글씨가 안 읽힌다. 이 두 줄만 크게 쓰는 편이 낫다.
+# 좌표는 panel-f5-leak-scenario.png(2560×1600) 픽셀 기준.
+F5_CONTRAST = [
+    ("A 사용자가 직접 실행", (512, 332, 1510, 432)),
+    ("B 에이전트가 자율 실행", (512, 1202, 1510, 1302)),
 ]
 
 # `docs/패널-구성안.md` §1 면적 배분. 밴드를 단락으로 묶어 실제 배분과 대조한다.
@@ -117,6 +125,16 @@ def _section_body(text, marker):
     return _plain(re.sub(r"\s*\n\s*", " ", match.group(1).strip()))
 
 
+def _blockquote(text, marker):
+    """`## ① …` 뒤 인용문(여백 남으면 붙일 근거 한 줄). 없으면 None."""
+    match = re.search(rf"^##\s*{marker}[^\n]*\n+.*?\n((?:>[^\n]*\n)+)", text, re.S | re.M)
+    if not match:
+        return None
+    lines = [re.sub(r"^>\s?", "", line) for line in match.group(1).splitlines()]
+    body = " ".join(line for line in lines[1:] if line.strip())
+    return _plain(body).strip() or None
+
+
 def load_text():
     """헤더 블록은 `키  값` 2칸 구분. 값이 여러 줄이면 들여쓴 연속행으로 이어진다."""
     raw = TEXT_SOURCE.read_text(encoding="utf-8")
@@ -143,6 +161,7 @@ def load_text():
         "meta": [(k, " ".join(v)) for k, v in header.items()
                  if k != "과제명(2줄)" and v],
         "background": _section_body(raw, "①"),
+        "evidence": _blockquote(raw, "①"),
         "impact": [(_plain(head).strip(),
                     _plain(re.sub(r"\s*\n\s*", " ", body)).strip())
                    for head, body in bullets],
@@ -213,6 +232,31 @@ def _place_image(fig, path, top, bottom, x0=LEFT, x1=RIGHT, align="center"):
     _PLACED.append((Path(path).stem, min_fs, source_w_in, draw_w_in, ratio,
                     (x1 - x0) * A1_W_IN))
     return top - h
+
+
+def _place_crop(fig, path, box, top, x0, x1):
+    """캡처의 한 구간만 잘라 폭에 맞춰 크게 앉힌다.
+
+    전체 캡처를 축소해 넣으면 UI 글씨(13 CSS px)가 인쇄에서 사라진다.
+    잘라내면 같은 폭에 더 적은 픽셀이 들어가므로 글자가 그만큼 커진다."""
+    with Image.open(path) as source:
+        crop = source.convert("RGB").crop(box)
+    ratio = crop.size[0] / crop.size[1]
+    draw_w_in = (x1 - x0) * A1_W_IN
+    draw_h_in = draw_w_in / ratio
+    axes = fig.add_axes([x0, top - draw_h_in / A1_H_IN, x1 - x0, draw_h_in / A1_H_IN])
+    axes.imshow(crop, interpolation="antialiased")
+    axes.axis("off")
+    for spine in axes.spines.values():
+        spine.set_visible(True)
+        spine.set_color(RULE)
+    axes.set_frame_on(True)
+    # 캡처는 CSS 1600px 뷰포트를 1.6배 배율로 찍은 것이고 UI 본문은 13 CSS px.
+    # CSS px를 96dpi 기준 pt로 환산하면 다른 그림과 같은 식으로 인쇄 크기를 잴 수 있다.
+    css_w_in = crop.size[0] / 1.6 / 96
+    _PLACED.append((f"{Path(path).stem}[crop]", 13.0 * 72 / 96, css_w_in, draw_w_in,
+                    ratio, (x1 - x0) * A1_W_IN))
+    return top - draw_h_in / A1_H_IN
 
 
 def readability_report(body_pt):
@@ -302,16 +346,23 @@ def build():
     _panel_box(fig, top, bottom)
     fig.text(LEFT + 0.016, top - 0.017, "① 과제 배경 및 목적",
              fontproperties=_font(30), color=ACCENT, va="top")
-    y = top - 0.044
+    y = top - 0.042
     for line in _wrap(content["background"], 60):
         fig.text(LEFT + 0.016, y, line, fontproperties=_font(27), color=INK, va="top")
-        y -= 0.0165
+        y -= 0.0158
+    if content.get("evidence"):
+        y -= 0.006
+        for line in _wrap(content["evidence"], 74):
+            fig.text(LEFT + 0.016, y, line, fontproperties=_font(21), color=MUTED, va="top")
+            y -= 0.0136
+    if y < bottom:
+        raise SystemExit(f"① 본문이 밴드를 넘쳤다(y={y:.4f} < {bottom:.4f}).")
 
     # ---- ② 방법·내용 : F2 hero + fm_remote
     top, bottom = band["f2_hero"]
     fig.text(LEFT, top - 0.008, "② 수행 방법 및 내용",
              fontproperties=_font(30), color=ACCENT, va="top")
-    _place_image(fig, PANEL / "f2_hero_compact.jpg", top - 0.030, bottom)
+    _place_image(fig, PANEL / "f2_hero_compact.jpg", top - 0.016, bottom)
 
     top, bottom = band["fm_remote"]
     _place_image(fig, PANEL / "fm_remote.jpg", top, bottom)
@@ -320,24 +371,36 @@ def build():
     top, bottom = band["s3_results"]
     fig.text(LEFT, top - 0.008, "③ 수행 결과",
              fontproperties=_font(30), color=ACCENT, va="top")
-    # F6은 라벨이 작아 폭을 먼저 확보한다(8pt 하한). 남는 폭을 F5 캡처가 받는다 —
-    # 캡처는 '제품이 실제로 있다'는 증거라 글자를 읽히게 할 필요가 없다.
-    row_top = top - 0.026
-    row_bottom = bottom + 0.030
-    f6_w = CONTENT_W * 0.700
-    split = LEFT + f6_w
-    f6_bottom = _place_image(fig, PANEL / "f6_metrics.jpg", row_top, row_bottom,
-                             x0=LEFT, x1=split, align="left")
-    f5_bottom = _place_image(fig, REPO / "panel-f5-leak-scenario.png", row_top, row_bottom,
-                             x0=split + 0.012, x1=RIGHT, align="right")
-    # 캡션은 각자 자기 그림 아래에. F5 설명을 F6 밑에 두면 무엇을 가리키는지 어긋난다.
-    fig.text(LEFT, f6_bottom - 0.008,
-             "합성 통제 데이터 기준 정확도. 회수율·한계는 종합문서에 분리 기재.",
-             fontproperties=_font(18), color=MUTED, va="top")
-    fig.text(split + 0.012, f5_bottom - 0.008,
-             "실제 대시보드 화면 — 같은 명령이\n사용자(파랑)와 에이전트(빨강)로 갈리고,\n"
-             "클릭하면 원본 위치(file:line)까지 역추적된다.",
-             fontproperties=_font(18), color=MUTED, va="top", linespacing=1.6)
+    # F6(정량 카드)을 위에 넓게, 그 아래 대시보드 실캡처에서 잘라낸 **대비 두 줄**.
+    # 전체 캡처를 작게 넣는 것보다 이 두 줄을 크게 쓰는 편이 인쇄에서 훨씬 잘 읽힌다.
+    # 요소가 다섯 겹이라 고정 offset으로 쌓으면 반드시 겹친다 — 커서로 내려간다.
+    cursor = top - 0.030
+    cursor = _place_image(fig, PANEL / "f6_metrics.jpg", cursor, cursor - 0.155,
+                          x0=LEFT, x1=RIGHT)
+    cursor -= 0.009
+    fig.text(LEFT, cursor, "합성 통제 데이터 기준 정확도. 회수율·한계는 종합문서에 분리 기재.",
+             fontproperties=_font(17), color=MUTED, va="top")
+
+    cursor -= 0.015
+    half = (CONTENT_W - 0.014) / 2
+    for index, (label, box) in enumerate(F5_CONTRAST):
+        x0 = LEFT + index * (half + 0.014)
+        fig.text(x0, cursor, label, fontproperties=_font(18),
+                 color="#c02020" if index else "#1a5fb4", va="top")
+    cursor -= 0.011
+    crop_bottom = cursor
+    for index, (_, box) in enumerate(F5_CONTRAST):
+        x0 = LEFT + index * (half + 0.014)
+        crop_bottom = _place_crop(fig, REPO / "panel-f5-leak-scenario.png", box,
+                                  cursor, x0, x0 + half)
+    cursor = crop_bottom - 0.008
+    for line in _wrap("실제 대시보드에서 잘라낸 두 줄 — 명령 문자열이 한 글자도 다르지 않은데 "
+                      "주체만 갈린다. 클릭하면 원본 위치(file:line)까지 역추적된다.", 92):
+        fig.text(LEFT, cursor, line, fontproperties=_font(17), color=MUTED, va="top")
+        cursor -= 0.0104
+    if cursor < bottom - 0.004:
+        raise SystemExit(f"③ 내용이 밴드를 넘쳤다(cursor={cursor:.4f} < {bottom:.4f}). "
+                         f"F6 높이(0.155)를 줄이거나 s3_results를 늘려라.")
 
     # ---- ④ 기대·파급
     top, bottom = band["s4_impact"]
@@ -345,15 +408,15 @@ def build():
     fig.text(LEFT + 0.016, top - 0.015, "④ 기대 효과 및 파급 효과",
              fontproperties=_font(30), color=ACCENT, va="top")
     # 표제와 본문을 같은 y에 놓으면 겹친다 — 표제 한 줄, 본문은 들여쓴 다음 줄부터.
-    y = top - 0.038
+    y = top - 0.034
     for head, body in content["impact"]:
-        fig.text(LEFT + 0.018, y, f"■ {head}", fontproperties=_font(23),
+        fig.text(LEFT + 0.018, y, f"■ {head}", fontproperties=_font(21),
                  color=ACCENT, va="top")
-        y -= 0.0114
+        y -= 0.0102
         for line in _wrap(body, 86):
-            fig.text(LEFT + 0.036, y, line, fontproperties=_font(21), color=INK, va="top")
-            y -= 0.0106
-        y -= 0.0022
+            fig.text(LEFT + 0.034, y, line, fontproperties=_font(19), color=INK, va="top")
+            y -= 0.0094
+        y -= 0.0020
     if y < bottom:
         raise SystemExit(f"④ 본문이 밴드를 넘쳤다(y={y:.4f} < {bottom:.4f}). "
                          f"BANDS의 s4_impact를 늘리거나 글자를 줄여라.")
@@ -361,10 +424,10 @@ def build():
     # ---- 각주
     top, bottom = band["footnote"]
     _rule(fig, top)
-    y = top - 0.006
+    y = top - 0.005
     for line in content["footnote"].splitlines():
-        fig.text(LEFT, y, line, fontproperties=_font(17), color=FAINT, va="top")
-        y -= 0.0104
+        fig.text(LEFT, y, line, fontproperties=_font(15), color=FAINT, va="top")
+        y -= 0.0092
     if y < bottom - 0.004:
         raise SystemExit(f"각주가 밴드 밖으로 나갔다(y={y:.4f}) — footnote 밴드를 늘려라.")
 
