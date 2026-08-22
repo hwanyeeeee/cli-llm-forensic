@@ -20,7 +20,8 @@ clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔�
 ## 현재 작업
 - 도구: claude (panel1)
 - 위치: 포스터 제작 종료(panel/ 제거) → 개발 전환. origin_os 구현 완료
-- 수행 중: 모바일 인계문서 §5 Event 스키마 반영 — origin_os 완료(522 green). 잔여: iOS Manifest 메타 1급 증거화 · DBMessageChunk 32KiB 재조립(둘 다 폰 파싱이라 범위 밖일 수 있음)
+- 수행 중: 없음. 모바일 인계문서 §5 반영 완료(523 green)
+- 범위 결정(2026-08-22): **폰 취득본 파싱은 하지 않는다.** clfx 는 로컬 아티팩트만 읽는다. 원격/로컬 판별은 로컬 파일만으로 서기 때문이다 — Claude=세션 JSONL `promptSource`, Codex=`logs_2.sqlite` `client_name`. 폰은 결속·정황 증거라 도구가 없어도 문서로 다룬다. 인계문서 §5 의 iOS Manifest 메타·DBMessageChunk 재조립 2건은 이 결정으로 **범위 밖**.
 - 패널 수치 동결 시각: 2026-08-22 17:20
 - 별도 세션: 모바일 원격제어 4시나리오(docs/모바일-원격제어-분석-계획.md)
 - 실사용 확인: parse→analyze→query 실데이터 36,894 이벤트, file:line 인용 동작

@@ -397,3 +397,32 @@ def test_mixed_channel_thread_does_not_assert_a_device(codex_case):
     assert mixed["origin_channel"] == "unknown"
     assert "origin_os" not in mixed
     assert mixed["origin_os_candidates"] == ["android"]
+
+
+def test_claude_unknown_carries_its_reason(tmp_path):
+    """unknown 을 근거 없이 뭉뚱그리면 "3천 건을 못 가렸다"로 읽힌다.
+
+    실데이터 unknown 3,294건 중 1,950건은 `sdk` — 판정 실패가 아니라 애초에 사람이 낸
+    지시가 아니다. 판정에는 안 쓰지만 왜 unknown 인지는 남긴다. Codex 쪽 origin_channels_seen
+    과 같은 취지다."""
+    session = "9153b51b-6fa0-499c-9c66-b483d89064aa"
+    root, _ = _claude_root(tmp_path, [
+        _prompt("sdk 가 몬 지시", session, prompt_source="sdk", origin=None),
+        _prompt("알림에서 온 것", session, prompt_source="system",
+                origin={"kind": "task-notification"}, ts="2026-08-21T23:00:01Z"),
+        _prompt("사람이 친 것", session, prompt_source="typed",
+                origin={"kind": "human"}, ts="2026-08-21T23:00:02Z"),
+    ])
+    prompts = [e for e in parse_source(source_for(str(root))) if e.action == "prompt"]
+    by_text = {e.preview[:6]: e.meta for e in prompts}
+
+    assert by_text["sdk 가 "]["origin_channel"] == "unknown"
+    assert by_text["sdk 가 "]["prompt_source"] == "sdk"
+    assert "origin_kind" not in by_text["sdk 가 "]          # origin 자체가 없었다
+
+    assert by_text["알림에서 온"]["prompt_source"] == "system"
+    assert by_text["알림에서 온"]["origin_kind"] == "task-notification"
+
+    # 확정된 판정에는 근거를 달지 않는다 — unknown 일 때만 필요하다
+    assert by_text["사람이 친 "]["origin_channel"] == "local"
+    assert "prompt_source" not in by_text["사람이 친 "]

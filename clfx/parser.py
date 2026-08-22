@@ -138,6 +138,14 @@ def _transcript_events_from(records, agent):
             # 지시가 폰에서 왔는지 로컬 타이핑인지는 이 레코드에만 있다(실행 Event엔 없다).
             channel = _origin_channel(o)
             meta = {"origin_channel": channel} if channel else {}
+            # unknown 이 왜 unknown 인지 남긴다. 실데이터 unknown 3,294건 중 2,565건이
+            # sdk·system 이었다 — 판정 실패가 아니라 사람이 낸 지시가 아니었다.
+            # 근거 없이 뭉뚱그리면 "3천 건을 못 가렸다"로 읽힌다(2026-08-22).
+            if channel == "unknown":
+                meta["prompt_source"] = o.get("promptSource")
+                kind = (o.get("origin") or {}).get("kind") if isinstance(o.get("origin"), dict) else None
+                if kind:
+                    meta["origin_kind"] = kind
             img_n = 0
             for part in content:
                 if not isinstance(part, dict):

@@ -28,6 +28,7 @@ Event {
 |---|---|---|
 | `origin_channel` | `remote` \| `local` \| `unknown` | 원격 지시 여부. Claude=`promptSource`, Codex=`logs_2.sqlite` `client_name` 조인 |
 | `origin_channels_seen` | `["local","remote"]` | `origin_channel` 이 `unknown` 인 이유(양쪽 관측)를 남긴다 |
+| `prompt_source` · `origin_kind` | 원문 값 | **Claude 전용.** `origin_channel` 이 `unknown` 일 때만. 왜 못 가렸는지의 근거 — `sdk`·`system` 은 판정 실패가 아니라 사람이 낸 지시가 아니었다는 뜻이다 |
 | `origin_os` | `ios` \| `android` \| `unknown` | **Codex 전용.** `client_name` 접미가 조작 단말 OS 를 담는다. `origin_channel == "remote"` 로 확정됐을 때만 단다 |
 | `origin_os_seen` | `["android","ios"]` | 한 스레드를 서로 다른 OS 단말이 이어받아 `origin_os` 가 `unknown` 일 때 |
 | `origin_os_candidates` | `["android"]` | 채널이 `unknown` 이라 단말을 단정할 수 없을 때. **주장이 아니라 관측 보존이다** |
