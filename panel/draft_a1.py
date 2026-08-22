@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import FancyBboxPatch
 import matplotlib.image as mpimg
+from PIL import Image
 
 PANEL = Path(__file__).resolve().parent
 REPO = PANEL.parent
@@ -49,18 +50,31 @@ BOX_BG = "#fbfcfe"
 
 # 세로 배분(figure fraction, 위에서부터). 합 = 1.0
 BANDS = [
-    ("margin_top", 0.012),
-    ("header", 0.085),
-    ("s1_background", 0.115),
+    ("margin_top", 0.008),
+    ("header", 0.080),
+    ("s1_background", 0.112),
     ("f2_hero", 0.150),
-    ("fm_remote", 0.210),
-    ("s3_results", 0.245),
-    ("s4_impact", 0.150),
-    ("footnote", 0.028),
-    ("margin_bottom", 0.005),
+    ("fm_remote", 0.278),
+    ("s3_results", 0.204),
+    ("s4_impact", 0.140),
+    ("footnote", 0.026),
+    ("margin_bottom", 0.002),
 ]
+
+# `docs/패널-구성안.md` §1 면적 배분. 밴드를 단락으로 묶어 실제 배분과 대조한다.
+SECTION_OF = {
+    "header": "헤더·여백", "margin_top": "헤더·여백", "margin_bottom": "헤더·여백",
+    "footnote": "헤더·여백",
+    "s1_background": "① 배경", "f2_hero": "② 방법", "fm_remote": "② 방법",
+    "s3_results": "③ 결과", "s4_impact": "④ 효과",
+}
+BUDGET = {"① 배경": 0.15, "② 방법": 0.35, "③ 결과": 0.30, "④ 효과": 0.12, "헤더·여백": 0.08}
 LEFT, RIGHT = 0.030, 0.970
 CONTENT_W = RIGHT - LEFT
+
+# 인쇄물 실무 하한. 이보다 작으면 A1 실물에서 사실상 안 읽힌다.
+MIN_READABLE_PT = 8.0
+_PLACED = []          # (라벨, 원본 최소 fs, 원본 물리폭 in, 배치 폭 in)
 
 
 def _font(size):
@@ -165,6 +179,21 @@ def _panel_box(fig, top, bottom, pad=0.004):
         transform=fig.transFigure, facecolor=BOX_BG, edgecolor=RULE, lw=1.4, zorder=0))
 
 
+def _source_metrics(path):
+    """그림의 물리 크기와 그 안에서 쓴 최소 글자 크기.
+
+    flowlib는 `bbox_inches="tight"`로 저장해서 선언한 figsize보다 작게 잘린다.
+    그래서 선언값이 아니라 **저장된 픽셀 ÷ 저장 dpi**가 실제 물리 폭이다."""
+    with Image.open(path) as image:
+        px_w = image.size[0]
+        dpi = (image.info.get("dpi") or (220, 220))[0] or 220
+    script = Path(path).with_suffix(".py")
+    if not script.is_file():
+        return px_w / dpi, None                    # 스크린샷 등 — 라벨 크기 판정 대상 아님
+    sizes = [float(v) for v in re.findall(r"fs\s*=\s*([\d.]+)", script.read_text(encoding="utf-8"))]
+    return px_w / dpi, (min(sizes) if sizes else None)
+
+
 def _place_image(fig, path, top, bottom, x0=LEFT, x1=RIGHT, align="center"):
     """슬롯 안에 원본 비율을 지키며 최대 크기로 앉힌다. 원본 픽셀은 손대지 않는다."""
     if not Path(path).is_file():
@@ -180,7 +209,67 @@ def _place_image(fig, path, top, bottom, x0=LEFT, x1=RIGHT, align="center"):
     axes = fig.add_axes([left, top - h, w, h])
     axes.imshow(image, interpolation="antialiased")
     axes.axis("off")
+    source_w_in, min_fs = _source_metrics(path)
+    _PLACED.append((Path(path).stem, min_fs, source_w_in, draw_w_in, ratio,
+                    (x1 - x0) * A1_W_IN))
     return top - h
+
+
+def readability_report(body_pt):
+    """A1 실물에서 각 글자가 몇 pt로 찍히는지 계산한다.
+
+    그림은 원본을 축소·확대해 앉히므로, 원본에서 쓴 pt가 그대로 인쇄되지 않는다.
+    인쇄 크기 = 원본 fs × (배치 폭 / 원본 물리 폭)."""
+    print(f"\n── 실물 크기 검산 (A1 {A1_W_IN * 2.54:.1f}cm 폭 · 하한 {MIN_READABLE_PT:.0f}pt) ──")
+    worst, narrow = [], []
+    for label, min_fs, source_w, draw_w, ratio, slot_w in _PLACED:
+        scale = draw_w / source_w
+        fill = draw_w / slot_w
+        if min_fs is None:
+            print(f"{label:<20} 폭 {draw_w:5.1f}in(단 폭의 {fill:3.0%}) · 배율 {scale:4.2f}×"
+                  f"   최소 글자 —      (스크린샷 · 판정 제외)")
+            continue
+        printed = min_fs * scale
+        flag = "  ⚠ 하한 미만" if printed < MIN_READABLE_PT else ""
+        print(f"{label:<20} 폭 {draw_w:5.1f}in(단 폭의 {fill:3.0%}) · 배율 {scale:4.2f}×"
+              f"   최소 글자 {min_fs:4.1f}pt → {printed:4.1f}pt{flag}")
+        if printed < MIN_READABLE_PT:
+            worst.append((label, printed, min_fs, source_w))
+        if fill < 0.95:
+            narrow.append((label, fill, slot_w, ratio, min_fs, source_w))
+    print(f"{'포스터 본문':<20} {'':>29}   최소 글자 {body_pt:4.1f}pt → {body_pt:4.1f}pt")
+
+    if narrow:
+        print("\n폭을 다 못 쓰는 그림 — 세로가 먼저 걸린다(비율 고정). 꽉 채우려면:")
+        for label, fill, slot_w, ratio, min_fs, source_w in narrow:
+            need_h = slot_w / ratio / A1_H_IN
+            print(f"   {label}: 현재 단 폭의 {fill:.0%} · 꽉 채우면 세로 {need_h:.1%}가 필요하고"
+                  f" 글자는 {min_fs * slot_w / source_w:.1f}pt가 된다")
+        print("   → 세로 예산이 없으면 원본을 더 납작한 비율로 다시 그리는 쪽이 답이다"
+              "(같은 내용, 가로로 넓게).")
+
+    if not worst:
+        print(f"→ 모든 글자가 {MIN_READABLE_PT:.0f}pt 이상이다.")
+        return True
+    print(f"\n⚠ {MIN_READABLE_PT:.0f}pt 미만 {len(worst)}건 — A1 실물에서 안 읽힌다.")
+    for label, printed, min_fs, source_w in worst:
+        need_in = MIN_READABLE_PT / min_fs * source_w
+        print(f"   {label}: {printed:.1f}pt · {MIN_READABLE_PT:.0f}pt 되려면 폭 "
+              f"{need_in:.1f}in({need_in / A1_W_IN:.0%} of A1)이 필요하다")
+    return False
+
+
+def budget_report():
+    """구성안 §1 면적 배분과 실제 밴드 합을 대조한다."""
+    actual = {}
+    for name, height in BANDS:
+        actual[SECTION_OF[name]] = actual.get(SECTION_OF[name], 0.0) + height
+    print("\n── 면적 배분 (구성안 대비) ──")
+    for section, target in BUDGET.items():
+        got = actual.get(section, 0.0)
+        delta = got - target
+        mark = "" if abs(delta) <= 0.03 else ("  초과" if delta > 0 else "  부족")
+        print(f"{section:<10} 목표 {target:>5.0%} · 실제 {got:>5.0%} · 차이 {delta:+.0%}{mark}")
 
 
 def build():
@@ -231,20 +320,24 @@ def build():
     top, bottom = band["s3_results"]
     fig.text(LEFT, top - 0.008, "③ 수행 결과",
              fontproperties=_font(30), color=ACCENT, va="top")
-    row_top = top - 0.030
-    split = LEFT + CONTENT_W * 0.475
-    f5_bottom = _place_image(fig, REPO / "panel-f5-leak-scenario.png", row_top, bottom + 0.050,
-                             x0=LEFT, x1=split - 0.008, align="left")
-    f6_bottom = _place_image(fig, PANEL / "f6_metrics.jpg", row_top, bottom + 0.050,
-                             x0=split + 0.008, x1=RIGHT, align="right")
+    # F6은 라벨이 작아 폭을 먼저 확보한다(8pt 하한). 남는 폭을 F5 캡처가 받는다 —
+    # 캡처는 '제품이 실제로 있다'는 증거라 글자를 읽히게 할 필요가 없다.
+    row_top = top - 0.026
+    row_bottom = bottom + 0.030
+    f6_w = CONTENT_W * 0.700
+    split = LEFT + f6_w
+    f6_bottom = _place_image(fig, PANEL / "f6_metrics.jpg", row_top, row_bottom,
+                             x0=LEFT, x1=split, align="left")
+    f5_bottom = _place_image(fig, REPO / "panel-f5-leak-scenario.png", row_top, row_bottom,
+                             x0=split + 0.012, x1=RIGHT, align="right")
     # 캡션은 각자 자기 그림 아래에. F5 설명을 F6 밑에 두면 무엇을 가리키는지 어긋난다.
-    fig.text(LEFT, f5_bottom - 0.010,
-             "실제 대시보드 화면 — 같은 명령이 사용자(파랑)와 에이전트(빨강)로 갈린다.\n"
-             "클릭하면 원본 위치(file:line)까지 역추적된다.",
-             fontproperties=_font(19), color=MUTED, va="top", linespacing=1.6)
-    fig.text(split + 0.008, f6_bottom - 0.010,
+    fig.text(LEFT, f6_bottom - 0.008,
              "합성 통제 데이터 기준 정확도. 회수율·한계는 종합문서에 분리 기재.",
-             fontproperties=_font(19), color=MUTED, va="top")
+             fontproperties=_font(18), color=MUTED, va="top")
+    fig.text(split + 0.012, f5_bottom - 0.008,
+             "실제 대시보드 화면 — 같은 명령이\n사용자(파랑)와 에이전트(빨강)로 갈리고,\n"
+             "클릭하면 원본 위치(file:line)까지 역추적된다.",
+             fontproperties=_font(18), color=MUTED, va="top", linespacing=1.6)
 
     # ---- ④ 기대·파급
     top, bottom = band["s4_impact"]
@@ -252,15 +345,15 @@ def build():
     fig.text(LEFT + 0.016, top - 0.015, "④ 기대 효과 및 파급 효과",
              fontproperties=_font(30), color=ACCENT, va="top")
     # 표제와 본문을 같은 y에 놓으면 겹친다 — 표제 한 줄, 본문은 들여쓴 다음 줄부터.
-    y = top - 0.042
+    y = top - 0.038
     for head, body in content["impact"]:
         fig.text(LEFT + 0.018, y, f"■ {head}", fontproperties=_font(23),
                  color=ACCENT, va="top")
-        y -= 0.0118
+        y -= 0.0114
         for line in _wrap(body, 86):
             fig.text(LEFT + 0.036, y, line, fontproperties=_font(21), color=INK, va="top")
-            y -= 0.0110
-        y -= 0.0035
+            y -= 0.0106
+        y -= 0.0022
     if y < bottom:
         raise SystemExit(f"④ 본문이 밴드를 넘쳤다(y={y:.4f} < {bottom:.4f}). "
                          f"BANDS의 s4_impact를 늘리거나 글자를 줄여라.")
@@ -338,11 +431,11 @@ def main():
 
     print(f"\nA1 {A1_W_IN * 2.54:.1f} × {A1_H_IN * 2.54:.1f} cm "
           f"· 인쇄본 {int(A1_W_IN * 300)}×{int(A1_H_IN * 300)} px")
-    print("세로 배분:", " · ".join(
-        f"{name} {height:.0%}" for name, height in BANDS if not name.startswith("margin")))
+    budget_report()
     for name, _, size in outputs:
         if name.endswith(".png") and size < 1024 * 1024:
             sys.exit(f"양식 요건 위반: {name}이 1MB 미만({size} B)")
+    readability_report(body_pt=17.0)
     check_figure_consistency()
     return 0
 
