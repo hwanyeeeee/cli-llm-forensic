@@ -4,7 +4,7 @@
 > 한 것이다. 연구 목적·배경은 제외했다. 실측으로 확인한 사실만 싣고,  
 > 확인하지 못한 칸은 **미측정**이라고 그대로 적었다.
 > **표기**  
-> `[폰]` 모바일 단말 · `[로컬]` PC · `✗` 확인했으나 없음 · `△` 조건부 · `★` 발표에서 강조할 포인트  
+> `[폰]` 모바일 단말 · `[로컬]` PC · `✗` 확인했으나 없음 · `△` 조건부 · ` ` 발표에서 강조할 포인트  
 > `[OBSERVED]` 직접 관측 · `[INFERRED]` 관측에서 추론 · `[HYPOTHESIZED]` 미검증 가설
 > **원본 근거**: 로컬 = `docs/AgenTrace-종합-아티팩트-분석.md`,  
 > 모바일 = `C:\projects\llm모바일아티팩트\output\원격연동-아티팩트.md` (VR 번호로 추적)
@@ -22,7 +22,7 @@
 | 취득       | 파일시스템 read-only 복사   | `adb exec-out` + `su` 전량                       | `pymobiledevice3 backup2` **평문 백업**     |
 | 앱 번들 ID  | —                        | `com.openai.chatgpt`                            | **`com.openai.chat`**                   |
 
-⚠ **번들 ID 가 플랫폼마다 다르다** — 탐지 규칙에 양쪽 다 등록해야 한다. ★
+⚠ **번들 ID 가 플랫폼마다 다르다** — 탐지 규칙에 양쪽 다 등록해야 한다.
 
 ### 0.2 버전 — 세 층을 구분해서 읽어라 ★★
 
@@ -34,7 +34,7 @@
 | **② 판별자 근거 버전**  | Codex **`0.149.0`** · Claude Code **`2.1.238`·`2.1.239`**<br>Android 앱 `1.260817.0` / `1.2026.223`<br>iOS 앱 `1.260820.0` / `1.2026.224` | §4.1 의 `promptSource`·`client_name` 판별 규칙이 **이 버전의 레코드 형식에 의존**한다. |
 | **③ 로컬 코퍼스 범위**  | **`0.63.0` ~ `0.149.0` · 30종** (rollout 353파일)                                                                                          | 디스크에 남아 있는 기록이 **쓰여진** 버전들. 과거 기록이라 **바꿀 수 없다.**              |
 
-> ★ **①을 최신으로 맞춰도 ③은 그대로다.** 이미 디스크에 있는 기록은 그때 버전의 형식으로 쓰여 있고,
+> **①을 최신으로 맞춰도 ③은 그대로다.** 이미 디스크에 있는 기록은 그때 버전의 형식으로 쓰여 있고,
 > 포렌식은 **지금 만드는 기록이 아니라 남아 있는 기록**을 읽는다.
 > → **환경을 최신으로 통일했다고 구버전 파서를 뗄 수 없다.** 근거는 **§2.2.6**.
 >
@@ -49,7 +49,7 @@
 
 ## 2.1 Claude Code 로컬 아티팩트
 
-> **한 줄**: 세션 JSONL **파일 하나**에 내용·맥락·출처가 전부 들어 있다. ★
+> **한 줄**: 세션 JSONL **파일 하나**에 내용·맥락·출처가 전부 들어 있다.
 
 ### 2.1.1 저장 위치
 
@@ -74,9 +74,9 @@ file-history-snapshot 1
 ### 2.1.3 핵심 성질
 
 - **`bridge-session` 레코드가 턴마다 반복 기록**된다 (한 세션에서 5→8회 증가 관측)  
-→ 세션 수명 중 **어느 구간이 원격 브리지 상태였는지**를 턴 단위로 재구성 가능 ★
+→ 세션 수명 중 **어느 구간이 원격 브리지 상태였는지**를 턴 단위로 재구성 가능
 - 그 레코드가 `ownerAccountUuid` · `ownerOrganizationUuid` 를 품는다  
-→ **세션 JSONL 단독으로 계정·조직 결속**이 선다
+→ 세션 JSONL 단독으로 계정·조직 결속이 선다
 - `type:"system"` `subtype:"bridge_status"` 에 활성화 안내문과 **공유 URL 원문**이 남는다
 - **브리지 ID 는 resume 를 넘어 지속**된다 — 논리 세션 1개가 프로세스 4개로 갈라져도  
 `bridgeSessionId` 는 유지되고 JSONL 은 **단일 파일**이다.  
@@ -97,7 +97,7 @@ file-history-snapshot 1
 
 ## 2.2 Codex CLI 로컬 아티팩트
 
-> **한 줄**: 기록 계층이 **3개**이고 이름 규칙이 전부 다르다. 게다가 **스키마 세대가 갈린다.** ★
+> **한 줄**: 기록 계층이 **3개**이고 이름 규칙이 전부 다르다. 게다가 **스키마 세대가 갈린다.**
 
 ### 2.2.1 저장 위치
 
@@ -123,7 +123,7 @@ file-history-snapshot 1
 | `packages/standalone/`                                   | **standalone 설치본** — 원격제어 전제 (§3.1.2)                                 | 판정 근거               |
 | `visualizations/<스레드생성일>/<thread_id>/`                   | 원격 턴 산물 (iOS 클라이언트) — §3.2.2                                          | 원격 정황               |
 
-⚠ **DB 파일명 숫자 접미사 (`_5`·`_1`·`_2`) 는 schema version 이 아니다.**  
+⚠ DB 파일명 숫자 접미사 (`_5`·`_1`·`_2`) 는 schema version 이 아니다.  
 `_sqlx_migrations` max = state_5:46 · thread_history_1:4 · logs_2:2.  
 → glob + `_sqlx_migrations` 로 판별해야 한다.
 
@@ -204,7 +204,7 @@ projection 만으로 사건을 확정하면 안 된다.
 | **agent**   | 그 외 `CommandExecution` (에이전트 턴 스트림 안의 기록) · 도구 호출과 연결된 실행                              |
 | **unknown** | 세션/턴 연결 자체가 없을 때만                                                                      |
 
-⚠ **이름에 user 가 들어가도 사람 입력이 아닌 것** (Event 로 만들면 과계수) ★  
+⚠ **이름에 user 가 들어가도 사람 입력이 아닌 것** (Event 로 만들면 과계수)  
 `response_item.message role=user` 2,968 · `role=developer` 815 (모델 입력 뷰) ·  
 `turn_context.user_instructions` 786 · `session_meta.base_instructions` 349 · `history.jsonl` 2,266
 
@@ -257,8 +257,8 @@ command 가 argv 배열↔문자열, `changes` 가 map↔배열, `cwd` 가 `file
 **그래서 구조 탐지(capability sniffing) 다** — 버전을 묻지 않고 "이 파일에 어떤 레코드가 있나"를
 보고 해당 파서를 전부 돌린 뒤 `id`/`call_id` 로 병합한다. 미지 구조는 `unsupported_schema` 로 표면화한다.
 
-**이 방식이 맞다는 증거** ★
-> 353파일 전량에서 **`unsupported_schema` 0건 · `actor` unknown 0건.**
+**이 방식이 맞다는 증거**
+> 353파일 전량에서 `unsupported_schema` 0건 · `actor` unknown 0건.
 > 접근이 틀렸다면 둘 중 하나는 0이 아니다 — 못 읽은 구조가 남거나, 주체를 못 정한 이벤트가 남는다.
 
 **복잡도는 한 곳에 갇혀 있다** — 새 era 가 나오면 **파서를 하나 더하면 되고** 판정 로직은 안 건드린다.
@@ -293,9 +293,9 @@ command 가 argv 배열↔문자열, `changes` 가 map↔배열, `cwd` 가 `file
 모바일 앱이 로컬 PC 의 CLI 에 **원격으로 연동될 때** 생기거나 값이 바뀌는 것만 싣는다.  
 앱을 그냥 쓸 때 생기는 기본 아티팩트는 **연동 판별에 쓰이는 경우에만** 등장한다.
 
-> **4칸 전부 실측했다** — Android×Claude · Android×Codex · iOS×Claude · iOS×Codex. ★
+> **4칸 전부 실측했다** — Android×Claude · Android×Codex · iOS×Claude · iOS×Codex.
 
-**전 시나리오 공통 결론 3개** ★★
+**전 시나리오 공통 결론 3개**
 
 1. **지시 "내용"의 증거는 로컬 PC 에만 있다.** 4칸 전부에서 폰 취득본 전수 검색 결과 지시 문구 **0건**.
   (예외 1건: Android×Codex 는 지시 **주제**가 디렉터리 슬러그로 △ 남는다)
@@ -306,7 +306,7 @@ command 가 argv 배열↔문자열, `changes` 가 map↔배열, `cwd` 가 `file
 
 ### 3.1.1 Android × Claude Code
 
-> **한 줄**: 폰의 **세션 ULID** 하나로 폰↔PC 가 결속되고, 판별은 로컬 JSONL 단독으로 끝난다. ★
+> **한 줄**: 폰의 **세션 ULID** 하나로 폰↔PC 가 결속되고, 판별은 로컬 JSONL 단독으로 끝난다.
 
 #### (1) 전체 사슬
 
@@ -361,7 +361,7 @@ remote/cowork/code 매칭 17건 중:
 | 로컬  | `sessions/<pid>.json` `bridgeSessionId`  | `session_<ULID>` |
 | 로컬  | 세션 JSONL `bridge-session`                | **`cse_<ULID>`** |
 
-→ **문자열 전체 일치 검색으로는 못 잇는다. ULID 본문으로 매칭해야 한다.**
+→ 문자열 전체 일치 검색으로는 못 잇는다. ULID 본문으로 매칭해야 한다.
 
 **시각 대조** (2회 독립 재현, 부호 일관):
 
@@ -372,7 +372,7 @@ remote/cowork/code 매칭 17건 중:
 
 2회 모두 폰 값이 뒤 → 단말 시계 오차가 아니라 **"프롬프트 전송 → 폰이 recap 갱신"** 순서의 반영 [INFERRED].
 
-> ⚠ **Android 에서 폰에 남는 시각은 "지시" 시각이다.** (iOS 는 반대 — §3.2.1 참조) ★  
+> ⚠ **Android 에서 폰에 남는 시각은 "지시" 시각이다.** (iOS 는 반대 — §3.2.1 참조)  
 > ⚠ **`recap_dismissed_at` 은 세션당 값 1개**다. 2차 지시가 1차 값을 덮어썼다.  
 > 폰 단독으로는 **몇 번 지시했는지 알 수 없다** — 횟수·순서는 로컬 JSONL 에만 있다.  
 > ⚠ 활성화만 하고 지시를 안 했을 때 `recap_dismissed_at` 이 생기는지는 **미검증** [HYPOTHESIZED].
@@ -398,10 +398,10 @@ remote/cowork/code 매칭 17건 중:
 
 위양성 검증 완료 — 로컬 조건 5회(유휴 4 · 작업 중 1) 어느 쪽도 `queued`+`human` 조합을 만들지 못했다.
 
-> ⚠ **`origin` 은 원격을 구분하지 못한다 — 구분하는 것은 `promptSource` 다.**  
+> ⚠ `origin` 은 원격을 구분하지 못한다 — 구분하는 것은 `promptSource` 다.  
 > `origin.kind`·`permissionMode`·`entrypoint`·`userType`·`cwd`·`version` 은 로컬/원격 동일.  
 > ⚠ 표본이 작다(원격 2 · 로컬 5)고 CLI `2.1.238`·`2.1.239` 레코드 형식에 의존한다.  
-> **1차 근거는 세션 단위 `bridge-session`, 메시지 단위 `promptSource` 는 보강**으로 쓰는 것이 안전하다.
+> 1차 근거는 세션 단위 `bridge-session`, 메시지 단위 `promptSource` 는 보강으로 쓰는 것이 안전하다.
 
 #### (6) 폰은 원격 지시 **내용**을 저장하지 않는다 ★
 
@@ -433,13 +433,13 @@ remote/cowork/code 매칭 17건 중:
 | 16:51:41.119 | 답변 `nonce: dc70739f…`                                     |
 
 표식 파일 SHA-256 `b8f370de…`.  
-→ **폰 지시 1건이 로컬에서 어떤 명령으로 실행됐는지 단일 표식으로 특정된다.** ★
+→ 폰 지시 1건이 로컬에서 어떤 명령으로 실행됐는지 단일 표식으로 특정된다.
 
 ---
 
 ### 3.1.2 Android × Codex (ChatGPT 앱)
 
-> **한 줄**: 내용과 출처가 **다른 파일**에 있고, 폰에는 **PC 프로젝트 구조가 평문 전파**된다. ★★
+> **한 줄**: 내용과 출처가 **다른 파일**에 있고, 폰에는 **PC 프로젝트 구조가 평문 전파**된다.
 
 #### (1) 전체 사슬
 
@@ -454,7 +454,7 @@ remote/cowork/code 매칭 17건 중:
     ECDSA P-256 공개키만               server{,/enroll,/refresh}
 ```
 
-⚠ **폰과 로컬이 서로 다른 엔드포인트를 쓴다** — 네트워크 탐지 규칙을 양쪽 따로 등록해야 한다. ★
+⚠ **폰과 로컬이 서로 다른 엔드포인트를 쓴다** — 네트워크 탐지 규칙을 양쪽 따로 등록해야 한다.
 
 #### (2) 전제 조건 — 벤더별로 다르다 ★
 
@@ -464,7 +464,7 @@ remote/cowork/code 매칭 17건 중:
 | 계정 인증 | 추가 인증 없음                     | **계정 MFA 필수** (미충족 시 enroll HTTP 403)                        |
 | 페어링   | 없음                           | `codex remote-control pair` — 코드 9자(`XXXX-XXXX`), **수명 10분** |
 
-→ **"이 머신이 Codex 원격제어 대상이 될 수 있었는가"는 설치 형태로 판정된다.**  
+→ "이 머신이 Codex 원격제어 대상이 될 수 있었는가"는 설치 형태로 판정된다.  
 standalone 은 정적 네이티브 바이너리라 **프로세스를 `node` 문자열로 찾으면 놓친다.**
 
 #### (3) 로컬 측 아티팩트
@@ -477,7 +477,7 @@ standalone 은 정적 네이티브 바이너리라 **프로세스를 `node` 문�
 | `logs_2.sqlite` `logs`                        | 엔드포인트·`installation_id`·호스트명·재연결 백오프·**소스 파일 경로**까지 평문 (**WAL 모드 — `-wal`·`-shm` 동반 필수**)                                              |
 | `sessions/**/rollout-*.jsonl`                 | 지시 문구·실행 명령·응답 전문 (**출처 필드는 없음**)                                                                                                      |
 
-> **Claude 와의 정보량 차이** ★: Claude 는 **세션 단위**(세션마다 브리지 ID), Codex 는 **호스트 단위**  
+> **Claude 와의 정보량 차이**: Claude 는 **세션 단위**(세션마다 브리지 ID), Codex 는 **호스트 단위**  
 > (데몬 1개에 불리언 1개) → `settings.json` 만으로는 **어느 세션이 원격 노출됐는지 알 수 없다.**
 
 #### (4) 같은 이름의 서버가 둘 등록된다 ★
@@ -526,14 +526,14 @@ C:\Users\<user>\Documents\Codex\2026-08-22\tmp-agentrace-marker-txt-nonce
   ← 원격 지시 "/tmp/AGENTRACE-MARKER.txt … nonce …" 의 슬러그화
 ```
 
-→ **nonce 값·지시 원문은 0건이지만 지시의 주제는 복원된다.** (관측 45)  
+→ nonce 값·지시 원문은 0건이지만 지시의 주제는 복원된다. (관측 45)  
 → ⚠ **iOS 에는 이 필드가 없다** (§3.2.2).
 
 #### (7) ★ 장치 개인키만은 비추출 — "루팅 = 전량 획득"은 과장이다
 
 `protection_class: os_protected_nonextractable`.  
 개인키는 AndroidKeyStore(TEE/StrongBox)에 있고 파일에는 **공개키만** 있다.  
-→ **확인된 범위에서 유일하게 "루팅해도 못 뽑는" 아티팩트.**
+→ 확인된 범위에서 유일하게 "루팅해도 못 뽑는" 아티팩트.
 
 #### (8) 원격 판별자 — `client_name` (내용과 **다른** DB) ★★
 
@@ -546,11 +546,11 @@ C:\Users\<user>\Documents\Codex\2026-08-22\tmp-agentrace-marker-txt-nonce
 
 `turn/start` RPC 의 `connection_id` 를 `client_name` 에 **조인**해 판정한다.
 
-> **구현 주의** ★: 최근 RPC 몇 건만 표본으로 보면 `codex-tui` 의 `plugin/list` 노이즈에 묻혀  
+> **구현 주의**: 최근 RPC 몇 건만 표본으로 보면 `codex-tui` 의 `plugin/list` 노이즈에 묻혀  
 > `codex_chatgpt_android_remote` 를 놓친다. 해법은 `turn/start` 필터가 아니라 **연결별로 묶는 것**이다 —  
 > connection 0 에 tui 노이즈가 아무리 많아도 connection 4 는 오염되지 않는다.
 > **`client_name` 문자열에 OS 가 박혀 있다** → 로컬 로그만으로 **조작자가 쓴 단말 OS 까지 특정된다.**  
-> Claude 에는 이 축이 없다. ★
+> Claude 에는 이 축이 없다.
 
 **부가 판별자**: Codex 원격 턴은 `request_id` 가 **UUID 문자열**, 로컬 TUI 는 **정수 증가**다.  
 `turn/started` 는 `targeted_connections=2` 로 TUI 와 폰에 동시 방송된다.
@@ -565,8 +565,8 @@ C:\Users\<user>\Documents\Codex\2026-08-22\tmp-agentrace-marker-txt-nonce
 | 지시 문구·실행 명령·응답 | `~/.codex/sessions/**/rollout-*.jsonl`   |
 | **원격/로컬 출처**   | `~/.codex/logs_2.sqlite` (`client_name`) |
 
-→ **rollout 만 확보하면 "누가 지시했는지" 판정 불가.**  
-Claude 는 세션 JSONL 하나에 내용과 출처가 모두 있었다 — **취득 요건이 벤더별로 다르다.** ★
+→ rollout 만 확보하면 "누가 지시했는지" 판정 불가.  
+Claude 는 세션 JSONL 하나에 내용과 출처가 모두 있었다 — **취득 요건이 벤더별로 다르다.**
 
 #### (10) 사슬 완성 — 표식 파일 실험
 
@@ -577,13 +577,13 @@ Claude 는 세션 JSONL 하나에 내용과 출처가 모두 있었다 — **취
 | 15:40:02 | `task_complete.last_agent_message` = **`nonce: dc70739f…`** (28.0초) |
 
 **부수 관측**: 실행 전 `SKILL.md`·`RTK.md` 를 읽었다  
-→ **원격 지시도 로컬 에이전트 설정(AGENTS.md·스킬·프록시)을 그대로 상속한다.** ★
+→ 원격 지시도 로컬 에이전트 설정(AGENTS.md·스킬·프록시)을 그대로 상속한다.
 
 ---
 
 ## 3.2 iOS
 
-**Android 와 결정적으로 다른 점 3가지** ★★
+**Android 와 결정적으로 다른 점 3가지**
 
 1. **비탈옥 단말에서 평문 백업만으로 취득된다** — 루팅/탈옥 불필요
 2. **앱 번들 `Info.plist` 만으로 원격 기능 보유가 판정된다** — 백업조차 불필요, **취득 난이도 최저**
@@ -602,12 +602,12 @@ Claude 는 세션 JSONL 하나에 내용과 출처가 모두 있었다 — **취
 | 계정 특정              | 가능                                                                                           | **가능** (파일명·디렉터리명·`workspaceID`) |
 | 인증 자격 재사용          | 가능                                                                                           | **불가**                           |
 
-> **평문 백업만으로: "누구의 계정인가" 완전 특정 · "인증 자격을 재사용" 불가.**  
-> **이것이 평문 vs 암호화 백업의 실질 경계선이다.** ★
+> 평문 백업만으로: "누구의 계정인가" 완전 특정 · "인증 자격을 재사용" 불가.  
+> 이것이 평문 vs 암호화 백업의 실질 경계선이다.
 > 차이: Claude 는 **email 이 평문**, ChatGPT 는 email 이 없는 대신  
 > **장기 만료 식별자 쿠키**가 많다 (`Cookies.binarycookies` 18개 — `_puid`·`oai-did`(~~2027)·`oai-sc`(~~2027)·`_devicecheck`).
 > ⚠ 이것은 **취득 경계선**의 기술이지 제품의 보안 결함 주장이 아니다.  
-> ⚠ **백업 암호화가 켜져 있으면 키체인이 백업에 포함되므로 이 결론은 뒤집힐 수 있다 — 미검증.**(§7.1)
+> ⚠ 백업 암호화가 켜져 있으면 키체인이 백업에 포함되므로 이 결론은 뒤집힐 수 있다 — 미검증.(§7.1)
 
 **iOS 앱 entitlement**
 
@@ -620,7 +620,7 @@ keychain-access-groups
 ### 3.2.1 iOS × Claude Code
 
 > **한 줄**: 앱이 **자기 Info.plist 로 원격제어 기능을 진술**하고, 승인은 파일이 아니라  
-> **Manifest 메타데이터(inode·Birth)** 로만 남는다. ★★
+> Manifest 메타데이터(inode·Birth) 로만 남는다.
 
 #### (1) 앱 설치 즉시 — 백업·로그인 불필요 ★★
 
@@ -632,7 +632,7 @@ keychain-access-groups
 | `NSUserActivityTypes`      | `['com.anthropic.claude.code.session']`                           | VR-034 |
 | 확장 번들                      | `AppDomainPlugin-com.anthropic.claude.**CCRNotificationContent`** | VR-033 |
 
-→ **앱이 자기 입으로 원격제어 세션 보유와 생체인증 게이트를 진술한다.**  
+→ 앱이 자기 입으로 원격제어 세션 보유와 생체인증 게이트를 진술한다.  
 → ⚠ **Android 대응 관측 없음 — 미측정.** (`dumpsys package` 로 확인된 것은 `ALLOW_BACKUP` 계열뿐)
 
 #### (2) 앱 최초 실행 — 로그인 불필요 ★
@@ -648,11 +648,11 @@ keychain-access-groups
 | `CCR_PERMISSION_PROMPT_DENY_ONLY` · `CCR_PERMISSION_SEND_FAILURE` | VR-038 |
 | 키 `AuthenticationRequired` · `Destructive` · `Foreground`         | VR-038 |
 
-> **소재지가 `AppDomain` 이 아니라 `HomeDomain` 이다** ★ — 앱 컨테이너를 못 얻어도  
+> **소재지가 `AppDomain` 이 아니라 `HomeDomain` 이다** — 앱 컨테이너를 못 얻어도  
 > 시스템 알림 레지스트리만으로 "이 단말이 원격제어 **승인 프롬프트**를 등록했다"가 선다.
 > ⚠ **로그인 단계가 아니다.** `Categories.plist` Birth = 18:14:37 로 **최초 실행** 산물이고,  
 > 계정이 박힌 최초 로그인 산물(`WebsiteDataStore/<account_uuid>/` 18:15:21)보다 **44초 앞선다.**  
-> → **역방향 함의: 이 카테고리의 존재는 계정 로그인을 입증하지 않는다.** (VR-038 정정)
+> → 역방향 함의: 이 카테고리의 존재는 계정 로그인을 입증하지 않는다. (VR-038 정정)
 
 #### (3) 로그인 후 — 피처플래그 평가 로그 (평문 JSONL, **휘발성**)
 
@@ -668,8 +668,8 @@ keychain-access-groups
 
 각 행에 **밀리초 절대시각 UTC** + 기기식별자. 디렉터리명이 `org_uuid` 라 **조직 귀속이 경로에 박힌다.** (VR-039)
 
-> ⚠ **휘발성** ★: 백업 bk-04 에 2,011B 로 있다가 **11분 뒤 소멸**했다(서버 전송 후 버퍼 비움).  
-> **단발 취득으로 "없다"를 부재로 단정하면 안 된다.** (VR-044)
+> ⚠ **휘발성**: 백업 bk-04 에 2,011B 로 있다가 **11분 뒤 소멸**했다(서버 전송 후 버퍼 비움).  
+> 단발 취득으로 "없다"를 부재로 단정하면 안 된다. (VR-044)
 > ⚠ Android `cache.json` 이 **서버가 내려준 인가 상태**인 것과 달리 이쪽은 **클라이언트 피처플래그 평가**다.  
 > 같은 "기능 보유"로 뭉뚱그리면 안 된다.
 
@@ -688,14 +688,14 @@ keychain-access-groups
        Anthropic-Has-Seen-Cowork-Dispatch-Feature · -Starter = true
 ```
 
-⚠ **`Anthropic-` 접두사를 빼면 grep 이 안 걸린다.** ★
+⚠ `Anthropic-` 접두사를 빼면 grep 이 안 걸린다.
 
 |                    | 폰에 남는 시각의 정체                                                                      | 근거         |
 | ------------------ | --------------------------------------------------------------------------------- | ---------- |
 | **iOS Claude**     | **활성화** 시각 — 세션 시작 18:18:52 → 푸시 기록 18:18:59.920. 첫 지시(18:23:12)보다 **4분 13초 앞선다** | VR-042     |
 | **Android Claude** | **지시** 시각 — `recap_dismissed_at` 이 로컬 프롬프트와 +0.973 / +2.275초 (2회 재현)              | VR-003·006 |
 
-→ **iOS 는 지시를 한 번도 안 보내도 폰에 `session_id` 가 남는다.** ★
+→ iOS 는 지시를 한 번도 안 보내도 폰에 `session_id` 가 남는다.
 
 `com.anthropic.claude.plist` 의 상태 플래그도 **지시 이전 산물**이다 — 기록 시각 18:23:02 로  
 첫 지시 투입(18:23:10.796)보다 **8.8초 앞선다.** 폰 앱 포그라운드 재개는 18:22:52.06(`appLastResumedAt`).  
@@ -722,12 +722,12 @@ keychain-access-groups
 | `selectedEnvironment` **null → {environmentId:…, kind:anthropic_cloud, state:active}** | VR-043 |
 | `AppDomain-<번들ID>/Library/LanguageModeling/` **birth = 입력 시작 시각**                      | §4.3   |
 
-**입력 행위의 흔적** ★ — 지시 #3 사례: `LanguageModeling` birth 18:30:36 → 지시 전송 18:30:54 → 승인 18:31:14.  
+**입력 행위의 흔적** — 지시 #3 사례: `LanguageModeling` birth 18:30:36 → 지시 전송 18:30:54 → 승인 18:31:14.  
 **지시보다 18초, 승인보다 38초 이르다** → 실행 결과가 아니라 **입력 행위**의 흔적이다.  
 ⚠ 키보드 학습 DB(`KeyboardDomain/…/user_model_database.sqlite`)는 앱 무관 입력에도 갱신되고  
 대조군(무입력 구간)이 없어 인과는 **[INFERRED]**. Codex 원격 지시에는 대응 갱신이 **없어** 보편 지표가 아니다.
 
-⚠ **`account.<uuid>.plist` 의 개별 키는 "활성화"와 "지시"로 분류 불가**다.  
+⚠ `account.<uuid>.plist` 의 개별 키는 "활성화"와 "지시"로 분류 불가다.  
 파일 mtime 18:26:32 은 cfprefsd 지연 플러시이고 내부 최신 타임스탬프는 18:22:53 이라  
 **가능 창이 [18:22:52, 18:26:32]** 로 원격 지시 2회와 그 이전 UI 조작을 모두 포함한다 **[INFERRED]**.
 
@@ -748,9 +748,9 @@ Read  (자동승인)   0.053s
 Write (폰 승인)   17.794s      ← 2~3자릿수 차이
 ```
 
-> **바이트가 같아도 그 시각에 앱이 동작했다는 증거가 Manifest 에 남는다.** ★★  
+> 바이트가 같아도 그 시각에 앱이 동작했다는 증거가 Manifest 에 남는다.  
 > `Birth` 와 `inode` 가 함께 바뀌는 것은 임시파일 후 rename 하는 **원자적 교체(NSUserDefaults flush)의 서명**이다.  
-> **파일 해시만 비교하는 차분은 이 활동을 전부 놓친다.** (VR-046)
+> 파일 해시만 비교하는 차분은 이 활동을 전부 놓친다. (VR-046)
 > ⚠ 같은 세션 1회 관측 (자동승인 3건 vs 폰 승인 1건). 반복·다른 툴·다른 네트워크 조건 **미검증**.  
 > ⚠ **`permission-mode` 레코드는 승인 시각 추정에 쓸 수 없다.** timestamp 필드가 **없고**,  
 > 파일 내 위치는 18:26:14 지시 블록 — 승인 턴(18:30:54~18:31:14)보다 **4분 40초 이르다.**  
@@ -765,7 +765,7 @@ bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건
 ### 3.2.2 iOS × Codex (ChatGPT 앱)
 
 > **한 줄**: **blob 없이 경로 문자열만으로** 계정·기능이 특정되고,  
-> **페어링만으로 폰이 PC 파일을 읽는다.** ★★
+> **페어링만으로 폰이 PC 파일을 읽는다.**
 
 #### (1) 앱 설치 즉시 — 번들 ID 부터 다르다 ★
 
@@ -787,7 +787,7 @@ bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건
        승인 액션 mfa_push_auth → authChallengeApprove / authChallengeDeny
 ```
 
-> ⚠ **Codex 의 승인 액션은 도구 실행 승인이 아니라 계정 MFA 용이다.** ★  
+> ⚠ Codex 의 승인 액션은 도구 실행 승인이 아니라 계정 MFA 용이다.  
 > Claude 의 `CCR_APPROVE`/`CCR_DENY` 와 **같은 것으로 읽으면 틀린다.**  
 > "이 단말이 원격 도구실행 승인 프롬프트를 등록했다"고 말할 수 있는 쪽은 **Claude 뿐**이다.
 
@@ -798,7 +798,7 @@ bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건
        codex-profile-ua-<deviceID>__default/  18:45:57
 ```
 
-⚠ **`-default` 판은 계정 특정 근거가 아니다. 로그인 없이도 생긴다.** ★  
+⚠ `-default` 판은 계정 특정 근거가 아니다. 로그인 없이도 생긴다.  
 (ChatGPT 최초실행 18:45:47 vs 로그인 18:46:38 — Claude 와 같은 패턴)
 
 #### (3) 로그인 후 — ★ 경로 문자열만으로 판정된다
@@ -811,8 +811,8 @@ bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건
        codex-taskDetails-v1-<accountID>/
 ```
 
-> **blob 없이 `Manifest.db` 의 `relativePath` 문자열만으로도**  
-> "이 계정에 Codex 원격 호스트 기능이 준비됐다"가 성립한다. (VR-054) ★★
+> blob 없이 `Manifest.db` 의 `relativePath` 문자열만으로도  
+> "이 계정에 Codex 원격 호스트 기능이 준비됐다"가 성립한다. (VR-054)
 
 #### (4) ★★ Android 와 정반대 — Android 는 아무것도 안 생긴다
 
@@ -822,7 +822,7 @@ bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건
 ```
 
 **iOS 가 로그인만으로 `codex-*` 골격을 만드는 것과 정반대다.** (관측 30·62)  
-→ 발표 포인트: **같은 벤더·같은 기능인데 플랫폼별 잔존물이 비대칭이다.**
+→ 발표 포인트: 같은 벤더·같은 기능인데 플랫폼별 잔존물이 비대칭이다.
 
 #### (5) 페어링 — 호스트 메타가 내려온다
 
@@ -835,7 +835,7 @@ bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건
        workspace-data/<userID>__<accountID>/codex-remote-message-drafts/   ← birth = 페어링 시각
 ```
 
-⚠ **iOS 에는 `remembered_working_directories_by_host` 가 없다** — Android 의 최대 유출 경로가 iOS 에는 없다. ★  
+⚠ **iOS 에는 `remembered_working_directories_by_host` 가 없다** — Android 의 최대 유출 경로가 iOS 에는 없다.  
 `response.json` 은 호스트 1건의 메타만 담는다.
 
 #### (6) ★★ 페어링은 연결 수립이 아니라 **열람 개시**다
@@ -852,7 +852,7 @@ collaborationMode/list 2 · thread/goal/get 2 · fs/readFile 2
 **`fs/readFile` 2건 — 폰이 로컬 파일을 읽었다.**  
 **읽은 경로는 로그에 남지 않는다** [OBSERVED].
 
-> **포렌식 함의** ★: 로컬 `logs_2.sqlite` 에 `thread/resume` 폭주 구간이 있으면 그 시각이 페어링 시점이고,  
+> **포렌식 함의**: 로컬 `logs_2.sqlite` 에 `thread/resume` 폭주 구간이 있으면 그 시각이 페어링 시점이고,  
 > **사용자 지시가 없어도 열람은 일어난 것이다.**
 
 #### (7) 원격 지시 — 로컬에 디렉터리가 생긴다 (iOS 특이) ★
@@ -863,7 +863,7 @@ collaborationMode/list 2 · thread/goal/get 2 · fs/readFile 2
 ```
 
 경로의 날짜는 **실행일이 아니라 스레드 생성일**이라 디렉터리 mtime 과 어긋난다 —  
-**그 불일치 자체가 "오래된 스레드를 나중에 원격으로 이어받았다"는 지시자다.** (VR-059) ★
+**그 불일치 자체가 "오래된 스레드를 나중에 원격으로 이어받았다"는 지시자다.** (VR-059)
 
 ⚠ **Android 원격 턴에서는 생성되지 않는다** — iOS 클라이언트 특이 동작이다.
 
@@ -874,7 +874,7 @@ collaborationMode/list 2 · thread/goal/get 2 · fs/readFile 2
 | 신규 실파일 **0건**                                                                                                           | VR-060    |
 | 단 `workspace-data/<userID>__<accID>/codex-remote-message-drafts/` **mtime 18:52:27 → 18:55:25** (원격 턴 +2초, **내용 0바이트**) | VR-060 정정 |
 
-> **한 경로에서 birth 와 mtime 이 서로 다른 행위를 가리킨다** ★★ —  
+> 한 경로에서 birth 와 mtime 이 서로 다른 행위를 가리킨다 —  
 > `codex-remote-message-drafts` 의 **birth 는 페어링**, **mtime 은 원격 지시**다.  
 > **blob 만 보면 둘 다 놓친다.**
 
@@ -885,7 +885,7 @@ collaborationMode/list 2 · thread/goal/get 2 · fs/readFile 2
 그러나 **Android 원격 턴은 로컬 턴과 완전히 동일**하다.
 
 > 이 차이는 "원격"의 표지가 아니라 **iOS 앱 클라이언트가 보내는 turn 옵션의 부산물**이다.  
-> **이걸로 출처를 판정하면 Android 원격을 로컬로 오분류한다.** (VR-058) ★★
+> 이걸로 출처를 판정하면 Android 원격을 로컬로 오분류한다. (VR-058)
 
 **정답은 §3.1.2(8) 과 동일** — `logs_2.sqlite` `client_name` = `codex_chatgpt_ios_remote`.
 
@@ -909,7 +909,7 @@ nonce · 지시문 · 스레드ID 검색 → **0건** (VR-060).
 | **Claude** | 로컬 세션 JSONL (**내용과 같은 파일**)        | `promptSource:"queued"` ∧ `origin.kind:"human"` = **원격** `promptSource:"typed"` = 로컬 터미널 + 선행 `queue-operation` `enqueue`→`dequeue` | VR-008·041 |
 | **Codex**  | 로컬 `logs_2.sqlite` (**내용과 다른 파일**) | `app_server.client_name` = `codex_chatgpt_ios_remote` / `codex_chatgpt_android_remote` / `codex-tui`                                | VR-027·055 |
 
-**Codex 만 조작자의 단말 OS 까지 특정된다** (문자열에 `ios`/`android` 가 박혀 있음). ★  
+**Codex 만 조작자의 단말 OS 까지 특정된다** (문자열에 `ios`/`android` 가 박혀 있음).  
 **Claude 에는 그 축이 없다.**
 
 **취득 요건이 다르다**: Claude = 세션 JSONL **1개** / Codex = rollout + `logs_2.sqlite` **2개**.
@@ -940,13 +940,13 @@ nonce · 지시문 · 스레드ID 검색 → **0건** (VR-060).
 | **환경** (Codex)  | `saved_hosts[].id` · `response.json.env_id`                                 | `state_5.sqlite` `environment_id`                        |
 | **기기**          | Android `global_device_uuid.json` · iOS `Anthropic-Device-ID`               | —                                                        |
 
-★ **`environment_id` 는 두 기기에서 동일했다** — 갤럭시 `default_session_target.environment_id`  
+- **`environment_id` 는 두 기기에서 동일했다** — 갤럭시 `default_session_target.environment_id`  
 = 아이폰 `selectedEnvironment.environmentId`. **계정 축과 독립된 결속 키**이며 **같은 계정의 서로 다른 단말을 묶는다.**
 
-★ **식별자는 파일명·디렉터리명에도 중복된다** (`account.<uuid>.plist` · `exposures/<org_uuid>/` · `codex-*-<accID>/`)  
+- **식별자는 파일명·디렉터리명에도 중복된다** (`account.<uuid>.plist` · `exposures/<org_uuid>/` · `codex-*-<accID>/`)  
 → **blob 없이 `Manifest.db` 경로 문자열만으로 계정·조직 특정이 가능**하고, **한 파일을 지워도 재구성된다.** (VR-040)
 
-★ `account_id`/`accountUuid` 는 **재로그인·MFA 변경을 넘어 불변** → 안정적 앵커.  
+- `account_id`/`accountUuid` 는 **재로그인·MFA 변경을 넘어 불변** → 안정적 앵커.  
 세션 ULID 는 세션마다 바뀌므로 **세션 단위 대조**에 쓴다.
 
 ⚠ Codex 는 폰 타임스탬프가 **실행 호스트를 오지시**하므로 시각 대조에 쓸 수 없다 (VR-029).
@@ -970,13 +970,13 @@ nonce · 지시문 · 스레드ID 검색 → **0건** (VR-060).
 | 11  | **해석오류** | 캐시된 메시지는 **활성 분기만** — 편집·재생성으로 버려진 분기는 없다                                                  |
 | 12  | **탐지누락** | 승인은 **파일 해시가 안 바뀐다** — inode·Birth 를 안 보면 전부 놓친다                                           |
 
-> **결론 문구** ★: 설정 파일·DB 행은 **"설정된 적 있음"까지만** 말한다.  
-> **실제 가용 구간과 실행 주체는 로그로만 확정된다.**
+> **결론 문구**: 설정 파일·DB 행은 **"설정된 적 있음"까지만** 말한다.  
+> 실제 가용 구간과 실행 주체는 로그로만 확정된다.
 
 **방법론 검증 사례** — 표식 파일(nonce)이 설계 목적을 넘어 작동했다.  
 Android×Codex 1차 시도에서 지시가 **의도한 WSL 이 아니라 Windows Desktop 으로 갔는데**,  
 nonce 가 돌아오지 않은 것이 그 사실을 즉시 드러냈다.  
-이 검출이 없었다면 **"Codex 원격제어로 로컬 명령 실행 확인"이라는 오결론**을 낼 뻔했다. ★
+이 검출이 없었다면 **"Codex 원격제어로 로컬 명령 실행 확인"이라는 오결론**을 낼 뻔했다.
 
 ---
 
@@ -985,9 +985,8 @@ nonce 가 돌아오지 않은 것이 그 사실을 즉시 드러냈다.
 ## 6.1 이 결과가 당장 쓰이는 곳
 
 **① "사람이 했나 AI가 했나"에 파일 근거로 답한다**
-CLI 에이전트가 낀 사건에서 지금까지는 이 질문에 답할 방법이 없었다. 로그를 열어도 사용자 입력과
-에이전트 실행이 같은 스트림에 섞여 있기 때문이다. 이 연구는 그 경계를 레코드 수준에서 그었고
-(§2.2.5), 실데이터 37,090건에서 **주체 미상 0건**으로 끝났다.
+로그를 열어도 사용자 입력과 에이전트 실행이 같은 스트림에 섞여 있어 눈으로는 갈리지 않는다.
+그 경계를 레코드 수준에서 그었고(§2.2.5), 실데이터 37,090건에서 **주체 미상 0건**으로 끝났다.
 
 **② 압수 현장에서 무엇을 확보할지 즉시 결정된다**
 경로 색인(§8)이 그대로 체크리스트가 된다. 특히 **Codex 는 rollout 과 `logs_2.sqlite` 를 둘 다
@@ -1005,24 +1004,24 @@ CLI 에이전트가 낀 사건에서 지금까지는 이 질문에 답할 방법
 
 ## 6.2 수사 실무의 전제가 바뀐다
 
-**"이 PC 앞에 앉아 있었다"가 더 이상 전제가 아니다** ★
+**"이 PC 앞에 앉아 있었다"가 더 이상 전제가 아니다**
 원격제어가 열린 순간 물리적 알리바이와 디지털 행위가 분리된다. PC 에 남은 명령 실행 기록이
 그 자리에 있던 사람의 것이라는 보장이 사라진다. 판별자(§4.1)는 이 분리를 되돌리는 축이고,
 **Codex 는 조작자가 쓴 단말 OS 까지 특정된다**(`client_name` 에 `ios`/`android` 가 박힌다).
 
-**폰 하나로 PC 의 프로젝트 구조가 드러난다** ★
+**폰 하나로 PC 의 프로젝트 구조가 드러난다**
 Android×Codex 는 페어링 1회로 PC 작업 디렉터리 26건이 폰에 평문 전파된다(§3.1.2(6)).
 사용자가 그 경로를 폰에서 연 적이 없어도 내려온다. **압수 범위를 폰으로 한정해도 PC 의 연구 주제·
 학회명·도구 구성이 노출된다** — 영장 범위를 설계할 때 고려해야 할 사실이다.
 
-**평문 백업의 경계선이 그어졌다**
+**평문 백업이 어디까지 닿는지 선이 그어졌다**
 iOS 평문 백업은 **계정을 완전히 특정하지만 인증 자격은 재사용하지 못한다**(§3.2.0).
 "백업만 확보하면 계정에 들어갈 수 있다"는 통념과 다르고, 암호화 백업을 추가로 요구할지 판단하는
 실무 기준이 된다.
 
 **표준 절차를 벤더 단위로 나눠야 한다**
 Claude 는 세션 JSONL 1개, Codex 는 rollout + SQLite 2개. Android 는 권한상승, iOS 는 백업.
-**하나의 절차서로 네 조합을 덮을 수 없다**는 것이 이 연구의 구조적 결론이다.
+**하나의 절차서로 네 조합을 덮을 수 없다.**
 
 ## 6.3 이어서 할 수 있는 것
 
@@ -1071,7 +1070,9 @@ Claude 는 세션 JSONL 1개, Codex 는 rollout + SQLite 2개. Android 는 권�
 
 ---
 
-# 8. 경로 색인 — 패널·발표 부록 1장
+# 8. 경로 색인 — 패널·발표 부록 1장 ★
+
+아래 블록 안의 `★` 는 **그 경로가 핵심**이라는 표시다 (절 제목의 ★ 와는 쓰임이 다르다).
 
 ## [로컬] PC
 
@@ -1146,11 +1147,11 @@ AppDomain-com.openai.chat/                                            ⚠번들I
 | 정확도 (합성 통제, 각 100건) | 주체 식별 **100.0%** · 접근 파일 **100.0%** · MCP 호출 **100.0%** |
 
 > **수치는 계속 자란다** — 하루 사이 rollout 344→353, 이벤트 30,232→37,090 으로 변했다.  
-> **인쇄물에는 동결 시각을 각주로 반드시 적는다.**  
+> 인쇄물에는 동결 시각을 각주로 반드시 적는다.  
 > 재확인: `python3 -m pytest tests/test_panel_numbers.py -q -s`  
 > `manifest N파일` 은 SQLite 사이드카 체크포인트에 따라 변동하므로 **인쇄하지 않는다.**
 
-⚠ **100% 가 가리는 것** ★  
+⚠ **100% 가 가리는 것**  
 ① shell redirection 파일 작성은 원리상 확정 불가 (후보로만 표면화)  
 ② **Codex 에는 범용 파일 읽기 레코드가 없다** — `action=read` 는 이미지 열람뿐이라  
 　Claude 의 접근파일 정확도와 **나란히 놓으면 안 된다**  
