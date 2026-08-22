@@ -18,6 +18,7 @@
 - **`정확도-검증-시나리오.md`** — 주체식별·접근파일·MCP호출 정확도 자동 검증(각 100건).
 - **`Codex-정확도-측정결과.md`** — 그 3시나리오의 Codex 측정 결과(수치 + 못 재는 것).
 - **`유출시나리오-재현.md`** — 유출 A/B 두 결론 재현 데이터셋(발표 데모·패널 ④ 화면).
+- **`origin-channel-원격지시-판별.md`** — 폰 지시 vs 로컬 타이핑 판별 규칙과 실측 분포.
 - **`논문대비-신규발견.md`** — 자기 PC에서 표 채우기(교차확인).
 - **`발표-가이드라인.md`** — 발표 자료.
 
@@ -33,6 +34,7 @@
 | `정확도-검증-시나리오.md` | 정확도 자동 검증 3시나리오(주체식별·접근파일·MCP호출, 각 100건) — 합성 transcript→1:1 비교 (발표용) |
 | `Codex-정확도-측정결과.md` | Codex 정확도 측정 결과 3시나리오×100건 — era 균형 근거·수치·못 재는 것(shell redirect·read 레코드 부재·item era MCP 공백) |
 | `유출시나리오-재현.md` | 유출 A/B 두 결론 재현(사용자 직접 vs 에이전트 자율) — Claude·Codex 동일 결론·시연 화면 수치·공개 캡처 주의 |
+| `origin-channel-원격지시-판별.md` | `meta.origin_channel` 원격/로컬 판별 — Claude promptSource·Codex logs_2 연결 조인·실데이터 분포·해상도 한계 |
 | `발표-가이드라인.md` | 발표 흐름·주의 (팀원) |
 | `superpowers/specs/2026-06-17-clfx-mvp-design.md` | clfx MVP 설계 스펙 (파싱·분석·질의 확정안) |
 | `superpowers/plans/2026-06-17-clfx-mvp.md` | clfx MVP 상세 구현 플랜 (Task 0~14 TDD, 실코드 포함) |

@@ -16,6 +16,31 @@ PREVIEW_MAX = 4000
 # 파서는 [Image #1]부터 매기므로 #0은 placeholder 아님(사용자 텍스트 → prompt).
 _IMAGE_PLACEHOLDER = re.compile(r"^\s*\[Image #[1-9]\d*\]\s*$")
 
+# 원격(폰) 지시와 로컬 타이핑을 가르는 조합. Android 실측(SM-A235N · Claude Code 2.1.238)에서
+# queued ∧ human 이 위양성 없이 원격만 잡는 것으로 검증됐다.
+# origin.kind 가 없는 구버전 레코드는 절반의 근거뿐이라 판정하지 않는다 — local 폴백 금지.
+_REMOTE_PROMPT_SOURCE = "queued"
+_LOCAL_PROMPT_SOURCE = "typed"
+
+
+def _origin_channel(o):
+    """promptSource ∧ origin.kind → remote | local | unknown. 판정 대상이 아니면 None(필드 생략).
+
+    None(생략)과 "unknown"은 다르다: 생략은 '판정 대상 레코드가 아님', unknown은 '봤는데 못 가림'.
+    어느 쪽도 local 을 의미하지 않는다."""
+    prompt_source = o.get("promptSource")
+    if prompt_source is None:
+        return None
+    origin = o.get("origin")
+    kind = origin.get("kind") if isinstance(origin, dict) else None
+    if kind != "human":                       # sdk/system/task-notification, origin 없는 구버전
+        return "unknown"
+    if prompt_source == _REMOTE_PROMPT_SOURCE:
+        return "remote"
+    if prompt_source == _LOCAL_PROMPT_SOURCE:
+        return "local"
+    return "unknown"                          # suggestion_accepted 등 — 사람이지만 경로 미확정
+
 
 def clip(s):
     if s is None:
@@ -110,6 +135,9 @@ def _transcript_events_from(records, agent):
             # content 파트를 원래 순서대로 순회 → caption↔image 순서 보존.
             # image → paste([Image #N], N은 이미지에만 증가). 실제 text → prompt.
             # 빈/공백 text, 이미지 placeholder("[Image #N]")는 미발행(노이즈·중복 방지).
+            # 지시가 폰에서 왔는지 로컬 타이핑인지는 이 레코드에만 있다(실행 Event엔 없다).
+            channel = _origin_channel(o)
+            meta = {"origin_channel": channel} if channel else {}
             img_n = 0
             for part in content:
                 if not isinstance(part, dict):
@@ -128,6 +156,7 @@ def _transcript_events_from(records, agent):
                         target=f"[Image #{img_n}]",
                         preview=f"<image:{media}>",
                         source=s,
+                        meta=dict(meta),
                     )
                 elif ptype == "text":
                     txt = clip(part.get("text"))   # clip이 None/비-str → ""/str 정규화
@@ -142,6 +171,7 @@ def _transcript_events_from(records, agent):
                         target="",
                         preview=txt,
                         source=s,
+                        meta=dict(meta),
                     )
 
         elif typ == "assistant":
@@ -206,7 +236,11 @@ def _transcript_events(src):
                 parser.feed(rec)
             yield from parser.finish()
         return
-    yield from _transcript_events_from(src.transcript_records(), src.agent)
+    # 파일 단위로 parse_file 을 거친다 — bridge-session 같은 파일 스코프 후처리를 CLI(parse_source)와
+    # 대시보드(api/wsl_helper)가 똑같이 받게 하려는 것. 두 진입점이 다른 meta 를 내면 그게 결함이다.
+    for path in src.transcript_files():
+        events, _, _ = parse_file(src, path, False)
+        yield from events
 
 
 def _is_bypass_record(o):
@@ -215,13 +249,24 @@ def _is_bypass_record(o):
             and o.get("permissionMode") == "bypassPermissions" and o.get("sessionId"))
 
 
+def _bridge_session(o):
+    """bridge-session 레코드 → (sessionId, bridgeSessionId). 아니면 None.
+
+    같은 세션을 가리키는 ID가 계층마다 접두사가 다르다(로컬 uuid vs 브리지 `cse_…`).
+    잇는 키는 **레코드 자신의 sessionId** 다 — 접두사 문자열끼리 비교하면 안 된다."""
+    if not (isinstance(o, dict) and o.get("type") == "bridge-session"):
+        return None
+    session, bridge = o.get("sessionId"), o.get("bridgeSessionId")
+    return (session, bridge) if session and bridge else None
+
+
 def parse_file(src, path, is_history):
     """단일 파일 1회 읽기 → (events, bypass_sids, sha256_hex). transcript면 같은 레코드서 bypass
     sessionId도 수집(enrich 2차 재읽기 제거). 레코드 단위 무상태 → 파일 병렬 안전.
     B-1: sha256_hex = 그 단일 읽기서 누적한 raw 파일 바이트 SHA-256(64-hex 소문자, 추가 읽기 0).
     파일을 못 열어 yield가 없으면 sha=None. RawRecord는 파일 전체를 보관하지 않는다."""
     sha_holder = {}                             # 호출자 소유 → src 공유상태 없이 스레드 분리(병렬 안전)
-    events, bypass = [], set()
+    events, bypass, bridges = [], set(), {}
     codex = CodexFileParser(src) if src.agent == "codex" and not is_history else None
     for rec in src._iter_jsonl(path, sha_out=sha_holder):
         if is_history:
@@ -232,6 +277,13 @@ def parse_file(src, path, is_history):
             events.extend(_transcript_events_from(iter((rec,)), src.agent))
             if _is_bypass_record(rec.obj):
                 bypass.add(rec.obj["sessionId"])
+            bridge = _bridge_session(rec.obj)
+            if bridge:
+                bridges[bridge[0]] = bridge[1]
+    if bridges:                                 # 같은 파일 안에서만 잇는다(레코드가 앞뒤 어디든 상관없게 사후 적용)
+        for event in events:
+            if event.session in bridges:
+                event.meta.setdefault("bridge_session_id", bridges[event.session])
     if codex is not None:
         events.extend(codex.finish())
     sha = sha_holder.get("sha")

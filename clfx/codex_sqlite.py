@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -123,6 +124,72 @@ def _json_value(value):
         return value
 
 
+# --- 원격 채널 판별 (logs_2.sqlite) ----------------------------------------
+# rollout 에는 원격 여부가 없다. logs_2 의 tracing span 텍스트에서
+#   app_server.connection_id=N ∧ app_server.client_name="…"
+# 로 연결별 클라이언트를 만들고, 같은 span 에 실린 thread_id 로 스레드에 잇는다.
+# **연결 단위로 묶는 게 핵심**이다 — 최근 RPC 표본만 훑으면 connection 0 의 codex-tui
+# plugin/list 노이즈가 다수라 원격 연결이 묻힌다(실측: tui 138행 vs 원격 69행).
+_LOG_CONNECTION = re.compile(r"app_server\.connection_id=(\d+)")
+_LOG_CLIENT = re.compile(r'app_server\.client_name="([^"]*)"')
+_LOG_THREAD = re.compile(r'thread_id[=:]\s*"?([0-9a-fA-F][0-9a-fA-F-]{7,})')
+_LOG_TURN_START = re.compile(r"turn/start connection_id=ConnectionId\((\d+)\)")
+_REMOTE_CLIENT_MARKER = "_remote"
+
+
+def _client_channel(client_name):
+    """client_name → remote | local. 빈 이름은 판정 불가(None)."""
+    if not client_name:
+        return None
+    return "remote" if client_name.endswith(_REMOTE_CLIENT_MARKER) else "local"
+
+
+def _collect_remote_channel(connection):
+    """logs 테이블 → {"threads": {thread_id: {"channel","seen"}}, "connections", "turn_connections"}.
+
+    한 스레드가 원격·로컬 연결 양쪽에 보이면 어느 **턴**이 어느 쪽인지 단정할 수 없다 → unknown.
+    실측에서 실제로 나온다: 로컬 TUI 로 시작한 스레드를 폰에서 thread/resume 하면 둘 다 찍힌다.
+    그 경우에도 관측 자체는 버리지 않고 `seen` 에 남긴다 — unknown 의 근거를 사후 감사하려고.
+    로그에 아예 안 보이는 스레드는 여기 없다(관측 부재 ≠ 로컬)."""
+    clients, thread_seen, turn_connections = {}, {}, set()
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(logs)")}
+    if "feedback_log_body" not in columns:      # 스키마가 다른 logs 테이블 → 판별 불가(빈 결과)
+        return {"threads": {}, "connections": {}, "turn_connections": []}
+    for (body,) in connection.execute(          # 스트리밍 — 로그 본문 전체를 리스트로 물리지 않는다
+            "SELECT feedback_log_body FROM logs WHERE feedback_log_body IS NOT NULL"):
+        conn_match = _LOG_CONNECTION.search(body)
+        client_match = _LOG_CLIENT.search(body)
+        if conn_match and client_match and client_match.group(1):
+            clients.setdefault(conn_match.group(1), set()).add(client_match.group(1))
+        for started in _LOG_TURN_START.findall(body):
+            turn_connections.add(started)
+        if conn_match:
+            for thread in _LOG_THREAD.findall(body):
+                thread_seen.setdefault(thread, set()).add(conn_match.group(1))
+
+    connections = {}
+    for cid, names in clients.items():
+        channels = {_client_channel(name) for name in names} - {None}
+        connections[cid] = {"client_names": sorted(names),
+                            "channel": channels.pop() if len(channels) == 1 else "unknown",
+                            "started_turns": cid in turn_connections}
+    threads = {}
+    for thread, cids in thread_seen.items():
+        channels = {connections.get(cid, {}).get("channel") for cid in cids} - {None, "unknown"}
+        threads[thread] = {"channel": channels.copy().pop() if len(channels) == 1 else "unknown",
+                           "seen": sorted(channels)}
+    return {"threads": threads,
+            "connections": {cid: connections[cid] for cid in sorted(connections, key=int)},
+            "turn_connections": sorted(turn_connections, key=int)}
+
+
+def _collect_enrollments(connection):
+    """remote_control_enrollments → 등록 행. 0행이 미사용을 뜻하지 않는다(enroll 실패도 0행)."""
+    return _rows(connection, "remote_control_enrollments",
+                 ("websocket_url", "account_id", "app_server_client_name", "server_id",
+                  "environment_id", "server_name", "updated_at", "remote_control_enabled"))
+
+
 def collect_sqlite_support(root, rollout_paths):
     """Acquire recognized SQLx DBs and return auxiliary metadata, never projected Events."""
     started_at = _now()
@@ -131,6 +198,8 @@ def collect_sqlite_support(root, rollout_paths):
     warnings = []
     threads = []
     turns = []
+    enrollments = []
+    remote_channel = {"threads": {}, "connections": {}, "turn_connections": []}
     projection_threads = set()
     item_json_types = set()
     item_types = set()
@@ -156,6 +225,9 @@ def collect_sqlite_support(root, rollout_paths):
                     threads.extend(_rows(connection, "threads", (
                         "id", "rollout_path", "cwd", "git_branch", "git_sha", "model",
                         "approval_mode", "sandbox_policy")))
+                    enrollments.extend(_collect_enrollments(connection))
+                elif role == "logs":
+                    remote_channel = _collect_remote_channel(connection)
                 elif role == "thread_history":
                     if "thread_turns" in tables:
                         turns.extend(_rows(connection, "thread_turns", (
@@ -193,6 +265,8 @@ def collect_sqlite_support(root, rollout_paths):
         "item_types": sorted(item_types),
         "item_json_storage": storage,
         "coverage": coverage,
+        "remote_channel": remote_channel,
+        "remote_control_enrollments": enrollments,
         "warnings": warnings,
         "manifest": {path: manifest[path] for path in sorted(manifest)},
         "collection_started_at": started_at,
@@ -202,6 +276,10 @@ def collect_sqlite_support(root, rollout_paths):
 
 def augment_events(events, support):
     """Attach SQLite session/turn metadata with setdefault; raw rollout values always win."""
+    channels = (support.get("remote_channel") or {}).get("threads") or {}
+    # 원격 등록 정보는 '어느 환경에 등록됐나'까지만 말한다(VR-023: 행이 있어도 채널은 죽어 있을 수 있음).
+    # 그래서 원격으로 판정된 Event 에만 붙인다 — 등록 행 자체가 원격 실행의 근거는 아니다.
+    enrollment = next(iter(support.get("remote_control_enrollments") or []), {})
     threads = support.get("threads") or []
     by_path = {_path_key(row["rollout_path"]): row for row in threads if row.get("rollout_path")}
     by_id = {str(row["id"]): row for row in threads if row.get("id")}
@@ -224,4 +302,13 @@ def augment_events(events, support):
                         "rollout_end_byte_offset"):
                 if turn.get(key) is not None:
                     event.meta.setdefault(key, turn[key])
+        observed = channels.get(thread_id)
+        if observed:                      # 로그에 안 보이는 스레드는 필드를 안 단다(관측 부재 ≠ local)
+            event.meta.setdefault("origin_channel", observed["channel"])
+            if len(observed["seen"]) > 1:      # unknown 인 이유(원격·로컬 양쪽 관측)를 남긴다
+                event.meta.setdefault("origin_channels_seen", observed["seen"])
+            if "remote" in observed["seen"]:
+                for key in ("environment_id", "server_name"):
+                    if enrollment.get(key):
+                        event.meta.setdefault(key, enrollment[key])
     return events
