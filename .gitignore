@@ -33,3 +33,8 @@ dist/
 .obsidian/
 .gstack/
 .playwright-mcp/
+
+# 패널 빌드 산출물 — panel/draft_a1.py 로 재생성한다
+panel/draft-a1.jpg
+panel/draft-a1.png
+panel/draft-a1.svg

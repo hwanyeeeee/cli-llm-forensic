@@ -63,10 +63,12 @@ BANDS = [
 
 # F5 대시보드 캡처에서 잘라 쓸 두 줄 — 같은 명령인데 주체가 갈리는 그 지점.
 # 전체 캡처를 작게 넣으면 UI 글씨가 안 읽힌다. 이 두 줄만 크게 쓰는 편이 낫다.
-# 좌표는 panel-f5-leak-scenario.png(2560×1600) 픽셀 기준.
+# 좌표는 `panel/capture_f5.py`가 만드는 캡처(2560×2240) 픽셀 기준.
+# 캡처를 다시 뜨면 이 좌표부터 확인해라 — 뷰포트가 바뀌면 엉뚱한 줄을 집는다.
+F5_CAPTURE_SIZE = (2560, 2240)
 F5_CONTRAST = [
-    ("A 사용자가 직접 실행", (512, 332, 1510, 432)),
-    ("B 에이전트가 자율 실행", (512, 1202, 1510, 1302)),
+    ("A 사용자가 직접 실행", (826, 536, 1880, 678)),
+    ("B 에이전트가 자율 실행", (826, 1908, 1880, 2050)),
 ]
 
 # `docs/패널-구성안.md` §1 면적 배분. 밴드를 단락으로 묶어 실제 배분과 대조한다.
@@ -240,6 +242,10 @@ def _place_crop(fig, path, box, top, x0, x1):
     전체 캡처를 축소해 넣으면 UI 글씨(13 CSS px)가 인쇄에서 사라진다.
     잘라내면 같은 폭에 더 적은 픽셀이 들어가므로 글자가 그만큼 커진다."""
     with Image.open(path) as source:
+        if source.size != F5_CAPTURE_SIZE:
+            raise SystemExit(
+                f"캡처 해상도가 {source.size}인데 크롭 좌표는 {F5_CAPTURE_SIZE} 기준이다. "
+                f"`python3 panel/capture_f5.py`로 다시 뜨거나 F5_CONTRAST를 맞춰라.")
         crop = source.convert("RGB").crop(box)
     ratio = crop.size[0] / crop.size[1]
     draw_w_in = (x1 - x0) * A1_W_IN
@@ -375,8 +381,18 @@ def build():
     # 전체 캡처를 작게 넣는 것보다 이 두 줄을 크게 쓰는 편이 인쇄에서 훨씬 잘 읽힌다.
     # 요소가 다섯 겹이라 고정 offset으로 쌓으면 반드시 겹친다 — 커서로 내려간다.
     cursor = top - 0.030
-    cursor = _place_image(fig, PANEL / "f6_metrics.jpg", cursor, cursor - 0.155,
-                          x0=LEFT, x1=RIGHT)
+    # F6 왼쪽, 대시보드 전체 썸네일 오른쪽. 썸네일은 읽으라고 넣는 게 아니라
+    # 아래 A/B 두 줄이 **실제 화면에서 잘라낸 것**임을 보이려고 넣는다.
+    thumb_x0 = LEFT + CONTENT_W * 0.755
+    row_bottom = cursor - 0.143
+    cursor = _place_image(fig, PANEL / "f6_metrics.jpg", cursor, row_bottom,
+                          x0=LEFT, x1=thumb_x0 - 0.012, align="left")
+    thumb_bottom = _place_image(fig, REPO / "panel-f5-leak-scenario.png",
+                                top - 0.034, row_bottom, x0=thumb_x0, x1=RIGHT,
+                                align="right")
+    fig.text(thumb_x0, thumb_bottom - 0.007,
+             "대시보드 전체 화면\n↓ 아래 두 줄은 여기서 잘라냈다",
+             fontproperties=_font(15), color=FAINT, va="top", linespacing=1.5)
     cursor -= 0.009
     fig.text(LEFT, cursor, "합성 통제 데이터 기준 정확도. 회수율·한계는 종합문서에 분리 기재.",
              fontproperties=_font(17), color=MUTED, va="top")
@@ -400,7 +416,7 @@ def build():
         cursor -= 0.0104
     if cursor < bottom - 0.004:
         raise SystemExit(f"③ 내용이 밴드를 넘쳤다(cursor={cursor:.4f} < {bottom:.4f}). "
-                         f"F6 높이(0.155)를 줄이거나 s3_results를 늘려라.")
+                         f"F6 높이(0.143)를 줄이거나 s3_results를 늘려라.")
 
     # ---- ④ 기대·파급
     top, bottom = band["s4_impact"]
