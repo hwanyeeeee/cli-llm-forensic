@@ -213,11 +213,31 @@ projection 만으로 사건을 확정하면 안 된다.
 |---|---|---|
 | 원격/로컬 판별 | 세션 JSONL **1개** — `promptSource`(`queued`=원격 / `typed`=로컬) | rollout + `logs_2.sqlite` **2개** |
 | 사람/에이전트 판별 | 같은 파일 안. **같은 이름 함정 있음** — 실측 `type:"user"` 24건 중 사람 입력은 6건, 나머지 16건은 `tool_result` | 같은 rollout 안. 함정 더 큼 (위 표) |
-| 조작자 단말 OS | ✗ | **✅** `client_name` 접미 `_ios_remote` / `_android_remote` |
+| **조작자 단말 OS<br>— 로컬 PC 만으로** | **✗** — 로컬 어디에도 없다. 폰을 확보해야 안다 | **✅** `logs_2.sqlite` `client_name` 접미<br>`_ios_remote` / `_android_remote` |
 | 스키마 다중성 | **미측정** | 세 계층 × 두 세대 (§2.2.3·§2.2.4) |
+
+> **`✗` 는 실측 결과다** — Claude 로컬 전체(원격 세션 JSONL 2개 · `sessions/<pid>.json` 9세션 ·
+> `~/.claude.json`)를 `iphone|ipad|android|ios|darwin|platform|deviceType|userAgent|os` 로 훑어
+> **구조적 필드 히트 0건**. `bridge-session` 레코드는 Android 세션과 iOS 세션이 **전 필드 6개 동일**
+> (`type`·`sessionId`·`bridgeSessionId`·`lastSequenceNum`·`ownerAccountUuid`·`ownerOrganizationUuid`)이고,
+> `sessions/<pid>.json` 21개 키도 전부 로컬 PC 정보(`pid`·`cwd`·`tmux`·`entrypoint`…)다.
+> 두 세션 간 나머지 필드 차이(`slug` 등)는 **CLI 버전(2.1.238 vs 2.1.239)과 사용 툴 차이**의 부산물이지
+> 플랫폼 축이 아니다.
 
 → **Claude 는 파일 하나로 "누가 시켰나"까지 답이 나오고, Codex 는 두 파일이 필요한 대신
    "어느 단말 OS 에서 시켰나"까지 답이 나온다.** 취득 요건과 답할 수 있는 범위가 맞바뀐다.
+
+**이 차이가 실무에서 갈리는 지점** — Codex 의 단말 OS 판별은 **로컬 PC 파일만으로** 성립한다.
+
+| 상황 | Claude | Codex |
+|---|---|---|
+| 폰을 확보하지 못했다 (미압수·분실·잠김) | 원격 여부까지만 | **어느 OS 단말인지까지** |
+| 폰에서 앱을 지웠다 | 폰측 근거 소실 | 로컬 로그는 무관하게 잔존 |
+| 한 계정에 단말이 여러 대 | 구분 불가 | Android/iOS 구분 (단 **같은 OS 두 대는 구분 못 함**) |
+
+⚠ `client_name` 이 말해주는 것은 **OS 종류**지 개별 기기가 아니다. 특정 기기까지 좁히려면
+폰측 기기 식별자(Android `global_device_uuid.json` · iOS `Anthropic-Device-ID`/`deviceIDBackup`)나
+`environment_id` 결속이 필요하다.
 
 ### 2.2.3 기록 계층이 3개다 — 이름 규칙이 전부 다르다 ★
 

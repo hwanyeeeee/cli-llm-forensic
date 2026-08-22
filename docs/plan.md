@@ -159,3 +159,27 @@ A1은 인쇄되면 못 고친다.
 - 실데이터가 없는 환경에서는 skip 하되 **조용히 통과시키지 마라** — skip 사유를 출력
 
 acceptance: python3 -m pytest tests/test_panel_numbers.py -q + 전체 회귀 green
+
+---
+
+## 23단계: 원격제어 마커 3종 + 뷰어 노출
+
+**왜**: 판별(원격이냐 로컬이냐, 어느 OS냐)은 파서에서 서지만, 사용자가 도구를 열면 **아무것도 안 보인다.**
+`origin_channel`·`origin_os` 는 `clfx/parser.py`·`clfx/codex_sqlite.py` 안에만 있고 `clfx/web/` 에 0곳이다.
+그리고 "이 머신이 원격제어를 켠 적 있나"를 말하는 호스트·계정 단위 마커 3종이 아직 안 읽힌다.
+
+**범위** (폰 취득본은 범위 밖 — 2026-08-22 결정)
+
+1. `~/.claude.json` `hasUsedRemoteControl`·`remoteDialogSeen`·`remoteControlUpsellSeenCount`
+2. `~/.claude/sessions/<pid>.json` `bridgeSessionId` (휘발성 — 정상종료 시 삭제됨을 결과에 명시)
+3. `~/.codex/app-server-daemon/settings.json` `remoteControlEnabled` (호스트 단위)
+4. 위 3종 + 기존 `remote_control_enrollments` 를 소스 요약으로 노출
+5. 대시보드에서 `origin_channel`·`origin_os`·`bridge_session_id` 를 볼 수 있게
+
+**규칙**
+- 이 마커들은 Event 가 아니다. Event 는 "행동 하나"고 이건 **상태**다 — 소스 메타로 다뤄라.
+- 마커 존재를 "원격제어를 썼다"로 승격 금지. 인계문서 §5 함정 1·4 참조:
+  `remote_control_enrollments` 0행 ≠ 미사용, `settings.json true` ≠ 채널 살아 있음.
+- 새 meta 필드가 필요하면 `docs/event-schema.md` 를 먼저 고쳐라(단일 진실원천).
+
+acceptance: python3 -m pytest -q
