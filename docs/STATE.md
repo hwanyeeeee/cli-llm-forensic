@@ -19,8 +19,9 @@ clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔�
 
 ## 현재 작업
 - 도구: claude (panel1)
-- 위치: 24단계 완료 → 25단계 (exe 재빌드 검증)
-- 수행 중: panel1=25단계, panel0=검수
+- 위치: **25단계 완료 — 계획 전 단계 종료.** 다음 지시 대기(panel1 idle)
+- 수행 중: 없음
+- 25단계 검수(2026-08-22): 574 passed · final-verify OK. verify-exe.py 독립 실행 전부 일치 — PYZ 모듈 10종(markers 포함) · 정적 자산 7종 해시 일치 · clfx_src 사본 3종 일치. 다중 루트 실측(WSL 2 + Windows 2 = 마커 6건): Windows .claude 는 세션 0개인데 **none 이 아니라 unknown**, .codex 는 missing→unknown — 휘발성/부재 규칙이 실데이터에서 성립. 검증기가 낡는 걸 막는 메타 테스트(자산 목록 == 소스 트리) 포함
 - 24단계 검수(2026-08-22): 568 passed. 브라우저 실측 — /api/events 225.4MB→**0.53MB**, 전체 전송 **2.52MB**, JS 힙 570→**12MB**, DOM 26,032→**6,632**. raw 숫자 0. 침묵 절단 없음 — 타임라인·파일목록 '더 보기'가 남은 건수를 정확히 표기(1,778 / 3,515). 상세 패널이 origin_os_candidates 를 '단정 불가 · 후보 android' 로 정확히 렌더. 회수율 12.9% 로 문서 통일
 - 23단계 검수(2026-08-22): 562 passed. 브라우저 실측 — bypass 배지 잘림 2,162→**0**, 최대 이벤트 1,612px→**118px**, 마커 3종 실데이터 판독 OK(claude 2종·codex 1종, signal=configured). markers.py 가 규칙을 코드로 강제(휘발성 마커는 none 불가). **잔여 결함**: 새 원격 뷰가 num() 미경유로 숫자 6개 raw(1257·5112·3311·136368·13266) → 24단계에 이월
 - panel0 실측 검증(2026-08-22): 파이프라인 전 구간 green — parse 146,048건 25s · analyze 6s · query 20건 530ms · attestation all_read_only=true · actor unknown 0. UI 결함 4건 발견 → ①②④는 23단계 추가분, ③(전량 225MB 전송·힙 570MB)은 24단계로 분리

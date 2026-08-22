@@ -9,7 +9,7 @@ run: python3 -m clfx.cli parse ~/.codex --out /tmp/codex-events.jsonl
 
 - 기준서: `docs/codex-지원-엔진스펙.md` (R1~R7 교차검증 확정 사실)
 - 검증 근거: `codex-아티팩트-분석-교차검증.md` · 원본 `.harness/codex-verify-*.md`
-- 패널 산출: `docs/패널-구성안.md` (마감 2026-08-23 23:00)
+- 범위: **도구 개발 전용.** 패널·포스터는 이 저장소에서 만들지 않는다(2026-08-22 결정).
 - **절대 원칙**: read-only · 무손실(unknown 구조도 provenance 보존, 조용한 0건 금지) · 결정성 · 기존 413 테스트 green 유지
 
 ## 1단계: actor 정합성 선결 (Codex 무관, 현재 코드 결함)
