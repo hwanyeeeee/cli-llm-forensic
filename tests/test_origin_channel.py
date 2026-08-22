@@ -234,7 +234,7 @@ def test_codex_connection_join_survives_tui_noise(codex_case):
 
     assert connections["0"]["channel"] == "local"
     assert connections["4"] == {"client_names": [REMOTE_CLIENT], "channel": "remote",
-                                "started_turns": True}
+                                "os": "android", "started_turns": True}
     assert support["remote_channel"]["turn_connections"] == ["4", "5"]
 
 
@@ -298,3 +298,102 @@ def test_no_local_verdict_without_positive_evidence(codex_case, tmp_path):
         assert event.meta.get("origin_channel") != "local"
     locals_ = [e for e in codex_events if e.meta.get("origin_channel") == "local"]
     assert {e.meta["thread_id"] for e in locals_} == {THREAD_LOCAL}
+
+
+# ------------------------------------------------------- origin_os (Codex 전용)
+# client_name 문자열에 조작 단말의 OS 가 박혀 있다. 로컬 로그만으로 "폰에서 지시했다"를
+# 넘어 "어느 OS 단말에서 지시했다"까지 간다 — Claude 에는 없는 축이다.
+IOS_CLIENT = "codex_chatgpt_ios_remote"
+UNKNOWN_REMOTE_CLIENT = "codex_chatgpt_watchos_remote"      # 아직 없는 플랫폼(가상)
+THREAD_IOS = "01a02601-0000-7000-8000-000000000001"
+THREAD_TWO_DEVICE = "01a02601-0000-7000-8000-000000000002"
+THREAD_ODD_REMOTE = "01a02601-0000-7000-8000-000000000003"
+
+
+@pytest.fixture(scope="module")
+def codex_os_case(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("codex-origin-os")
+    bodies = [
+        _log_span(7, IOS_CLIENT, "thread/resume", f"thread_id={THREAD_IOS}"),
+        _log_span(5, LOCAL_CLIENT, "turn/start", f"thread_id={THREAD_LOCAL}"),
+        # 같은 스레드를 아이폰과 갤럭시에서 각각 이어받은 경우
+        _log_span(7, IOS_CLIENT, "thread/resume", f"thread_id={THREAD_TWO_DEVICE}"),
+        _log_span(4, REMOTE_CLIENT, "thread/resume", f"thread_id={THREAD_TWO_DEVICE}"),
+        # 원격은 맞는데 접미가 낯선 클라이언트
+        _log_span(9, UNKNOWN_REMOTE_CLIENT, "thread/resume", f"thread_id={THREAD_ODD_REMOTE}"),
+    ]
+    root = _codex_root(tmp_path, bodies,
+                       [THREAD_IOS, THREAD_LOCAL, THREAD_TWO_DEVICE, THREAD_ODD_REMOTE])
+    return _channels(root)
+
+
+def _meta_by_thread(events):
+    return {event.meta.get("thread_id") or str(event.session): event.meta for event in events}
+
+
+def test_codex_client_name_names_the_operator_os(codex_os_case):
+    """logs_2 의 client_name 하나로 조작 단말 OS 까지 특정된다."""
+    _, support = codex_os_case
+    connections = support["remote_channel"]["connections"]
+
+    assert connections["7"]["os"] == "ios"
+    assert connections["4"]["os"] == "android"
+
+
+def test_local_client_claims_no_os(codex_os_case):
+    """`codex-tui` 는 '로컬'을 말할 뿐 OS 를 말하지 않는다.
+
+    locality 는 origin_channel 이 이미 담는다. 여기서 겹쳐 실으면 두 축이 서로를 오염시킨다."""
+    events, support = codex_os_case
+    assert support["remote_channel"]["connections"]["5"]["os"] is None
+
+    local = _meta_by_thread(events)[THREAD_LOCAL]
+    assert local["origin_channel"] == "local"
+    assert "origin_os" not in local
+
+
+def test_remote_thread_carries_origin_os(codex_os_case):
+    events, _ = codex_os_case
+    remote = _meta_by_thread(events)[THREAD_IOS]
+
+    assert remote["origin_channel"] == "remote"
+    assert remote["origin_os"] == "ios"
+
+
+def test_two_devices_on_one_thread_is_unknown_with_evidence(codex_os_case):
+    """아이폰과 갤럭시가 같은 스레드를 이어받으면 어느 턴이 어느 단말인지 단정할 수 없다.
+
+    그래도 관측 자체는 버리지 않는다 — unknown 의 근거를 사후에 감사해야 한다."""
+    events, _ = codex_os_case
+    both = _meta_by_thread(events)[THREAD_TWO_DEVICE]
+
+    assert both["origin_channel"] == "remote"      # 채널은 확정된다 — 둘 다 원격이니까
+    assert both["origin_os"] == "unknown"
+    assert both["origin_os_seen"] == ["android", "ios"]
+
+
+def test_unrecognized_remote_client_is_unknown_not_local(codex_os_case):
+    """새 플랫폼이 나와 접미가 낯설어도 조용히 로컬로 떨어지면 안 된다.
+
+    actor 가 unknown 을 user 로 흘리지 않는 것과 같은 규칙이다."""
+    events, support = codex_os_case
+    assert support["remote_channel"]["connections"]["9"]["os"] == "unknown"
+
+    odd = _meta_by_thread(events)[THREAD_ODD_REMOTE]
+    assert odd["origin_channel"] == "remote"
+    assert odd["origin_os"] == "unknown"
+    assert "origin_os_seen" not in odd             # 관측이 하나뿐이면 근거 목록은 안 단다
+
+
+def test_mixed_channel_thread_does_not_assert_a_device(codex_case):
+    """채널이 unknown 인 이벤트에 OS 를 단정하면 없는 사실을 만든다.
+
+    로컬 TUI 로 시작해 폰에서 resume 한 스레드가 실측에 있다. 그 스레드의 이벤트는
+    로컬 턴일 수도 있어서 "안드로이드에서 왔다"고 말할 수 없다. 관측은 candidates 로 남긴다.
+    실데이터에서 이 경로로 16건이 잘못 단정될 뻔했다(2026-08-22)."""
+    events, _ = codex_case
+    mixed = _meta_by_thread(events)[THREAD_MIXED]
+
+    assert mixed["origin_channel"] == "unknown"
+    assert "origin_os" not in mixed
+    assert mixed["origin_os_candidates"] == ["android"]

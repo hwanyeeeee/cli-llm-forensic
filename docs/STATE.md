@@ -19,8 +19,8 @@ clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔�
 
 ## 현재 작업
 - 도구: claude (panel1)
-- 위치: 22단계 완료 — panel1 대기(idle)
-- 수행 중: 없음. 사용자 지시로 panel1 대기 — iOS(S1·S2) 실측 도착 시 투입(fm_remote 레인 · 종합문서 §10.1 · test_panel_numbers iOS skip 해제, 약 30분)
+- 위치: 포스터 제작 종료(panel/ 제거) → 개발 전환. origin_os 구현 완료
+- 수행 중: 모바일 인계문서 §5 Event 스키마 반영 — origin_os 완료(522 green). 잔여: iOS Manifest 메타 1급 증거화 · DBMessageChunk 32KiB 재조립(둘 다 폰 파싱이라 범위 밖일 수 있음)
 - 패널 수치 동결 시각: 2026-08-22 17:20
 - 별도 세션: 모바일 원격제어 4시나리오(docs/모바일-원격제어-분석-계획.md)
 - 실사용 확인: parse→analyze→query 실데이터 36,894 이벤트, file:line 인용 동작

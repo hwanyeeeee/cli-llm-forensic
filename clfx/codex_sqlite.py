@@ -135,6 +135,9 @@ _LOG_CLIENT = re.compile(r'app_server\.client_name="([^"]*)"')
 _LOG_THREAD = re.compile(r'thread_id[=:]\s*"?([0-9a-fA-F][0-9a-fA-F-]{7,})')
 _LOG_TURN_START = re.compile(r"turn/start connection_id=ConnectionId\((\d+)\)")
 _REMOTE_CLIENT_MARKER = "_remote"
+# 원격 client_name 에는 조작 단말의 OS 가 박혀 있다: codex_chatgpt_ios_remote /
+# codex_chatgpt_android_remote. Claude 에는 이 축이 아예 없다 — Codex 로그만 갖는 정보다.
+_CLIENT_OS_SUFFIXES = (("_ios_remote", "ios"), ("_android_remote", "android"))
 
 
 def _client_channel(client_name):
@@ -142,6 +145,20 @@ def _client_channel(client_name):
     if not client_name:
         return None
     return "remote" if client_name.endswith(_REMOTE_CLIENT_MARKER) else "local"
+
+
+def _client_os(client_name):
+    """client_name → 조작 단말 OS.
+
+    로컬 클라이언트는 None 이다 — `codex-tui` 는 "로컬"을 말할 뿐 OS 를 말하지 않는다.
+    locality 는 origin_channel 이 이미 담으므로 여기서 겹쳐 싣지 않는다.
+    원격인데 접미가 낯설면 unknown — 새 플랫폼이 조용히 누락되면 안 된다."""
+    if _client_channel(client_name) != "remote":
+        return None
+    for suffix, os_name in _CLIENT_OS_SUFFIXES:
+        if client_name.endswith(suffix):
+            return os_name
+    return "unknown"
 
 
 def _collect_remote_channel(connection):
@@ -170,14 +187,20 @@ def _collect_remote_channel(connection):
     connections = {}
     for cid, names in clients.items():
         channels = {_client_channel(name) for name in names} - {None}
+        oses = {_client_os(name) for name in names} - {None}
         connections[cid] = {"client_names": sorted(names),
                             "channel": channels.pop() if len(channels) == 1 else "unknown",
+                            "os": oses.pop() if len(oses) == 1 else ("unknown" if oses else None),
                             "started_turns": cid in turn_connections}
     threads = {}
     for thread, cids in thread_seen.items():
         channels = {connections.get(cid, {}).get("channel") for cid in cids} - {None, "unknown"}
+        # OS 는 원격 연결에서만 나온다. 로컬로만 보인 스레드는 빈 집합 → 필드를 안 단다.
+        oses = {connections.get(cid, {}).get("os") for cid in cids} - {None}
         threads[thread] = {"channel": channels.copy().pop() if len(channels) == 1 else "unknown",
-                           "seen": sorted(channels)}
+                           "seen": sorted(channels),
+                           "os": oses.copy().pop() if len(oses) == 1 else ("unknown" if oses else None),
+                           "os_seen": sorted(oses - {"unknown"})}
     return {"threads": threads,
             "connections": {cid: connections[cid] for cid in sorted(connections, key=int)},
             "turn_connections": sorted(turn_connections, key=int)}
@@ -307,6 +330,17 @@ def augment_events(events, support):
             event.meta.setdefault("origin_channel", observed["channel"])
             if len(observed["seen"]) > 1:      # unknown 인 이유(원격·로컬 양쪽 관측)를 남긴다
                 event.meta.setdefault("origin_channels_seen", observed["seen"])
+            # OS 는 채널이 remote 로 확정됐을 때만 단정한다. 채널이 unknown 이면 그 이벤트는
+            # 로컬 턴일 수도 있고, 그런 이벤트에 단말을 붙이면 없는 사실을 만든다.
+            # 관측 자체는 버리지 않고 candidates 로 남긴다(그 스레드를 만진 원격 단말이 뭐였는지).
+            if observed.get("os"):
+                if observed["channel"] == "remote":
+                    event.meta.setdefault("origin_os", observed["os"])
+                    if len(observed.get("os_seen") or []) > 1:
+                        event.meta.setdefault("origin_os_seen", observed["os_seen"])
+                else:
+                    event.meta.setdefault("origin_os_candidates",
+                                          observed.get("os_seen") or [observed["os"]])
             if "remote" in observed["seen"]:
                 for key in ("environment_id", "server_name"):
                     if enrollment.get(key):
