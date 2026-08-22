@@ -3,8 +3,10 @@
 .dev-harness-root
 
 # 개발 하네스 (로컬 전용 — 레포 미포함, 팀원은 자기 환경서 작업)
-.claude/
-.codex/
+# 앞의 `/`가 없으면 **모든 깊이**에서 매칭돼 tests/fixtures/leak-scenario/*/.claude 같은
+# 테스트 고정물까지 조용히 빠진다(실제로 빠져서 클린 클론에서 테스트 9건이 깨졌다).
+/.claude/
+/.codex/
 CLAUDE.md
 AGENTS.md
 .mcp.json
