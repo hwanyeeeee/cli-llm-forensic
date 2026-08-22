@@ -11,10 +11,11 @@ if not getattr(sys, "frozen", False):
 
 from clfx.web.server import serve
 
-# 포렌식 뷰별 네이티브 자식 창 제목.
-TITLES = {"leaks": "유출·복사 의심", "attrib": "주체 왜곡 보정",
-          "mcp": "MCP 연결 흔적", "retention": "TMP 보존기간",
-          "attestation": "읽기전용 증명"}
+# 포렌식 뷰별 네이티브 자식 창 제목. **index.html 의 .fbtn data-modal 과 같은 집합**이어야 한다 —
+# 빠지면 exe 에서만 그 창이 "포렌식 뷰"라는 이름으로 뜬다(브라우저 경로는 view.js 가 제목을 따로
+# 갖고 있어 멀쩡하다). 실제로 23단계에서 remote 를 여기 안 넣어 그 상태로 있었다.
+TITLES = {"mcp": "MCP 연결 흔적", "retention": "TMP 보존기간",
+          "attestation": "읽기전용 증명", "remote": "원격제어 마커"}
 
 
 class _Api:

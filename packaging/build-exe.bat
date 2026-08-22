@@ -51,6 +51,16 @@ if not exist "dist\AgenTrace.exe" (
   pause
   exit /b 1
 )
+
+REM 5) Verify the bundle against the sources. Static assets are copied by --add-data,
+REM    so a stale cached copy builds fine and only breaks inside the exe. Hashes catch that.
+echo [clfx] Verifying bundle contents...
+python packaging\verify-exe.py "dist\AgenTrace.exe"
+if errorlevel 1 (
+  echo [ERROR] bundle verification failed - do NOT ship this exe. See the list above.
+  pause
+  exit /b 1
+)
 echo.
 echo [clfx] Done. Output: %CD%\dist\AgenTrace.exe
 echo [clfx] Built artifact:

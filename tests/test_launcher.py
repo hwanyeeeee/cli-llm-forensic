@@ -84,3 +84,20 @@ def test_save_url_fetch_error_reported(monkeypatch):
     api = launcher._Api("http://127.0.0.1:9")
     res = api.save_url("/api/attestation.csv", "f.csv")
     assert res["ok"] is False and "fetch:" in res["error"]
+
+
+def test_view_titles_cover_every_dashboard_button():
+    """exe 자식 창 제목은 index.html 의 포렌식 버튼과 **같은 집합**이어야 한다.
+
+    브라우저 경로는 view.js 가 제목을 따로 갖고 있어 빠져도 안 드러난다 — exe 에서만
+    '포렌식 뷰'라는 이름 없는 창으로 뜬다. 23단계 remote 가 실제로 그 상태였다.
+    """
+    import re
+    html = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "clfx", "web", "static", "index.html")
+    with open(html, encoding="utf-8") as f:
+        buttons = set(re.findall(r'class="fbtn" data-modal="([^"]+)"', f.read()))
+    assert buttons, "포렌식 버튼을 못 찾았다 — index.html 표현이 바뀌었는지 확인해라"
+    assert buttons == set(launcher.TITLES), (
+        f"버튼과 창 제목이 어긋난다 — 버튼에만: {sorted(buttons - set(launcher.TITLES))} · "
+        f"제목에만: {sorted(set(launcher.TITLES) - buttons)}")
