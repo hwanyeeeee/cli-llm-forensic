@@ -1,0 +1,6 @@
+interface:
+  display_name: "dev-swap"
+  short_description: "Replace panel 1 dev tool (kill+respawn, dispatch handover)"
+  default_prompt: "Use $dev-swap with claude|codex."
+policy:
+  allow_implicit_invocation: false

@@ -25,7 +25,7 @@ clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔�
 - 별도 세션: 모바일 원격제어 4시나리오(docs/모바일-원격제어-분석-계획.md)
 - 실사용 확인: parse→analyze→query 실데이터 36,894 이벤트, file:line 인용 동작
 - 비고: 브랜치 feat/codex-support, HEAD c6a1858. 미push 25커밋 — 사용자 결정 대기.
-- 포스터: panel/draft-a1.{svg,png,jpg} 제출 가능. 검산 위반 0 · 최소 글자 8.0pt · 규정 폰트(나눔스퀘어) · panel/README.md 인계 체크리스트
+- 포스터: 이 저장소에서 제작하지 않는다(2026-08-22 결정, panel/ 제거). 발표물은 팀원이 `docs/AgenTrace-아티팩트-인계문서.md` 로 만든다.
 - 리뷰방식: 헤드리스 codex exec 리뷰 2회 연속 타임아웃(10분·25분) → panel0 수동리뷰 + 실데이터 전수검증을 1차 게이트로. 8단계 후 panel1에 리뷰어 모드로 최종 교차검토
 - 순서 결정: 1~5단계 → 패널(마감 8/23 23:00) → 6~8단계
 - 재시도: 0

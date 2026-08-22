@@ -265,16 +265,20 @@ def test_claude_remote_channel_evidence_survives(claude_prompt_sources):
 
 
 # =========================================================================
-# 동결 수치 동기화 — 문서와 그림이 같은 값을 말하는가
+# 동결 수치 동기화 — 두 문서가 같은 값을 말하는가
 # =========================================================================
-# 2026-08-22 17:20 을 동결 시각으로 잡고 전 문서·F6 을 그 값으로 맞췄다.
+# 2026-08-22 17:20 을 동결 시각으로 잡고 두 문서를 그 값으로 맞췄다.
 # 코퍼스는 계속 자라므로 **동결값 == 현재값**은 요구하지 않는다.
-# 요구하는 것은 두 가지뿐이다: ①동결값이 문서와 그림 사이에서 서로 일치할 것
+# 요구하는 것은 두 가지뿐이다: ①동결값이 두 문서 사이에서 서로 일치할 것
 # ②스냅샷 시각이 표기돼 있을 것. 현재값과의 격차는 실패가 아니라 경고로 알린다.
+#
+# 원래 짝은 종합문서 ↔ 패널 F6 그림이었다. 포스터 제작을 이 저장소에서 접으면서(2026-08-22)
+# 짝을 팀원 인계문서로 옮겼다. 같은 수치를 말하는 문서가 둘이면 한쪽만 고치는 사고가 나고,
+# 그게 지금 남은 유일한 드리프트 경로다.
 
 REPO = Path(__file__).resolve().parents[1]
 FROZEN_DOC = REPO / "docs" / "AgenTrace-종합-아티팩트-분석.md"
-FROZEN_FIGURE = REPO / "panel" / "f6_metrics.py"
+FROZEN_HANDOFF = REPO / "docs" / "AgenTrace-아티팩트-인계문서.md"
 DRIFT_WARN_RATIO = 0.02      # 2% 넘게 벌어지면 '갱신 검토' 경고
 
 
@@ -287,7 +291,8 @@ def _frozen_from_doc(text):
     found = {}
     for key, pattern in (
             ("events", r"복원 이벤트\s*\|\s*\*{0,2}([\d,]+)"),
-            ("files", r"\|\s*rollout\s*\|\s*\*{0,2}([\d,]+)\s*파일"),
+            # 종합문서 "| rollout | **353파일** |" · 인계문서 "| Codex rollout 코퍼스 | **353파일** |"
+            ("files", r"\|[^|\n]*rollout[^|\n]*\|\s*\*{0,2}([\d,]+)\s*파일"),
     ):
         match = re.search(pattern, text)
         if match:
@@ -304,46 +309,24 @@ def _frozen_from_doc(text):
     return found
 
 
-def _frozen_from_figure(text):
-    """F6 도식에 박힌 동결값."""
-    found = {}
-    files = re.search(r"rollout\s*([\d,]+)\s*파일", text)
-    if files:
-        found["files"] = _int(files.group(1))
-    events = re.search(r'd\.box\(\s*"m1".*?"([\d,]+)"', text, re.S)
-    if events:
-        found["events"] = _int(events.group(1))
-    actor = re.search(r"사용자\s*([\d,]+)\s*·\s*에이전트\s*([\d,]+)", text)
-    if actor:
-        found["user"], found["agent"] = _int(actor.group(1)), _int(actor.group(2))
-    window = re.search(r"([\d,]+)\s*개 중\s*([\d,]+)\s*개\(\s*([\d.]+)\s*%\)", text)
-    if window:
-        found["zero_total"] = _int(window.group(1))
-        found["zero_files"] = _int(window.group(2))
-        found["zero_pct"] = float(window.group(3))
-    found["snapshot"] = bool(re.search(r"20\d\d-\d\d-\d\d\s+\d\d:\d\d\s*스냅샷", text))
-    return found
-
-
 @pytest.fixture(scope="module")
 def frozen():
-    missing = [str(p) for p in (FROZEN_DOC, FROZEN_FIGURE) if not p.is_file()]
+    missing = [str(p) for p in (FROZEN_DOC, FROZEN_HANDOFF) if not p.is_file()]
     if missing:
-        reason = (f"동결 수치 원본 없음: {', '.join(missing)} — 문서·그림 동기화를 확인하지 못했다. "
-                  f"패널 인쇄 전에는 두 파일이 있는 작업본에서 반드시 다시 돌려라.")
+        reason = (f"동결 수치 원본 없음: {', '.join(missing)} — 두 문서의 동기화를 확인하지 못했다.")
         warnings.warn(reason, UserWarning)
         pytest.skip(reason)
     return (_frozen_from_doc(FROZEN_DOC.read_text(encoding="utf-8")),
-            _frozen_from_figure(FROZEN_FIGURE.read_text(encoding="utf-8")))
+            _frozen_from_doc(FROZEN_HANDOFF.read_text(encoding="utf-8")))
 
 
-def test_frozen_numbers_agree_between_document_and_figure(frozen):
+def test_frozen_numbers_agree_between_the_two_documents(frozen):
     """같은 값이 두 곳에 박혀 있다. 한쪽만 고치면 인쇄물이 자기모순한다."""
-    doc, figure = frozen
-    shared = sorted(set(doc) & set(figure) - {"snapshot"})
-    assert shared, f"두 파일에서 공통으로 뽑힌 동결값이 없다 — 표현이 바뀌었는지 확인해라 (doc={doc}, fig={figure})"
-    mismatched = {key: (doc[key], figure[key]) for key in shared if doc[key] != figure[key]}
-    assert not mismatched, f"문서와 F6 동결값 불일치 {{항목: (문서, 그림)}}: {mismatched}"
+    doc, handoff = frozen
+    shared = sorted(set(doc) & set(handoff) - {"snapshot"})
+    assert shared, f"두 문서에서 공통으로 뽑힌 동결값이 없다 — 표현이 바뀌었는지 확인해라 (종합={doc}, 인계={handoff})"
+    mismatched = {key: (doc[key], handoff[key]) for key in shared if doc[key] != handoff[key]}
+    assert not mismatched, f"두 문서의 동결값 불일치 {{항목: (종합, 인계)}}: {mismatched}"
 
 
 def test_frozen_numbers_are_internally_consistent(frozen):
@@ -365,9 +348,9 @@ def test_frozen_numbers_are_internally_consistent(frozen):
 
 def test_frozen_numbers_carry_a_snapshot_time(frozen):
     """동결값은 시각 표기 없이는 못 읽는다 — 언제 기준인지 모르면 낡았는지도 모른다."""
-    doc, figure = frozen
+    doc, handoff = frozen
     assert doc["snapshot"], "종합 문서에 '스냅샷' 시각 표기가 없다"
-    assert figure["snapshot"], "F6에 'YYYY-MM-DD HH:MM 스냅샷' 표기가 없다"
+    assert handoff["snapshot"], "인계문서에 'YYYY-MM-DD HH:MM 스냅샷' 표기가 없다"
 
 
 def test_frozen_versus_current_drift_is_reported(frozen, codex_events, codex_corpus):
@@ -427,7 +410,7 @@ def test_panel_number_sheet(codex_corpus, claude_prompt_sources, tmp_path):
     legacy_write = corpus["apply_patch"] | corpus["patch_end"]
     without = corpus["files"] - len(corpus["files_with_item"])
 
-    print("\n── 패널 수치 대조표 (실데이터, 스냅샷 시각 기준) ──")
+    print("\n── 동결 수치 대조표 (실데이터, 스냅샷 시각 기준) ──")
     print(f"rollout 파일                {corpus['files']}")
     print(f"item_completed 없는 파일     {without}/{corpus['files']}"
           f" = {100 * without / corpus['files']:.1f}%  ← 단일 스키마 파서 0건 구간")
@@ -444,4 +427,4 @@ def test_panel_number_sheet(codex_corpus, claude_prompt_sources, tmp_path):
     print("합성 정확도                 주체/접근/MCP 각 100건 100.0% (위 테스트에서 고정)")
     print("시연 화면                   총 19 · 사용자 7 · 에이전트 12 · bypass 2 (고정)")
     print("iOS(S1·S2)                  실측 완료 — 인계 문서 §3.2 · 자격증명 축 0건(키체인)")
-    print("  단 iOS 종료 후 존속        미측정 — 인계 문서 §6에 명시")
+    print("  단 iOS 종료 후 존속        미측정 — 인계 문서 §7.2에 명시")

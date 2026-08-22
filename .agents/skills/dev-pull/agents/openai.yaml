@@ -1,0 +1,6 @@
+interface:
+  display_name: "dev-pull"
+  short_description: "Pull managed harness files from Dev-harness root"
+  default_prompt: "Use $dev-pull."
+policy:
+  allow_implicit_invocation: false
