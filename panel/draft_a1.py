@@ -32,11 +32,13 @@ TEXT_SOURCE = PANEL / "panel-text.md"
 # A1 세로. figsize를 실제 inch로 두면 matplotlib fontsize(pt)가 인쇄 pt와 1:1이 된다.
 A1_W_IN, A1_H_IN = 59.4 / 2.54, 84.1 / 2.54          # 23.386 × 33.110
 
-# `docs/패널-구성안.md` §1: 본문 나눔스퀘어 36pt 이하. 이 머신에 나눔스퀘어·KoPubWorld가
-# 없어서 그림 4개와 동일한 맑은고딕으로 조판한다. 제출 전 폰트 정합은 §주의 참고.
-FONT_CANDIDATES = [
+# `docs/패널-구성안.md` §1: 본문 나눔스퀘어 36pt 이하.
+# 그림 4개도 `panel_font`로 같은 글꼴을 쓴다 — 한쪽만 바꾸면 지면에서 글꼴이 따로 논다.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import panel_font
+
+FONT_FALLBACK = [
     "/mnt/c/Windows/Fonts/malgunbd.ttf",
-    "/usr/share/fonts/truetype/nanum/NanumSquareB.ttf",
     "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
 ]
 
@@ -87,11 +89,14 @@ MIN_READABLE_PT = 8.0
 _PLACED = []          # (라벨, 원본 최소 fs, 원본 물리폭 in, 배치 폭 in)
 
 
-def _font(size):
-    for candidate in FONT_CANDIDATES:
+def _font(size, weight="B"):
+    regulation = panel_font.resolve(weight)
+    if regulation:
+        return FontProperties(fname=regulation, size=size)
+    for candidate in FONT_FALLBACK:
         if Path(candidate).is_file():
             return FontProperties(fname=candidate, size=size)
-    raise SystemExit("한글 폰트를 찾지 못했다. FONT_CANDIDATES에 경로를 추가해라.")
+    raise SystemExit("한글 폰트를 찾지 못했다. panel_font.SEARCH_DIRS를 확인해라.")
 
 
 def _bands():
@@ -325,6 +330,7 @@ def budget_report():
 def build():
     content = load_text()
     band = _bands()
+    print(panel_font.describe())
     fig = plt.figure(figsize=(A1_W_IN, A1_H_IN))
     fig.patch.set_facecolor("white")
 

@@ -2,7 +2,10 @@ import sys
 sys.path.insert(0, "/home/best1pjh/.claude/skills/precision-diagram/scripts")
 from flowlib import Diagram
 
-d = Diagram(figsize=(24, 7.0), xlim=(0, 24), ylim=(0, 7.0), dpi=220)
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
+import panel_font  # 양식 규정 폰트(나눔스퀘어) — 포스터와 같은 글꼴을 쓴다
+
+d = Diagram(figsize=(24, 7.0), xlim=(0, 24), ylim=(0, 7.0), dpi=220, font=panel_font.resolve())
 
 Y = 3.95
 BW, BH = 3.35, 2.35

@@ -37,24 +37,31 @@ PPT 슬라이드 크기를 **59.4 × 84.1 cm**로 먼저 맞추고, 그림을 �
 - [ ] 슬라이드가 **1장**인지 확인
 - [ ] 메인컬러는 하늘색 계열(주최측 후작업 기준)
 
-## 3. ⚠ 폰트 — 지금 상태로는 규정 미충족
+## 3. 폰트 — 규정 충족 (해결됨)
 
 양식 규정은 **나눔스퀘어 · KoPubWorld 7종만**, 폰트 변경 금지다.
-그런데 **작업 머신에 두 폰트가 없어서 포스터와 그림 4개가 전부 맑은고딕(malgunbd)으로 렌더돼 있다.**
+**현재 포스터와 그림 4개 전부 나눔스퀘어로 렌더돼 있다.** 커밋된 산출물을 그대로 쓰면 된다.
 
-제출 전에 둘 중 하나를 해라.
+폰트 경로는 `panel/panel_font.py` **한 곳**에서만 정한다. 포스터와 그림이 같은 함수를 부르므로
+한쪽만 바뀌는 일이 없다(예전에 실제로 그 상태로 한 번 구워졌다).
 
-1. **나눔스퀘어를 설치하고 전부 다시 굽는다** (권장)
-   ```bash
-   # 폰트 설치 후
-   python3 panel/f1_gap.py && python3 panel/f2_hero_compact.py \
-     && python3 panel/fm_remote.py && python3 panel/f6_metrics.py
-   python3 panel/draft_a1.py
-   ```
-   `draft_a1.py`의 `FONT_CANDIDATES`가 나눔스퀘어를 먼저 찾도록 이미 돼 있다.
-   **그림 4개도 같이 다시 구워야 한다** — 포스터만 바꾸면 본문과 그림 글꼴이 따로 논다.
+```bash
+python3 panel/panel_font.py        # 규정 폰트를 찾았는지 확인
+```
 
-2. 규정 적용 범위를 주최측에 확인한다(그림 내부 라벨까지인지, 본문 텍스트만인지).
+### 폰트가 없는 머신에서 다시 구우려면
+
+양식 폴더 동봉본 7종을 `~/.local/share/fonts/panel/` 에 넣고 `fc-cache -f` 를 돌린 뒤
+**그림 4개와 포스터를 같이** 다시 굽는다.
+
+```bash
+python3 panel/f1_gap.py && python3 panel/f2_hero_compact.py \
+  && python3 panel/fm_remote.py && python3 panel/f6_metrics.py
+python3 panel/draft_a1.py
+```
+
+폰트를 못 찾으면 **죽지 않고 기본 글꼴로 떨어진다.** 대신 빌드 첫 줄에 경고가 찍히니
+그 줄을 반드시 확인해라 — 규정 미충족 상태로 조용히 인쇄되는 것을 막으려는 것이다.
 
 > 그림 스크립트는 `precision-diagram` 스킬의 `flowlib`을 쓴다. 그 스킬이 없는 머신에서는
 > 그림을 다시 구울 수 없다 — 커밋된 `.jpg`/`.svg`를 그대로 쓰면 된다.
@@ -104,6 +111,7 @@ python3 -m pytest tests/test_panel_numbers.py -q -s
 | `draft_a1.py` | 포스터 조판 — 본문·그림·검산 전부 |
 | `panel-text.md` | ①·④ 본문·헤더·각주 **원본**. 포스터 문구는 여기서 파싱한다. **여기만 고치면 된다** |
 | `capture_f5.py` | 대시보드 캡처 재생성 |
+| `panel_font.py` | 규정 폰트(나눔스퀘어) 경로 해석 — 포스터·그림 공용 |
 | `f2_hero_compact.py` · `fm_remote.py` · `f6_metrics.py` · `f1_gap.py` | 그림 원본 스크립트(+ `.jpg`/`.svg` 산출물) |
 | `../panel-f5-leak-scenario.png` | 대시보드 실캡처 |
 

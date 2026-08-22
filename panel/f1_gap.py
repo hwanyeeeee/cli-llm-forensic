@@ -2,7 +2,10 @@ import sys
 sys.path.insert(0, "/home/best1pjh/.claude/skills/precision-diagram/scripts")
 from flowlib import Diagram
 
-d = Diagram(figsize=(24, 5.6), xlim=(0, 24), ylim=(0, 5.6), dpi=220)
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
+import panel_font  # 양식 규정 폰트(나눔스퀘어) — 포스터와 같은 글꼴을 쓴다
+
+d = Diagram(figsize=(24, 5.6), xlim=(0, 24), ylim=(0, 5.6), dpi=220, font=panel_font.resolve())
 
 d.text("title", 0.35, 5.15, "증거는 한 곳에 모여 있지 않다 — 어디를 보느냐에 따라 사건의 크기가 달라진다",
        fs=21, color="#111", ha="left")
