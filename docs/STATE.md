@@ -19,8 +19,9 @@ clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔�
 
 ## 현재 작업
 - 도구: claude (panel1)
-- 위치: 23단계 완료 → 24단계 (/api/events 전량 전송 끊기)
-- 수행 중: panel1=24단계, panel0=검수
+- 위치: 24단계 완료 → 25단계 (exe 재빌드 검증)
+- 수행 중: panel1=25단계, panel0=검수
+- 24단계 검수(2026-08-22): 568 passed. 브라우저 실측 — /api/events 225.4MB→**0.53MB**, 전체 전송 **2.52MB**, JS 힙 570→**12MB**, DOM 26,032→**6,632**. raw 숫자 0. 침묵 절단 없음 — 타임라인·파일목록 '더 보기'가 남은 건수를 정확히 표기(1,778 / 3,515). 상세 패널이 origin_os_candidates 를 '단정 불가 · 후보 android' 로 정확히 렌더. 회수율 12.9% 로 문서 통일
 - 23단계 검수(2026-08-22): 562 passed. 브라우저 실측 — bypass 배지 잘림 2,162→**0**, 최대 이벤트 1,612px→**118px**, 마커 3종 실데이터 판독 OK(claude 2종·codex 1종, signal=configured). markers.py 가 규칙을 코드로 강제(휘발성 마커는 none 불가). **잔여 결함**: 새 원격 뷰가 num() 미경유로 숫자 6개 raw(1257·5112·3311·136368·13266) → 24단계에 이월
 - panel0 실측 검증(2026-08-22): 파이프라인 전 구간 green — parse 146,048건 25s · analyze 6s · query 20건 530ms · attestation all_read_only=true · actor unknown 0. UI 결함 4건 발견 → ①②④는 23단계 추가분, ③(전량 225MB 전송·힙 570MB)은 24단계로 분리
 - 범위 결정(2026-08-22): **폰 취득본 파싱은 하지 않는다.** clfx 는 로컬 아티팩트만 읽는다. 원격/로컬 판별은 로컬 파일만으로 서기 때문이다 — Claude=세션 JSONL `promptSource`, Codex=`logs_2.sqlite` `client_name`. 폰은 결속·정황 증거라 도구가 없어도 문서로 다룬다. 인계문서 §5 의 iOS Manifest 메타·DBMessageChunk 재조립 2건은 이 결정으로 **범위 밖**.

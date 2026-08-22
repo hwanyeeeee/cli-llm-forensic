@@ -254,3 +254,28 @@ DOM 노드           26,032
 **주의**: 집계 타일은 이미 `/api/stats` 가 전량 안 받고 처리한다. 그 패턴을 참고해라.
 
 acceptance: python3 -m pytest -q · 실데이터에서 초기 전송량이 현재의 1/10 이하
+
+---
+
+## 25단계: exe 재빌드 검증 — 9단계 이후 늘어난 것이 실제로 들어갔나
+
+**왜**: 이 도구는 단일 exe 로 배포한다. 9단계에서 exe 를 검증한 뒤 23·24단계로 **새 파이썬 모듈과
+새 정적 자산**이 들어왔는데, 그것들이 exe 에 실제로 프리즈되는지 확인한 적이 없다.
+`.spec` 은 `hiddenimports = []` 로 자동탐지에 의존한다.
+
+**확인 대상**
+
+1. `clfx/sources/markers.py` — 23단계 신규 모듈. PYZ 아카이브에 있는가.
+   (9단계에서 `codex_parser`·`codex_sqlite` 는 hidden-import 없이도 잡혔다. 같은 경로인지 확인)
+2. 정적 자산 — `clfx/web/static/` 의 `view.html`·`forensic-views.js`·`app.js`·`app.css`·`index.html`·`logo.png`.
+   **자산은 `datas` 로 복사되므로 코드와 달리 자동탐지가 아니다.** 옛 사본이 박히면
+   exe 는 원격 뷰가 깨진 채로 나간다.
+3. 실행 스모크 — exe 로 `parse → analyze → serve` 가 도는가. 대시보드가 뜨고
+   `/api/remote-control` 이 200 인가.
+
+**규칙**
+- 자산 최신 여부는 눈이 아니라 **해시로** 대조해라. 소스 파일과 번들 안 사본의 sha256 이 같아야 한다.
+- 빌드 산출물(exe)은 커밋하지 마라. `.gitignore` 확인.
+
+acceptance: python3 -m pytest -q · PYZ 에 markers 존재 · 정적 자산 6종 해시 일치 · exe 실행 스모크 OK
+
