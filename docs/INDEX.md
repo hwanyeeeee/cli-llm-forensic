@@ -8,7 +8,7 @@
 
 | 위치 | 내용 |
 |---|---|
-| `docs/` | 핵심 문서 — 설계·출력 형식·사용법·종합 분석·인계 최종본·개발 진행판 |
+| `docs/` | 핵심 문서 — 설계·출력 형식·사용법·종합 분석·인계 최종본 |
 | `docs/analysis/` | 아티팩트 분석 — Codex 상세·엔진 스펙·원격 판별·원격제어 마커·원본 보존 실측 |
 | `docs/validation/` | 검증 — 정확도 측정·유출 시나리오 재현·데이터셋 만들기·성능 측정 |
 | `docs/team/` | 팀 운영 — 역할·인계·UI·발표·피드백 |
@@ -45,7 +45,6 @@
 | `사용법.md` | clfx 데모·시연 사용법 (parse→analyze→query→serve + A/B 흐름) |
 | `AgenTrace-종합-아티팩트-분석.md` | 종합본 — 로컬(Claude·Codex) + Android 원격제어(S3·S4) + 오판 함정 + 도구 검증 |
 | `AgenTrace-아티팩트-인계문서.md` | **★ 팀원 인계 최종본 (발표자료 제작용)** — 로컬(Claude·Codex) + 원격제어 4시나리오(Android·iOS × Claude·Codex). 판별자 한 장·오판 함정 12건·한계·경로 색인 |
-| `plan.md` / `STATE.md` | 개발 진행판 |
 
 ### `docs/analysis/`
 
