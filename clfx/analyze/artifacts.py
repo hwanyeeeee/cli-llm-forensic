@@ -227,7 +227,7 @@ def _walk_tmp(tmp_dirs):
     return files, inv["errors"]
 
 
-RETENTION_DAYS = 30        # Claude tmp 보존기간 실측치(docs/실측-temp-원본보존-원리.md)
+RETENTION_DAYS = 30        # Claude tmp 보존기간 실측치(docs/analysis/실측-temp-원본보존-원리.md)
 
 
 def _path_origin(path):

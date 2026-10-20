@@ -10,7 +10,7 @@
 조직·경로·수신처(`acme-demo`, `/srv/acme-demo/...`, `intake.example.net`)는 전부 가상이다.
 실데이터에서 복사한 값은 하나도 없다.
 
-서술과 도구가 낸 근거: **`docs/유출시나리오-재현.md`**
+서술과 도구가 낸 근거: **`docs/validation/유출시나리오-재현.md`**
 고정 테스트: `tests/test_leak_scenario.py`
 
 > 이 파일들은 손으로 고치지 마라. 한 줄이라도 바뀌면 `test_dashboard_demo_numbers`가 깨진다.

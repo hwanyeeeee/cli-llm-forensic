@@ -7,7 +7,7 @@ Claude·Codex 어느 형식이든 도구가 같은 결론을 내는지 고정한
   결론 B — 에이전트 자율: 직접 지시 없이 권한확인 생략 모드에서 에이전트가 자율로 읽어 전송
 
 데이터셋은 `tests/fixtures/leak-scenario/`. 전부 합성이고 자격증명은 AWS 공식 문서의
-공개 example 값이다. 서술과 근거는 `docs/유출시나리오-재현.md`.
+공개 example 값이다. 서술과 근거는 `docs/validation/유출시나리오-재현.md`.
 """
 import json
 import os
@@ -114,7 +114,7 @@ def test_bypass_mode_evidence_is_recorded_per_tool(engine):
     Claude: permission-mode(bypassPermissions) 레코드 → read Event에 `bypass-mode` 태그
     Codex : turn_context(approval_policy=never · danger-full-access) → Event.meta에 정책 스냅샷
 
-    이 비대칭 자체가 결과다. 두 근거를 하나의 태그로 합칠지는 미결(docs/유출시나리오-재현.md §5)."""
+    이 비대칭 자체가 결과다. 두 근거를 하나의 태그로 합칠지는 미결(docs/validation/유출시나리오-재현.md §5)."""
     claude_b = _secret_events(engine.events, "claude", "B")
     assert all("bypass-mode" in e.tags for e in claude_b)
     assert all("bypass-mode" not in e.tags

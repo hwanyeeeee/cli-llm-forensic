@@ -33,7 +33,7 @@
 | exe 산출물 | **없음** — `packaging/`·`dist/`·`build/`·`*.spec` 전부 부재 |
 | `packaging/launcher.py` | 아직 없음 |
 
-- 클론에 들어온 `docs/exe-패키징-UI-가이드.md`는 exe를 **어떻게 만들지 설계만** 적힌 문서. PyInstaller `--onefile` + 내장 서버 + `webbrowser.open` 방식.
+- 클론에 들어온 `docs/team/exe-패키징-UI-가이드.md`는 exe를 **어떻게 만들지 설계만** 적힌 문서. PyInstaller `--onefile` + 내장 서버 + `webbrowser.open` 방식.
 - exe 빌드/런처/`_MEIPASS` static 경로 보정은 **코어(엔진·패키징) 담당** 작업이며 **아직 미수행**.
 - 우리 UI는 exe로 묶이면 그 안의 화면이 된다. 지금은 개발용으로 `clfx serve`로 띄워 확인(가이드 §7: UI 작업은 매번 exe 빌드 없이 serve로 검증).
 

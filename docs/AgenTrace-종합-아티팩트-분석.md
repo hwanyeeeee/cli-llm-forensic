@@ -10,11 +10,11 @@
 | 구간 | 상태 | 근거 |
 |---|---|---|
 | 로컬 Claude Code 아티팩트 | 완료 | 기존 구현·발표자료 |
-| 로컬 Codex CLI 아티팩트 | 완료 | `docs/codex-지원-엔진스펙.md` · `codex-아티팩트-분석-교차검증.md` |
+| 로컬 Codex CLI 아티팩트 | 완료 | `docs/analysis/codex-지원-엔진스펙.md` · `docs/analysis/codex-아티팩트-분석-교차검증.md` |
 | Android × Claude 원격제어 (S3) | **완료** | `llm모바일아티팩트/docs/모바일-원격제어-실측.md` 관측 1~26 |
 | Android × Codex 원격제어 (S4) | **완료** | 같은 문서 관측 27~62 |
 | iOS × Claude (S1) · iOS × Codex (S2) | **추가 예정** | — |
-| 도구 구현·정확도 | 완료 | `docs/Codex-정확도-측정결과.md` |
+| 도구 구현·정확도 | 완료 | `docs/validation/Codex-정확도-측정결과.md` |
 
 ---
 
@@ -714,10 +714,10 @@ Android 결론 중 **iOS에서 뒤집힐 수 있는 것**을 미리 표시해 �
 
 ## 참조
 
-- `docs/codex-지원-엔진스펙.md` — Codex 파서 구현 기준서
-- `codex-아티팩트-분석-교차검증.md` — 원 분석문서 교차검증(7라운드)
-- `docs/Codex-정확도-측정결과.md` — 정확도 측정 상세
-- `docs/모바일-원격제어-분석-계획.md` — 4시나리오 계획·취득 절차
+- `docs/analysis/codex-지원-엔진스펙.md` — Codex 파서 구현 기준서
+- `docs/analysis/codex-아티팩트-분석-교차검증.md` — 원 분석문서 교차검증(7라운드)
+- `docs/validation/Codex-정확도-측정결과.md` — 정확도 측정 상세
+- `docs/analysis/모바일-원격제어-분석-계획.md` — 4시나리오 계획·취득 절차
 - `llm모바일아티팩트/docs/모바일-원격제어-실측.md` — Android 실측 원본(관측 63건)
 - `llm모바일아티팩트/output/패널-인계-모바일원격제어.md` — 도식 인계
 - 신청서 `AgenTrace_캡스톤디자인 경진대회 설계 계획서`

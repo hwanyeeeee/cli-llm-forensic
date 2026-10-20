@@ -1,7 +1,7 @@
 # 개발 상황
 
 ## 프로젝트
-clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔진스펙.md`(R1~R7 교차검증 확정). read-only·무손실 절대.
+clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/analysis/codex-지원-엔진스펙.md`(R1~R7 교차검증 확정). read-only·무손실 절대.
 
 ## 플랜 단계
 - [x] 1단계: actor 정합성 선결(폴백 5곳 → actor_bucket 3버킷) ✓ 420 passed(+7), 리뷰 BLOCK 0
@@ -29,7 +29,7 @@ clfx(AgenTrace) — Codex 아티팩트 지원. 기준서 `docs/codex-지원-엔�
 - 소유권: `docs/AgenTrace-아티팩트-인계문서.md` 는 **사용자가 직접 관리**한다 — 에이전트 편집 금지(읽기만). `tests/test_panel_numbers.py` 가 이 문서를 읽어 종합문서와 동결값이 일치하는지 검사한다(쓰지는 않는다).
 - 범위 결정(2026-08-22): **폰 취득본 파싱은 하지 않는다.** clfx 는 로컬 아티팩트만 읽는다. 원격/로컬 판별은 로컬 파일만으로 서기 때문이다 — Claude=세션 JSONL `promptSource`, Codex=`logs_2.sqlite` `client_name`. 폰은 결속·정황 증거라 도구가 없어도 문서로 다룬다. 인계문서 §5 의 iOS Manifest 메타·DBMessageChunk 재조립 2건은 이 결정으로 **범위 밖**.
 - 패널 수치 동결 시각: 2026-08-22 17:20
-- 별도 세션: 모바일 원격제어 4시나리오(docs/모바일-원격제어-분석-계획.md)
+- 별도 세션: 모바일 원격제어 4시나리오(docs/analysis/모바일-원격제어-분석-계획.md)
 - 실사용 확인: parse→analyze→query 실데이터 36,894 이벤트, file:line 인용 동작
 - 비고: 브랜치 feat/codex-support, HEAD c6a1858. 미push 25커밋 — 사용자 결정 대기.
 - 포스터: 이 저장소에서 제작하지 않는다(2026-08-22 결정, panel/ 제거). 발표물은 팀원이 `docs/AgenTrace-아티팩트-인계문서.md` 로 만든다.

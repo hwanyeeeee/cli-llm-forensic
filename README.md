@@ -28,7 +28,7 @@ clfx serve analyzed.jsonl          # http://127.0.0.1:8787
 - **`docs/INDEX.md` 먼저 읽기** — 모든 문서 색인 + 역할별 읽는 순서.
 - 설계: `docs/설계.md`
 - 아티팩트 분석 종합: `docs/AgenTrace-종합-아티팩트-분석.md`
-- 선행논문(토대): `docs/Ref/` (Kim & Jeong, "From assistant to accomplice", SSRN 6725750)
+- 선행논문(토대): Kim & Jeong, "From assistant to accomplice" — [SSRN 6725750](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6725750)
 
 ## 규정
 - **새 문서를 만들면 `docs/INDEX.md` 색인에 한 줄 추가**(없으면 만든 게 아님).

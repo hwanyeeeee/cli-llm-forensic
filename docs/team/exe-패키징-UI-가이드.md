@@ -40,7 +40,6 @@ clfx.exe (PyInstaller --onefile)
 - 월별 활동량 막대그래프 → `GET /api/activity?by=month` (예정)
 - 키워드 빈도 파이 → `GET /api/keywords` (예정)
 - 프롬프트 요약 → 기존 `/api/query`의 summarize 활용 또는 `/api/prompts/summary`
-- (확정 형태는 피드백 spec에서 — `docs/superpowers/specs/`)
 
 → **UI는 차트 라이브러리로 이 JSON을 그리기만.** 집계 숫자는 엔진이 준다.
 

@@ -1,4 +1,4 @@
-# 교차검증 보고: `codex-아티팩트-상세분석.md`
+# 교차검증 보고: `docs/analysis/codex-아티팩트-상세분석.md`
 
 검증자: panel0(Claude Opus 5) × panel1(Codex CLI 0.147.0) 상호 반박 2라운드
 측정 시각: 2026-08-20 20:10~20:35 +09:00

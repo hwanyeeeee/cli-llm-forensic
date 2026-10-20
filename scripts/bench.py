@@ -3,7 +3,7 @@
 사용:  python3 scripts/bench.py <root> [<root>...] [--repeat 3]
        (Windows: py -3 scripts\\bench.py C:\\Users\\<u>\\.claude \\\\wsl.localhost\\Ubuntu\\home\\<u>\\.claude)
 
-테스트 아님(환경 의존 시간값) — CI 밖 수동 실행. 결과는 docs/perf-baseline.md에 붙여넣는다.
+테스트 아님(환경 의존 시간값) — CI 밖 수동 실행. 결과는 docs/validation/perf-baseline.md에 붙여넣는다.
 read-only: 스캔 대상은 읽기만(roio 가드 유지), 출력은 stdout뿐 — 어디에도 쓰지 않는다."""
 import argparse
 import os

@@ -167,7 +167,7 @@ def _scope_key(origins, agents):
 def _remote_root(root):
     """O9: 지연-계층(remote-ish) root 판정 — 스레드 중첩이 이득인 경로.
     UNC(\\wsl.localhost·\\wsl$ 등 //로 시작)와 /mnt/(WSL drvfs)는 I/O 지연 지배 → 스레드풀.
-    네이티브 FS는 GIL 경합으로 32스레드가 순차 대비 +64% 손해(perf-baseline.md 실측) → 순차."""
+    네이티브 FS는 GIL 경합으로 32스레드가 순차 대비 +64% 손해(docs/validation/perf-baseline.md 실측) → 순차."""
     r = str(root).replace("\\", "/").lower()
     return r.startswith("//") or r.startswith("/mnt/")
 

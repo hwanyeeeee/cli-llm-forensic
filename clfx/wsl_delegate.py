@@ -1,6 +1,6 @@
 """O11: WSL-side 파싱 위임 오케스트레이션 — \\wsl.localhost(9P) 우회.
 wsl.exe interop 채널로 WSL 안에서 clfx.wsl_helper를 실행해 네이티브 파싱 결과만 회수한다.
-9P가 wedge 되어도 interop은 별개 채널이라 동작(2026-07-03 실사, docs/perf-baseline.md).
+9P가 wedge 되어도 interop은 별개 채널이라 동작(2026-07-03 실사, docs/validation/perf-baseline.md).
 read-only(I3): 증거 트리 쓰기 0 — 스테이징(헬퍼 사본)·출력(out.jsonl)은 호출측(Windows) 임시 디렉터리.
 도구 무결성: 스테이징된 헬퍼 전체(.py + shim)의 SHA-256을 반환 — attestation에 표면화(chain of custody)."""
 import hashlib

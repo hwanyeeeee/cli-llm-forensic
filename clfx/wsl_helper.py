@@ -1,5 +1,5 @@
 """O11: WSL 내부 네이티브 파싱 헬퍼. exe(Windows)가 wsl.exe interop으로 이 모듈을 WSL에서 실행 —
-\\wsl.localhost(9P)를 우회해 증거를 네이티브 FS에서 읽는다(신뢰성+속도, docs/perf-baseline.md).
+\\wsl.localhost(9P)를 우회해 증거를 네이티브 FS에서 읽는다(신뢰성+속도, docs/validation/perf-baseline.md).
 
 증거 환경 내 발자국(라이브 포렌식 트레이드오프 — 문서화):
   - 실행: python3 -B -E -s (pyc 생성 금지, 환경변수/사이트 격리)

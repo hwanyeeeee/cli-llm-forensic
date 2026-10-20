@@ -1740,13 +1740,11 @@ Windows Temp와 CODEX_HOME 파일의 OS owner는 사용자 계정일 수 있다.
 
 현재 도구 및 기존 Claude 분석과의 연결:
 
-- [기존 설계서](cli-llm-forensic-final/docs/설계.md)
-- [Event schema](cli-llm-forensic-final/docs/event-schema.md)
-- [기존 사용법](cli-llm-forensic-final/docs/사용법.md)
-- [기존 temp·원본 보존 실측](cli-llm-forensic-final/docs/실측-temp-원본보존-원리.md)
-- [논문 대비 신규 발견](cli-llm-forensic-final/docs/논문대비-신규발견.md)
-- [artifact 확장 계획](cli-llm-forensic-final/docs/superpowers/plans/2026-06-18-clfx-B-아티팩트-해시귀속.md)
-- [MCP/temp 계획](cli-llm-forensic-final/docs/superpowers/plans/2026-06-18-clfx-C-MCP통합-tmp보존.md)
+- [기존 설계서](../설계.md)
+- [Event schema](../event-schema.md)
+- [기존 사용법](../사용법.md)
+- [기존 temp·원본 보존 실측](실측-temp-원본보존-원리.md)
+- [논문 대비 신규 발견](논문대비-신규발견.md)
 
 기존 문서에서 Codex 경로가 언급되더라도 실제 parser 구현은 Claude 중심이다. 문서의 “Codex 지원 예정”과 현재 실행 가능한 기능을 혼동하면 안 된다.
 

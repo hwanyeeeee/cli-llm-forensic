@@ -1,7 +1,7 @@
 # Codex 지원 엔진 스펙 (확정 사실 + 합의된 설계)
 
 근거: panel0(Opus 5) × panel1(Codex gpt-5.6-sol xhigh) 상호반박 **R1~R4**.
-원본 산출물 `.harness/codex-verify-*.md`, 문서 검증 결과 `codex-아티팩트-분석-교차검증.md`.
+원본 산출물 `.harness/codex-verify-*.md`, 문서 검증 결과 `docs/analysis/codex-아티팩트-분석-교차검증.md`.
 측정: 2026-08-20, WSL `~/.codex` rollout **344파일 / 138,785라인 / JSON error 0** 전수 + SQLite read-only 사본.
 
 **이 문서는 확정 사실과 합의 결정만 담는다. 추측은 § 9(미해결)에만 둔다.**

@@ -7,8 +7,8 @@ run: python3 -m clfx.cli parse ~/.codex --out /tmp/codex-events.jsonl
 
 # 플랜 — Codex 아티팩트 지원 (다중 소스 엔진)
 
-- 기준서: `docs/codex-지원-엔진스펙.md` (R1~R7 교차검증 확정 사실)
-- 검증 근거: `codex-아티팩트-분석-교차검증.md` · 원본 `.harness/codex-verify-*.md`
+- 기준서: `docs/analysis/codex-지원-엔진스펙.md` (R1~R7 교차검증 확정 사실)
+- 검증 근거: `docs/analysis/codex-아티팩트-분석-교차검증.md` · 원본 `.harness/codex-verify-*.md`
 - 범위: **도구 개발 전용.** 패널·포스터는 이 저장소에서 만들지 않는다(2026-08-22 결정).
 - **절대 원칙**: read-only · 무손실(unknown 구조도 provenance 보존, 조용한 0건 금지) · 결정성 · 기존 413 테스트 green 유지
 
@@ -97,7 +97,7 @@ acceptance: python3 -m pytest tests/test_wsl_delegate.py tests/test_codex_sqlite
 
 ## 10단계: Codex 정확도 정량 측정
 
-신청서 목표 ⑤. Claude는 측정본이 있고 **Codex는 없다**. `docs/정확도-검증-시나리오.md` 3시나리오를 Codex 기록 형식으로 확장.
+신청서 목표 ⑤. Claude는 측정본이 있고 **Codex는 없다**. `docs/validation/정확도-검증-시나리오.md` 3시나리오를 Codex 기록 형식으로 확장.
 
 - 주체 식별 100건 · 접근파일 판정 100건 · MCP 외부연동 호출 100건
 - 합성 transcript(정답 라벨 보유) ↔ 도구 판정 1:1 비교. 실데이터 복사 금지
@@ -119,7 +119,7 @@ acceptance: python3 -m pytest tests/test_accuracy_codex.py -q
 - Claude·Codex **양쪽 형식**으로 각각 생성 (도구 무관하게 같은 결론이 나오는지)
 - 합성. 실데이터 복사·민감값 금지. 가짜 시크릿은 명백한 더미로(`AKIA...EXAMPLE` 등)
 - 대시보드에 띄웠을 때 A/B가 색으로 갈리고 `file:line` 역추적이 되는 상태까지
-- 산출: `tests/fixtures/leak-scenario/` + `docs/유출시나리오-재현.md`(사건 서술 + 도구가 낸 근거)
+- 산출: `tests/fixtures/leak-scenario/` + `docs/validation/유출시나리오-재현.md`(사건 서술 + 도구가 낸 근거)
 
 패널 F5 캡처를 이 데이터셋으로 대체하면 개인 프로젝트 경로 노출 없이 시연할 수 있다.
 
