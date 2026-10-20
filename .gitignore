@@ -10,8 +10,7 @@
 /CLAUDE.md
 /AGENTS.md
 /.mcp.json
-docs/superpowers/plans/2026-06-15-codex-cross-review.md
-docs/superpowers/specs/2026-06-15-codex-cross-review-design.md
+/.agents/
 docs/Ref/
 
 # Python 생성물 (소스 테스트·픽스처는 커밋함 — tests/ 통째 무시 금지)

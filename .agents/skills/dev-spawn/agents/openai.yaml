@@ -1,6 +1,0 @@
-interface:
-  display_name: "dev-spawn"
-  short_description: "Start Dev-harness panel 1 dev session"
-  default_prompt: "Use $dev-spawn with claude|codex."
-policy:
-  allow_implicit_invocation: false

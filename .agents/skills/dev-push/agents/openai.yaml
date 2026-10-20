@@ -1,6 +1,0 @@
-interface:
-  display_name: "dev-push"
-  short_description: "Push local managed harness files back to Dev-harness root"
-  default_prompt: "Use $dev-push."
-policy:
-  allow_implicit_invocation: false

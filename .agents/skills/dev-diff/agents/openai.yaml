@@ -1,6 +1,0 @@
-interface:
-  display_name: "dev-diff"
-  short_description: "Show drift between this project and Dev-harness (read-only)"
-  default_prompt: "Use $dev-diff."
-policy:
-  allow_implicit_invocation: false
