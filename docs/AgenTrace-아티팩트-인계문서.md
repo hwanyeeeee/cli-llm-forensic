@@ -8,7 +8,8 @@
 > `[OBSERVED]` 직접 관측 · `[INFERRED]` 관측에서 추론 · `[HYPOTHESIZED]` 미검증 가설
 > **원본 근거**: 로컬 = `docs/AgenTrace-종합-아티팩트-분석.md`,  
 > 모바일 = `C:\projects\llm모바일아티팩트\output\원격연동-아티팩트.md` (VR 번호로 추적)
-> **수치 동결 시각**: 2026-08-22 17:20 · 재확인 `python3 -m pytest tests/test_panel_numbers.py -q -s`
+> **수치 동결 시각**: 2026-08-22 17:20 스냅샷 (Codex 로컬) · **2026-08-22 23:10 스냅샷** (Claude 로컬·추론 내역 재측정)  
+> 재확인 `python3 -m pytest tests/test_panel_numbers.py -q -s`
 
 ---
 
@@ -24,6 +25,11 @@
 
 ⚠ **번들 ID 가 플랫폼마다 다르다** — 탐지 규칙에 양쪽 다 등록해야 한다.
 
+⚠ **Android 와 iOS 는 앱·CLI 버전이 다르다** — Claude 앱 `1.260817.0` vs `1.260820.0`,
+ChatGPT 앱 `1.2026.223` vs `1.2026.224`, CLI `2.1.238` vs `2.1.239`.
+**아래 플랫폼 비대칭 주장 중 버전 차이로 설명되는 부분은 분리 검증되지 않았다.**
+발표에서 "iOS 는 남고 Android 는 안 남는다" 류를 말할 때 이 각주를 함께 달아야 한다.
+
 ### 0.2 버전 — 세 층을 구분해서 읽어라 ★★
 
 버전이 문서 여러 곳에 나오는데 **가리키는 것이 층마다 다르다.** 섞어 읽으면 안 된다.
@@ -34,6 +40,9 @@
 | **② 판별자 근거 버전**  | Codex **`0.149.0`** · Claude Code **`2.1.238`·`2.1.239`**<br>Android 앱 `1.260817.0` / `1.2026.223`<br>iOS 앱 `1.260820.0` / `1.2026.224` | §4.1 의 `promptSource`·`client_name` 판별 규칙이 **이 버전의 레코드 형식에 의존**한다. |
 | **③ 디스크에 쌓여 있는 기록** | Codex **`0.63.0`~`0.149.0` 30개 버전** 이 쓴 rollout **353파일**<br>Claude **`2.1.145`~`2.1.239` 34개 버전** 이 쓴 세션 JSONL **262파일** | 지금까지 **쌓인 내역**. 그때그때의 버전 형식으로 굳어 있어 **소급해서 못 바꾼다.** |
 
+> **한 줄로**: 이 도구는 **Codex `0.63.0`~`0.149.0`, Claude Code `2.1.145`~`2.1.239` 까지
+> 쌓여 있는 내역을 전부 읽어낸다.** 최신 버전 하나만 읽는 게 아니다.
+>
 > **①을 최신으로 맞춰도 ③은 그대로다.** 이미 디스크에 있는 기록은 그때 버전의 형식으로 쓰여 있고,
 > 포렌식은 **지금 만드는 기록이 아니라 남아 있는 기록**을 읽는다.
 > → **환경을 최신으로 통일했다고 구버전 파서를 뗄 수 없다.** 근거는 **§2.2.7**.
@@ -127,16 +136,38 @@ nonce 는 시나리오마다 다른 값을 써서 어느 지시가 어느 회수
 | `~/.claude/sessions/<pid>.<sha256>.key`          | 메시징 소켓 인증용 추정 — **원격 마커 아님**                                                                  | 무관     |
 | `~/.claude.json`                                 | `hasUsedRemoteControl` · `remoteDialogSeen` · `remoteControlUpsellSeenCount` · `oauthAccount` | 보조     |
 | `~/.claude/history.jsonl`                        | 프롬프트 이력                                                                                       | 보조     |
+| 세션 JSONL 내 `tool_use.name` = `mcp__<서버>__<툴>` | **MCP 사용 내역** — 어느 MCP 서버의 어느 툴을 언제 호출했는지 이름에 그대로 남는다 | 보조 |
 | `~/.claude/file-history/` · `uploads/` · OS temp | 원본 보존·붙여넣기 캐시                                                                                 | 보조     |
 | `.claude.json` · `.mcp.json`                     | MCP 서버 설정                                                                                     | 설정 증거  |
 
-### 2.1.2 세션 JSONL 레코드 타입 (실측 분포 예)
+### 2.1.2 세션 JSONL 레코드 타입 · 행위 주체 (전수 집계)
+
+`~/.claude/projects/*/*.jsonl` **262파일 전수** (2026-08-22 23:10 스냅샷 · 총 382,266 레코드)
 
 ```
-attachment 45 · assistant 16 · user 11 · system 5 · mode 4 · permission-mode 4
-last-prompt 4 · bridge-session 3 · queue-operation 2 · atis-latch 2 · ai-title 2
-file-history-snapshot 1
+assistant 108,961 · attachment 91,055 · user 58,177 · last-prompt 19,197 · mode 16,948
+permission-mode 16,788 · system 15,222 · ai-title 14,174 · queue-operation 11,400
+agent-name 10,636 · custom-title 9,628 · file-history-snapshot 7,465
+file-history-delta 1,162 · bridge-session 775
 ```
+
+**`type:"user"` 58,177건의 내역 — Codex 와 같은 이름 함정이 있다** (§2.2.6 과 같은 축)
+
+| 분류 | 건수 | 판정 근거 |
+|---|---|---|
+| 도구 결과(`tool_result`) | **44,827** | `message.content[]` 에 `tool_result` 블록 |
+| 기타(첨부·큐 등) | 7,336 | `promptSource` 없음 · `tool_result` 아님 |
+| **사람 입력** | **5,398** | `promptSource` ∈ {`typed`, `queued`} |
+| 시스템 생성 | 616 | `promptSource == "system"` |
+
+→ **`type:"user"` 를 사람 입력으로 세면 10.8배 과계수한다** (58,177 vs 5,398).
+   Codex 의 `role=user` 함정(§2.2.6)과 **같은 성질**이며, 다만 Claude 는 `promptSource` 한 필드로 같은 파일 안에서 갈린다.
+
+**도구 호출 상위** — `Bash` 28,539 · `Edit` 7,183 · `Read` 4,997 · `Write` 1,686 · `Agent` 468
+→ Codex 와 달리 **범용 파일 읽기(`Read`) 기록이 있다** (§2.3 대비표).
+
+> ⚠ 이 수치는 **측정 시점 스냅샷**이다. 분석 중에도 세션이 계속 쌓여 값이 움직인다
+> (같은 세션 안에서 MCP 호출이 53→69 로 증가한 것을 관측했다).
 
 ### 2.1.3 핵심 성질
 
@@ -149,22 +180,13 @@ file-history-snapshot 1
 `bridgeSessionId` 는 유지되고 JSONL 은 **단일 파일**이다.  
 → "브리지 ID 1개 = 원격제어 1회" 가 아니라 **"= 원격 연결된 논리 세션 1개"**
 
-### 2.1.4 존속 — 종료 방식에 달렸다 ★
-
-| 종료 방식                       | `~/.claude/sessions/<pid>.json` |
-| --------------------------- | ------------------------------- |
-| 정상 종료 (`/exit`)             | **삭제** — 원격 마커 소실               |
-| 비정상 종료 (터미널 종료·WSL 셧다운·크래시) | **잔존**, 재부팅 후에도 유지              |
-
-**항구적 증거는 세션 JSONL 이다.** 정상 종료 후에도 JSONL 과 그 안의 `bridge-session` 레코드  
-전부, `promptSource="queued"` 전부가 보존된다.  
-→ **취득 우선순위**: 1차 = `~/.claude/projects/**/*.jsonl` · `~/.claude/sessions/` 는 **휘발성 보조**
-
 ---
 
 ## 2.2 Codex CLI 로컬 아티팩트
 
-> **한 줄**: 기록 계층이 **3개**이고 이름 규칙이 전부 다르다. 게다가 **스키마 세대가 갈린다.**
+> **한 줄**: 대화 내용은 rollout 파일에 다 남는다. 그런데 **누가 시켰나는 다른 파일**(`logs_2.sqlite`)을
+> 봐야 하고, **그 rollout 을 읽는 방법이 파일마다 다르다** — 같은 데이터를 세 군데가 각각 다른 이름으로
+> 쓰고, 쓰여진 시기에 따라 형식이 두 갈래로 갈린다.
 
 ### 2.2.1 저장 위치
 
@@ -185,16 +207,17 @@ file-history-snapshot 1
 | `app-server-control/app-server-control.sock`             | 유닉스 제어 소켓 (`srw-------`)                                              | 보조                  |
 | `auth.json`                                              | **평문 JWT** (`id_token`·`access_token`·`refresh_token`) · `account_id` | 민감·결속축              |
 | `config.toml` (+`.bak`)                                  | MCP·hooks·plugins·sandbox                                             | 설정 증거               |
+| rollout 의 `mcp` 액션 / `list_mcp_resources`              | **MCP 사용 내역** — Claude 만큼 이름이 드러나지 않는다 | 보조 |
 | `history.jsonl` · `session_index.jsonl`                  | 보조 인덱스 — **비권위** (중복·누락)                                              | 보조                  |
 | `tmp/` `.tmp/` `shell_snapshots/` `thread-writer-locks/` | 실행 부산물                                                                | 보조                  |
 | `packages/standalone/`                                   | **standalone 설치본** — 원격제어 전제 (§3.1.2)                                 | 판정 근거               |
 | `visualizations/<스레드생성일>/<thread_id>/`                   | 원격 턴 산물 (iOS 클라이언트) — §3.2.2                                          | 원격 정황               |
 
 ⚠ DB 파일명 숫자 접미사 (`_5`·`_1`·`_2`) 는 schema version 이 아니다.  
-`_sqlx_migrations` max = state_5:46 · thread_history_1:4 · logs_2:2.  
+`_sqlx_migrations` max = state_5:**50** · thread_history_1:4 · logs_2:2.  
 → glob + `_sqlx_migrations` 로 판별해야 한다.
 
-⚠ **커버리지 경고**: `state_5.threads` 341 vs `thread_items` distinct thread **21**.  
+⚠ **커버리지 경고**: `state_5.threads` **350** vs `thread_items` distinct thread **24**.  
 projection 만으로 사건을 확정하면 안 된다.
 
 ### 2.2.2 한 줄 요약 — 무엇을 알려면 무엇을 봐야 하나 ★★
@@ -247,63 +270,102 @@ projection 만으로 사건을 확정하면 안 된다.
 
 | 계층                | 경로                            | 규칙             | 실측 건수                                                                                                |
 | ----------------- | ----------------------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
-| raw response_item | `payload.type`                | **snake_case** | `reasoning` 20,857 · `function_call` 15,848 · `message` 11,305 · `custom_tool_call` 10,186           |
-| raw item          | `event_msg.payload.item.type` | **PascalCase** | `CommandExecution` 2,252 · `AgentMessage` 423 · `Extension` 162 · `UserMessage` 83 · `FileChange` 64 |
-| SQLite projection | `thread_items.item_type`      | **camelCase**  | `commandExecution` · `fileChange` · `userMessage` · `webSearch`                                      |
+| raw response_item | `payload.type`                | **snake_case** | `reasoning` 21,882 · `function_call` 15,905 · `message` 11,641 · `custom_tool_call` 10,836           |
+| raw item          | `event_msg.payload.item.type` | **PascalCase** | `CommandExecution` 2,791 · `AgentMessage` 628 · `Extension` 165 · `UserMessage` 114 · `FileChange` 171 |
+| SQLite projection | `thread_items.item_type`      | **camelCase**  | `commandExecution` · `fileChange` · `userMessage` · `webSearch` **(주요 예시 — 실측 10종)**              |
 
 **같은 이름인데 구조가 다르다** — 원형 파서를 공유하면 안 되고, 정규화 계층만 공유한다:
 
 | 필드                   | raw                                                                                 | SQLite                             |
 | -------------------- | ----------------------------------------------------------------------------------- | ---------------------------------- |
-| `FileChange.changes` | 경로-키 **map**. value keyset `{type,content}` 22 / `{type,move_path,unified_diff}` 46 | **배열** `{path,kind,diff}` 68 entry |
-| `command`            | **argv 배열** (2,274/2,274)                                                           | **문자열** (2,103/2,103)              |
+| `FileChange.changes` | 경로-키 **map**. value keyset `{type,content}` 43 / `{type,move_path,unified_diff}` 191 | **배열** `{path,kind,diff}` 234 entry |
+| `command`            | **argv 배열** (2,791/2,791)                                                           | **문자열** (2,620/2,620)              |
 | `cwd`                | percent-encoded **`file://` URL**                                                   | 절대경로                               |
 | 이미지                  | `local_image`                                                                       | `localImage`                       |
 
 ### 2.2.4 같은 CLI 인데 파일 형식이 두 세대로 갈린다 ★★
 
-로컬 표본 rollout 353파일에 **cli_version 30종** (`0.63.0` ~ `0.149.0` — §0.2 ③).
+디스크에 쌓여 있는 rollout **353파일 · cli_version 30종**(`0.63.0`~`0.149.0` — §0.2 ③) 중
+**item 계층(현행 형식)으로 쓰인 것은 24파일뿐이고 나머지 329파일은 옛 형식**이다.
 
-| 증거                 | legacy 계층 (item 레코드 없는 파일 **329개**)                                                                                           | item 계층 (**24개**)             |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| 사용자 발화             | `event_msg.user_message` 2,231                                                                                                | `item.UserMessage` 83         |
-| 에이전트 응답            | `event_msg.agent_message` 7,101                                                                                               | `item.AgentMessage` 423       |
-| 명령 실행              | `function_call exec_command|shell_command|run` 12,445 + `custom_tool_call exec` 6,393 + `exec_command_end` 1,254 = **20,092** | `item.CommandExecution` 2,281 |
-| 파일 쓰기              | `apply_patch` 1,797 + `patch_apply_end` 1,702 = **3,499**                                                                     | `item.FileChange` 66          |
-| envelope `ordinal` | 없음                                                                                                                            | 전 라인 존재                       |
+**현행(item) 형식 — 도구가 기준으로 삼는 레코드**
 
-**같은 0.147.0 바이너리인데 `originator` 로 계층이 갈린다** —  
-`codex-tui`(대화형) 22파일 = item / **`codex_exec`(헤드리스) 6파일 = legacy**
+| 증거 | 레코드 |
+|---|---|
+| 사용자 발화 | `item.UserMessage` |
+| 에이전트 응답 | `item.AgentMessage` |
+| 명령 실행 | `item.CommandExecution` |
+| 파일 쓰기 | `item.FileChange` |
+| envelope | `ordinal` 전 라인 존재 |
 
-**정량 영향 (발표 헤드라인용 · 파일 기준)**
+**옛 형식은 같은 사실을 다른 이름으로 쓴다** — 사용자 발화 `event_msg.user_message`,
+명령 실행 `function_call exec_command`·`custom_tool_call exec`·`exec_command_end`,
+파일 쓰기 `apply_patch`·`patch_apply_end`. `ordinal` 이 없다.
+(옛 형식의 레코드별 상세 건수는 이 문서 범위 밖이다 — 파서 구현 사항이다.)
 
-> item 계층만 구현한 파서는 **세션 파일 329/353 = 93.2% 에서 명령·쓰기 이벤트를 0건** 낸다.
+**같은 `0.147.0` 바이너리인데 `originator` 로 계층이 갈린다** —
+`codex-tui`(대화형) 22파일 = item / **`codex_exec`(헤드리스) 6파일 = 옛 형식**
+
+**정량 영향 (발표 헤드라인)**
+
+> 현행 형식만 구현한 파서는 **세션 파일 329/353 = 93.2% 에서 명령·쓰기 이벤트를 0건** 낸다.
 
 비율이 아니라 **이진 속성**(그 파일에 `item_completed` 레코드가 있느냐)이라 기록이 더 쌓여도 흔들리지 않는다.
 
-> ⚠ **판정은 버전이 아니라 레코드 유무로.** `cli_version` 으로 era 를 나누면 legacy 파일 323개만  
-> 잡히지만, `codex_exec` 헤드리스 6파일은 **0.147 을 보고하면서도 `item_completed` 를 한 건도 내지 않는다.**  
-> 그 6개를 더한 **329개**가 단일 스키마 파서의 실제 0건 구간이다.  
+> ⚠ **판정은 버전이 아니라 레코드 유무로.** `cli_version` 으로 나누면 옛 형식 파일 323개만
+> 잡히지만, `codex_exec` 헤드리스 6파일은 **`0.147` 을 보고하면서도 `item_completed` 를 한 건도 내지 않는다.**
+> 그 6개를 더한 **329개**가 단일 스키마 파서의 실제 0건 구간이다.
 > (기계 검증: `tests/test_panel_numbers.py`)
 
-**레코드 기준 보조 지표** (2026-08-22 스냅샷 · 중복제거 후 — 각주로만)
-
-| 지표    | legacy | item(0.147+) | 회수율   |
-| ----- | ------ | ------------ | ----- |
-| 명령    | 21,482 | 2,789        | 11.5% |
-| 파일 쓰기 | 2,222  | 171          | 7.1%  |
-
-중복제거 근거: `exec_command_end` 1,254개 call_id 가 `function_call(exec_command)` 와 **완전 일치**(교집합 1,254 = end 전체).  
-쓰기도 `apply_patch` 1,797 ∩ `patch_apply_end` 1,702 = **1,277 중복** → union 2,222.  
-**이 비율은 지금 쌓여 있는 기록의 구성비이지 도구의 속성이 아니다** — 0.147+ 사용이 늘수록 올라간다.
-
-→ 파서는 버전 하드코딩이 아니라 **구조 탐지(capability sniffing)** 로 판정하고,  
+→ 파서는 버전 하드코딩이 아니라 **구조 탐지(capability sniffing)** 로 판정하고,
 발견된 파서를 전부 실행해 `id`/`call_id` 로 병합한다. 미지 구조는 `unsupported_schema` 로 표면화한다.
 
-### 2.2.5 암호화·opaque 구간
+### 2.2.5 추론 내역 — 어디에 남고, 무엇을 못 읽나 ★★
 
-`encrypted_content` · `gAAAAA` 가 **313파일 / 353 = 88.7%** 에 나타난다.  
-→ **복호화 시도 안 함.** 존재·길이·위치·session/turn 연결만 보존한다.
+**별도 폴더·DB 는 없다.** 두 벤더 모두 **세션 파일 안에 턴 순서대로 인라인** 저장된다.
+세션 파일만 확보하면 추론 레코드도 같이 딸려 온다 — **다만 내용은 읽지 못한다.**
+
+#### Claude — `thinking` 이 그 턴의 맨 앞 줄로 온다
+
+```
+~/.claude/projects/<프로젝트슬러그>/<세션UUID>.jsonl     ← 세션 1개 = 파일 1개
+
+줄 28  assistant   thinking(본문 0자 · signature 3,680자)   ← 추론
+줄 29  assistant   text(50자)                               ← 사용자에게 보인 답
+줄 30  assistant   tool_use: Bash                           ← 실행
+줄 33  user        tool_result                              ← 결과
+줄 35  assistant   tool_use: Bash
+```
+
+`message.content[]` 블록 하나가 한 줄이 되므로 **한 턴이 여러 줄로 쪼개지고,
+`thinking` 이 그 턴의 선두에 놓인다.**
+
+#### Codex — `reasoning` 이 최상위 레코드로 끼어 있다
+
+```
+~/.codex/sessions/YYYY/MM/DD/rollout-<시각>-<threadID>.jsonl   ← 세션 1개 = 파일 1개
+
+줄  11  message     role=user                                   ← 사용자 지시
+줄  14  reasoning   encrypted_content 3,620자 · summary 빈배열   ← 추론
+줄  16  message     role=assistant                              ← 답변
+```
+
+#### 대비
+
+| | Claude | Codex |
+|---|---|---|
+| 저장 위치 | `~/.claude/projects/<슬러그>/<세션UUID>.jsonl` | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
+| 구조 | `assistant` 레코드의 `content[].type = "thinking"` | 최상위 `payload.type = "reasoning"` |
+| 남는 것 | `signature` 약 3,680자 (**무결성 서명**, 암호문 아님) | `encrypted_content` 1,892~3,620자 (`gAAAAA…`) |
+| 본문 | 실측 17,052건 중 **평문 820건(4.8%)**, 나머지는 빈 문자열 | 항상 암호문. `summary` 는 719건 중 **509건 빈 배열**, 나머지도 제목 한 줄 |
+
+> **★★ 이것이 이 연구에서 말할 수 있는 것과 없는 것의 경계선이다.**
+> **"무엇을 했나"는 평문으로 전부 남는다** — 명령·인자·결과·파일 변경.
+> **"왜 그렇게 판단했나"는 양쪽 다 복원 불가다.**
+> 추론 레코드의 **위치**(어느 명령 직전에 추론이 있었는지)는 파일 순서로 복원되지만 **내용은 못 읽는다.**
+>
+> 수사 관점: **행위 입증은 되고 의도 입증은 안 된다.** 그 부분은 서버 측에만 있어 **영장 대상이 달라진다.**
+> 반대로 프라이버시 관점에서는 추론 과정을 로컬에 남기지 않는 설계로 보인다 [INFERRED].
 
 ### 2.2.6 행위 주체 식별 (Claude·Codex 공통 규칙)
 
@@ -318,26 +380,19 @@ projection 만으로 사건을 확정하면 안 된다.
 | **unknown** | 세션/턴 연결 자체가 없을 때만                                                                      |
 
 ⚠ **이름에 user 가 들어가도 사람 입력이 아닌 것** (Event 로 만들면 과계수)  
-`response_item.message role=user` 2,968 · `role=developer` 815 (모델 입력 뷰) ·  
-`turn_context.user_instructions` 786 · `session_meta.base_instructions` 349 · `history.jsonl` 2,266
+`response_item.message role=user` · `role=developer` (모델 입력 뷰) ·  
+`turn_context.user_instructions` · `session_meta.base_instructions` · `history.jsonl`  
+→ **필드 이름이 아니라 위 판정표의 근거로만 actor 를 정한다.**
 
 **실측** (2026-08-22 17:20): agent 34,698 / user 2,392 / **unknown 0**.  
 `user_shell` **2건**이 명령 이벤트 22,851건 중에서 정확히 분리된다.
 
-**파일 작성 확신도 4등급**
-
-| 등급        | 조건                                                                      |
-| --------- | ----------------------------------------------------------------------- |
-| `high`    | 구조화 기록 + 같은 turn/thread + **잔존 파일 stat/hash 상관**                        |
-| `medium`  | 구조화 write 기록(FileChange·apply_patch·patch_apply_end) + completed + path |
-| `low`     | 미완료 / 타깃 없음 · command 리다이렉션 추정                                          |
-| `unknown` | 디스크에만 존재, transcript 연결 없음                                              |
-
-⚠ **shell 로 만든 파일은 `FileChange` 에 안 잡힌다** — redirection 명령 51건 중 21건이 same-turn  
-FileChange 없음(16건 exit 0). write-like 227건 대 FileChange 66건에 same-turn path 매칭 **0**.  
-→ 도구는 이 부류를 `action=write` 로 **주장하지 않고** `meta.write_target` + `confidence=low` 로 후보만 표면화한다.
-
-⚠ **개별 승인 여부는 판정 불가.** `approval_policy` `on-request` 1,424 / `never` 1,922,  
+⚠ **개별 승인 여부는 판정 불가 — 단 접두사 단위 승인은 남는다.**
+`world_state.state.permissions.`**`approved_command_prefixes`** 에 사용자가 승인한 실제 argv 접두사가
+**30파일 · 50건** 영속 기록된다 (예: `[["npm","install"],["npx","shadcn@latest","add",…]]`).
+`approvals_reviewer:"user"` 1,072건도 있다. **턴별 승인 클릭 시각 record 는 여전히 0건**이므로
+`approved_by_user`(개별 턴 승인)는 기록 금지가 유지되나, "승인 흔적이 전혀 없다"는 서술은 틀리다.
+ `approval_policy` `on-request` 1,424 / `never` 1,922,  
 `sandbox_policy` `workspace-write` 1,428 / `read-only` 88 / `danger-full-access` 1,830 은 **정책 스냅샷**일 뿐이고  
 개별 승인 record 는 전수 검색 **0건**이다 → `approved_by_user` 는 **기록 금지**.
 
@@ -372,6 +427,9 @@ command 가 argv 배열↔문자열, `changes` 가 map↔배열, `cwd` 가 `file
 
 **이 방식이 맞다는 증거**
 > 353파일 전량에서 `unsupported_schema` 0건 · `actor` unknown 0건.
+> ⚠ **unknown 0 은 정확도가 아니라 커버리지 지표다** — `agent` 가 catch-all 이고
+> `unknown` 은 "세션/턴 연결이 아예 없을 때"로 정의돼 있어 rollout 파싱 산출물에서는 구조상 0 이 나온다.
+> 판정 타당성의 근거는 `unsupported_schema` 0건과 §9 의 합성 fixture 정확도다.
 > 접근이 틀렸다면 둘 중 하나는 0이 아니다 — 못 읽은 구조가 남거나, 주체를 못 정한 이벤트가 남는다.
 
 **복잡도는 한 곳에 갇혀 있다** — 새 era 가 나오면 **파서를 하나 더하면 되고** 판정 로직은 안 건드린다.
@@ -391,11 +449,12 @@ command 가 argv 배열↔문자열, `changes` 가 map↔배열, `cwd` 가 `file
 | -------- | --------------- | ---------------------------------------------- |
 | 1차 증거    | 세션 JSONL **1개** | rollout JSONL **+ SQLite 6종**                  |
 | 기록 계층    | 단일              | **3계층** (snake / Pascal / camel)               |
-| 스키마 세대   | 단일              | **legacy / item 2세대 + originator 분기**          |
+| 스키마 세대   | **미측정** — 34개 버전(2.1.145~2.1.239)이 쌓여 있으나 세대 분화는 확인하지 않았다 | **legacy / item 2세대 + originator 분기**          |
 | 내용과 출처   | **같은 파일**       | **다른 파일** (rollout ↔ `logs_2.sqlite`)          |
 | 파일 읽기 기록 | 있음 (`Read` 도구)  | **범용 read 레코드 없음** — `action=read` 는 이미지 열람뿐 ★ |
+| MCP 사용 내역 | 세션 JSONL 의 `tool_use.name` 에 **`mcp__<서버>__<툴>`** 로 기록 | rollout 의 `mcp` 액션 — 서버·툴 이름이 덜 드러남 |
 | 자격증명     | OAuth 계정 정보     | `auth.json` **평문 JWT**                         |
-| 암호화 구간   | —               | `encrypted_content` 305파일                      |
+| **추론 내역** | `thinking` — 내용 암호화, `signature` 만 남음 | `reasoning` — `encrypted_content` 암호문 |
 
 ⚠ **접근파일 정확도를 두 벤더 나란히 놓으면 안 된다** — Codex 에는 애초에 범용 파일 읽기 레코드가 없다.
 
@@ -410,7 +469,7 @@ command 가 argv 배열↔문자열, `changes` 가 map↔배열, `cwd` 가 `file
 
 **전 시나리오 공통 결론 3개**
 
-1. **지시 "내용"의 증거는 로컬 PC 에만 있다.** 4칸 전부에서 폰 취득본 전수 검색 결과 지시 문구 **0건**.
+1. **지시 "내용"의 증거는 로컬 PC 에만 있다.** 4칸 중 **3칸**에서 폰 취득본 전수 검색 결과 지시 문구 **0건**. Android×Codex 만 예외로 **지시문 슬러그**가 작업 디렉터리명에 남는다.
   (예외 1건: Android×Codex 는 지시 **주제**가 디렉터리 슬러그로 △ 남는다)
 2. **폰은 "언제 어느 세션·호스트에 붙었나"의 증거** — 결속·정황 증거다.
 3. **원격/로컬 판별은 로컬 파일에서 한다.** 폰은 판별에 필요 없다.
@@ -448,7 +507,7 @@ command 가 argv 배열↔문자열, `changes` 가 map↔배열, `cwd` 가 `file
 | `app_webview/Default/Cookies`                                                                | **두 번째 평문 사본** (`encrypted_value` 길이 0)                                                                                                                                            |
 | `shared_prefs/trusted_device.xml`                                                            | **암호화** (Tink/AndroidKeyStore) — 같은 앱 안에서 보호 수준이 다르다 ★                                                                                                                             |
 | 식별자군                                                                                         | `device_id_prefs.xml` · Segment · `files/INSTALLATION` · datadog · sentry · `siftscience.xml`                                                                                      |
-| 시각 메타                                                                                        | kronos `cached_offset` — **NTP 보정값, 단말 시계 신뢰도 근거** ★                                                                                                                               |
+| 시각 메타                                                                                        | kronos `cached_offset` — **NTP 보정값 — 타임스탬프 검증용 메타증거로 쓸 수 있다 [INFERRED]. 단말 시계 신뢰도 근거** ★                                                                                                                               |
 
 #### (3) 서버 인가 스냅샷 — "기능 보유"가 아니라 "인가 상태"다 ★
 
@@ -534,7 +593,7 @@ remote/cowork/code 매칭 17건 중:
 단 **활성 분기만** 남는다(`index` 0~87 중 22건 — 편집·재생성으로 버려진 형제 분기는 없음).
 
 > ⚠ **오해 방지**: 단말 캐시 15건은 "사용자가 폰에서 본 것"이 아니라 **로그인 시 서버가 밀어준 최근 목록**이며  
-> 그 범위는 사용자 행위가 아니라 **서버 페이지 크기**가 정한다. 스크롤해도 늘지 않는다(15 = 상한).
+> 그 범위는 사용자 행위가 아니라 **서버가 정한 고정 상한**(`RECENT`)이다. 페이지가 아니라 상한이라 스크롤해도 늘지 않는다.
 
 #### (7) 사슬 완성 — 표식 파일 실험
 
@@ -627,7 +686,7 @@ WSL hostname 이 Windows 머신명을 상속해 **`server_name` 이 동일**하�
 
 ```
 WSL 호스트      26건   (연구 프로젝트 경로 · 학회명 · 논문 주제 포함)
-Windows 호스트   7건   C:\Users\<user>\Documents\Codex\<날짜>\<슬러그>
+Windows 호스트   7건   C:\Users\<user>\Documents\Codex\<날짜>\<슬러그>   ← 페어링 직후 값
 ```
 
 경로에 학회명·연구주제·도구 구성이 들어 있어 **폰 단독 압수로 PC 프로젝트 구조가 드러난다.** (VR-025)  
@@ -661,9 +720,11 @@ C:\Users\<user>\Documents\Codex\2026-08-22\tmp-agentrace-marker-txt-nonce
 
 > **구현 주의**: 최근 RPC 몇 건만 표본으로 보면 `codex-tui` 의 `plugin/list` 노이즈에 묻혀  
 > `codex_chatgpt_android_remote` 를 놓친다. 해법은 `turn/start` 필터가 아니라 **연결별로 묶는 것**이다 —  
-> connection 0 에 tui 노이즈가 아무리 많아도 connection 4 는 오염되지 않는다.
+> connection 0(=`codex-tui`, 최다 행수)에 노이즈가 아무리 많아도 폰 connection 은 오염되지 않는다.
+> ⚠ 위 표는 **발췌**다 — 실측에서 `android_remote` 는 conn 4·8·10·11·13·16 **6개**, `ios_remote` 는 conn 7 이다.
+> "연결 1개 = 폰 1대"로 읽으면 과소계수한다.
 > **`client_name` 문자열에 OS 가 박혀 있다** → 로컬 로그만으로 **조작자가 쓴 단말 OS 까지 특정된다.**  
-> Claude 에는 이 축이 없다.
+> Claude 에는 이 축이 없다 (**단 `user` 레코드 범위에서 확인한 것이며 `bridge-session` 전 필드는 별도 확인 — §2.2.2 참조**).
 
 **부가 판별자**: Codex 원격 턴은 `request_id` 가 **UUID 문자열**, 로컬 TUI 는 **정수 증가**다.  
 `turn/started` 는 `targeted_connections=2` 로 TUI 와 폰에 동시 방송된다.
@@ -696,7 +757,7 @@ Claude 는 세션 JSONL 하나에 내용과 출처가 모두 있었다 — **취
 
 ## 3.2 iOS
 
-**Android 와 결정적으로 다른 점 3가지**
+**Android 와 결정적으로 다른 점 4가지**
 
 1. **비탈옥 단말에서 평문 백업만으로 취득된다** — 루팅/탈옥 불필요
 2. **앱 번들 `Info.plist` 만으로 원격 기능 보유가 판정된다** — 백업조차 불필요, **취득 난이도 최저**
@@ -833,7 +894,7 @@ keychain-access-groups
 | `AppDomain-…/Library/Preferences/account.<accountUuid>.plist` **492 → 947B**           | VR-043 |
 | 신규 `CodeSessionReadStatePending` · `Dismissals` · `codeGitHubGHEConnected`             | VR-043 |
 | `selectedEnvironment` **null → {environmentId:…, kind:anthropic_cloud, state:active}** | VR-043 |
-| `AppDomain-<번들ID>/Library/LanguageModeling/` **birth = 입력 시작 시각**                      | §4.3   |
+| `AppDomain-<번들ID>/Library/LanguageModeling/` **birth = 입력 시작 시각**                      | §3.2.1(6) |
 
 **입력 행위의 흔적** — 지시 #3 사례: `LanguageModeling` birth 18:30:36 → 지시 전송 18:30:54 → 승인 18:31:14.  
 **지시보다 18초, 승인보다 38초 이르다** → 실행 결과가 아니라 **입력 행위**의 흔적이다.  
@@ -871,7 +932,9 @@ Write (폰 승인)   17.794s      ← 2~3자릿수 차이
 
 #### (8) 폰에 지시 내용 없음 — 전수 검색 0건
 
-bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건** (적대적 검증 시 실측, VR 미승격).
+bk-05·bk-06 전 실파일에서 **표식 문자열**(`dc70739f…`·`AGENTRACE`) 검색 → **0건** (적대적 검증 시 실측, VR 미승격).
+⚠ **세션 ULID 는 예외다** — `session_01AfhLnih4TrwTUqqQ1MC9fL` 은 bk-05·bk-06 의 `0-segment-events`,
+bk-07 의 `26-segment-events` 에 **존재한다.** 그것이 §3.2.1(4) 결속 축의 근거다. 없는 것은 **지시 문구**뿐이다.
 
 ---
 
@@ -927,7 +990,7 @@ bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건
 > blob 없이 `Manifest.db` 의 `relativePath` 문자열만으로도  
 > "이 계정에 Codex 원격 호스트 기능이 준비됐다"가 성립한다. (VR-054)
 
-#### (4) ★★ Android 와 정반대 — Android 는 아무것도 안 생긴다
+#### (4) ★★ 로그인 단계 — Android 는 Codex·원격 토픽이 안 생긴다
 
 ```
 [Android] databases/<userID>__<accountID>_websocket_topic_data.db
@@ -953,8 +1016,8 @@ bk-05·bk-06 전 실파일에서 세션 ULID·표식 문자열 검색 → **0건
 
 #### (6) ★★ 페어링은 연결 수립이 아니라 **열람 개시**다
 
-페어링 코드 입력 직후 **18초간** 폰(`codex_chatgpt_ios_remote`, ConnectionId 7)이  
-**사용자 지시 없이** 실행한 RPC — 창(18:52:20~18:53:00) 전수 **77건**:
+페어링 코드 입력 직후 **40초 창(18:52:20~18:53:00)** 에 폰(`codex_chatgpt_ios_remote`, ConnectionId 7)이  
+**사용자 지시 없이** 실행한 RPC — 창(18:52:20~18:53:00) 전수 **76건**:
 
 ```
 thread/resume 24 · skills/extraRoots/set 12 · model/list 7 · config/read 6 · skills/list 6
@@ -1054,7 +1117,12 @@ nonce · 지시문 · 스레드ID 검색 → **0건** (VR-060).
 | **기기**          | Android `global_device_uuid.json` · iOS `Anthropic-Device-ID`               | —                                                        |
 
 - **`environment_id` 는 두 기기에서 동일했다** — 갤럭시 `default_session_target.environment_id`  
-= 아이폰 `selectedEnvironment.environmentId`. **계정 축과 독립된 결속 키**이며 **같은 계정의 서로 다른 단말을 묶는다.**
+= 아이폰 `selectedEnvironment.environmentId`. 같은 계정의 두 단말이 **같은 환경을 가리켰다** [OBSERVED].
+
+> ⚠ **계정 축과 독립인지는 판정 불가** [HYPOTHESIZED] — 표본이 **계정 1개 · 환경 1개 · 단말 2대**다.
+> "같은 계정의 두 단말이 같은 환경을 골랐다"와 "environment_id 가 계정과 독립이다"가 이 표본에서
+> 구분되지 않는다. 계정 스코프 상수라면 `accountUuid` 이상의 결속력이 없다.
+> 검증하려면 **계정 2개 또는 환경 2개** 표본이 필요하다.
 
 - **식별자는 파일명·디렉터리명에도 중복된다** (`account.<uuid>.plist` · `exposures/<org_uuid>/` · `codex-*-<accID>/`)  
 → **blob 없이 `Manifest.db` 경로 문자열만으로 계정·조직 특정이 가능**하고, **한 파일을 지워도 재구성된다.** (VR-040)
@@ -1079,7 +1147,7 @@ nonce · 지시문 · 스레드ID 검색 → **0건** (VR-060).
 | 7   | **오분류**  | rollout `turn_context` 로 원격 판정하면 **Android 원격을 로컬로 오분류**한다 (iOS 클라이언트 부산물)                 |
 | 8   | **오귀속**  | Codex `server_name` 중복 — 같은 이름의 다른 머신에 귀속될 수 있다                                            |
 | 9   | **의미오독** | Codex 알림 승인 액션(`mfa_push_auth`)은 **도구 실행 승인이 아니라 계정 MFA**                                  |
-| 10  | **해석오류** | 폰 대화 캐시 15건은 **서버 페이지 크기**가 정한 상한 — "이 계정 대화가 15개"가 아니다                                    |
+| 10  | **해석오류** | 폰 대화 캐시 15건은 서버가 정한 **고정 상한**(`RECENT`) — "이 계정 대화가 15개"가 아니다                                    |
 | 11  | **해석오류** | 캐시된 메시지는 **활성 분기만** — 편집·재생성으로 버려진 분기는 없다                                                  |
 | 12  | **탐지누락** | 승인은 **파일 해시가 안 바뀐다** — inode·Birth 를 안 보면 전부 놓친다                                           |
 
@@ -1099,7 +1167,7 @@ nonce 가 돌아오지 않은 것이 그 사실을 즉시 드러냈다.
 
 **① "사람이 했나 AI가 했나"에 파일 근거로 답한다**
 로그를 열어도 사용자 입력과 에이전트 실행이 같은 스트림에 섞여 있어 눈으로는 갈리지 않는다.
-그 경계를 레코드 수준에서 그었고(§2.2.6), 실데이터 37,090건에서 **주체 미상 0건**으로 끝났다.
+그 경계를 레코드 수준에서 그었고(§2.2.6), 실데이터 37,090건에서 **미분류 잔여 0건**으로 끝났다(정확도가 아니라 커버리지 — §2.2.6).
 
 **② 압수 현장에서 무엇을 확보할지 즉시 결정된다**
 경로 색인(§8)이 그대로 체크리스트가 된다. 특히 **Codex 는 rollout 과 `logs_2.sqlite` 를 둘 다
@@ -1113,7 +1181,7 @@ nonce 가 돌아오지 않은 것이 그 사실을 즉시 드러냈다.
 
 **④ 새 버전이 나와도 계속 쓴다**
 파서가 버전이 아니라 구조를 보기 때문이다(§2.2.7). `0.63.0`~`0.149.0` 30종이 같은 코드로 읽히고,
-`0.149.0` 은 코드 변경 없이 그대로 처리됐다. 회귀 516건이 이걸 지킨다.
+`0.149.0` 은 코드 변경 없이 그대로 처리됐다. 회귀 523건이 이걸 지킨다.
 
 ## 6.2 수사 실무의 전제가 바뀐다
 
@@ -1138,7 +1206,7 @@ Claude 는 세션 JSONL 1개, Codex 는 rollout + SQLite 2개. Android 는 권�
 
 ## 6.3 이어서 할 수 있는 것
 
-- **다기기 사건** — `environment_id` 가 계정 축과 독립적으로 서로 다른 단말을 묶는다(§4.3).
+- **다기기 사건** — 같은 계정의 여러 단말이 같은 `environment_id` 를 가리킨다(§4.3). **독립 결속 축인지는 미검증.**
   갤럭시와 아이폰이 같은 값을 가리켰다.
 - **다른 에이전트로 확장** — 판별의 뼈대(구조 탐지 → 계층별 파서 → 단일 Event)는 벤더 중립이다.
 - **시계열 상관** — 폰·PC 시각차가 부호 일관(+0.973 / +2.275초)이라 단말 시계 오차와 전송 지연을
@@ -1153,7 +1221,7 @@ Claude 는 세션 JSONL 1개, Codex 는 rollout + SQLite 2개. Android 는 권�
 **iOS 는 백업만으로 가능했고, Android 는 권한상승(루팅)이 필요했다.**
 
 - iOS: 비탈옥 단말에서 `pymobiledevice3` **평문 백업**만으로 전부 얻었다.
-  단 `PasswordProtected: False` 조건이며, **백업 암호화가 켜져 있으면 키체인이 포함되므로
+  단 **`PasswordProtected: False` · `WillEncrypt: false`** 두 조건이며, **백업 암호화가 켜져 있으면 키체인이 포함되므로
   "자격증명은 얻지 못한다"는 결론이 뒤집힐 수 있다 — 미검증.**
 - Android: **Magisk 루팅** 기준이다. 비루팅 `adb backup` 은 이 단말에서 **산출물 0**이었고(VR-061),
   원인 단서가 삼성 고유 구현이라 **다른 OEM·AOSP 는 미검증**이다.
@@ -1176,8 +1244,8 @@ Claude 는 세션 JSONL 1개, Codex 는 rollout + SQLite 2개. Android 는 권�
 
 - 이 문서가 다루는 것은 **모바일 앱이 로컬 PC 의 CLI 에 연동될 때** 생기거나 값이 바뀌는 것이다.
   앱 단독 사용(일반 대화·계정 쿠키·캐시)은 **연동 판별에 쓰이는 경우에만** 등장한다.
-- 원리상 판정할 수 없는 것도 여기 있다 — shell redirection 으로 만든 파일(후보로만 표면화),
-  개별 도구 호출의 승인 여부(정책 스냅샷만 존재), Codex 의 범용 파일 **읽기**(레코드 자체가 없다).
+- 원리상 판정할 수 없는 것도 여기 있다 — 개별 도구 호출의 승인 여부(정책 스냅샷만 존재),
+  Codex 의 범용 파일 **읽기**(레코드 자체가 없다).
 - iOS 는 백업이 행위 사이에 없어 **mtime 으로만 갈리는 구간**이 남는다:
   최초 실행↔로그인 44초 · 활성화↔로컬 지시↔원격 지시 2회가 **한 창에 묶인 구간**.
 
@@ -1211,11 +1279,16 @@ Claude 는 세션 JSONL 1개, Codex 는 rollout + SQLite 2개. Android 는 권�
   shared_prefs/user_prefs_…_agent_chat.xml
   shared_prefs/app_stats.xml
   cache/app_start/acc_<acc>/org_<org>/cache.json                        ★서버 인가상태·이메일
+  shared_prefs/user_cookies_<accountUuid>.xml                          ★세션 쿠키 9종 (sk-ant 평문)
+  app_webview/Default/Cookies                                          ★두 번째 평문 사본
+  shared_prefs/trusted_device.xml                                       암호화(Tink) — 획득 불가
 
 /data/data/com.openai.chatgpt/
   files/datastore/<userID>__<accID>_codex_remote_hosts.json                ★호스트·PC작업경로 26건
   files/datastore/<userID>__<accID>_codex_remote_control_enrollments.json  ★공개키·엔드포인트
   files/datastore/global_device_uuid.json
+  shared_prefs/com.auth0.authentication.storage.xml                    ★평문 JWT (access/id_token)
+  files/datastore/global_cookie_storage.json                          ★쿠키 23건
   databases/<userID>__<accID>_websocket_topic_data.db                      (원격 토픽 ✗)
 ```
 
@@ -1254,9 +1327,9 @@ AppDomain-com.openai.chat/                                            ⚠번들I
 | 복원 이벤트              | **37,090**                                              |
 | actor 분포            | agent 34,698 · user 2,392 · **unknown 0**               |
 | 미지 스키마              | **0건**                                                  |
-| SQLite              | DB 6종 · threads 350 · turns 127                         |
+| SQLite              | DB 6종 · threads 350 · thread_items distinct 24 · turns 129                         |
 | 단일 스키마 파서의 0건 구간    | **329/353 = 93.2%**                                     |
-| 회귀 테스트              | **515 통과 + 1 skip**                                     |
+| 회귀 테스트              | **523 통과 · skip 0**                                     |
 | 정확도 (합성 통제, 각 100건) | 주체 식별 **100.0%** · 접근 파일 **100.0%** · MCP 호출 **100.0%** |
 
 > **수치는 계속 자란다** — 하루 사이 rollout 344→353, 이벤트 30,232→37,090 으로 변했다.  
@@ -1265,10 +1338,9 @@ AppDomain-com.openai.chat/                                            ⚠번들I
 > `manifest N파일` 은 SQLite 사이드카 체크포인트에 따라 변동하므로 **인쇄하지 않는다.**
 
 ⚠ **100% 가 가리는 것**  
-① shell redirection 파일 작성은 원리상 확정 불가 (후보로만 표면화)  
-② **Codex 에는 범용 파일 읽기 레코드가 없다** — `action=read` 는 이미지 열람뿐이라  
+① **Codex 에는 범용 파일 읽기 레코드가 없다** — `action=read` 는 이미지 열람뿐이라  
 　Claude 의 접근파일 정확도와 **나란히 놓으면 안 된다**  
-③ 개별 승인 여부 판정 불가
+② 개별 승인 여부 판정 불가
 
 ---
 
